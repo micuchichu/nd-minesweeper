@@ -1,0 +1,46 @@
+﻿name: Build macOS Binary
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install cmake raylib enet
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --config Release
+
+      - name: Prepare Release Package
+        run: |
+          mkdir -p release-macos
+          cp build/minesweeper release-macos/
+          cp -R assets release-macos/assets
+          cp steam_appid.txt release-macos/
+          if [ -f "third_party/steamworks/redistributable_bin/osx/libsteam_api.dylib" ]; then
+            cp third_party/steamworks/redistributable_bin/osx/libsteam_api.dylib release-macos/
+          fi
+          cd release-macos
+          chmod +x minesweeper
+          zip -r ../DimensionSweeper-macOS.zip .
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DimensionSweeper-macOS
+          path: DimensionSweeper-macOS.zip

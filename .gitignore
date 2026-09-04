@@ -1,0 +1,58 @@
+# Visual Studio files and directories
+.vs/
+*.user
+*.userosv
+*.sln.docstates
+*.suo
+
+# Build directories and intermediate outputs
+x64/
+x86/
+[Bb]uild/
+[Bb]in/
+[Oo]bj/
+minesweeper/
+
+# Compiled files
+*.obj
+*.o
+*.exp
+*.ilk
+*.pdb
+*.idb
+*.tlog
+*.log
+
+# Allow checked-in static and shared libraries needed for building and running
+*.lib
+!raylib.lib
+!third_party/**/*.lib
+*.dll
+!raylib.dll
+!third_party/**/*.dll
+*.so
+!third_party/**/*.so
+*.dylib
+!third_party/**/*.dylib
+
+# Exclude generated executables in root
+minesweeper.exe
+test_core.exe
+
+# Saved user data
+savegame.dat
+
+# Steam SDK non-redistributable tools (saving repo space)
+third_party/steamworks/tools/
+
+# macOS / OS generated files
+.DS_Store
+*.dylib.dSYM/
+
+# CMake temporary / build outputs
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+third_party/steamworks/SteamworksExample/
+third_party/steamworks/glmgr/
