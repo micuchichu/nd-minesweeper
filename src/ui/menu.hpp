@@ -2,6 +2,7 @@
 
 #include <raylib.h>
 #include "../net/network_manager.hpp"
+#include "../audio/voice_manager.hpp"
 #include <string>
 
 namespace minesweeper::ui {
@@ -44,6 +45,9 @@ public:
     int cursorSkin = 0;
     int flagSkin = 0;
     int playerSkin = 0;
+
+    audio::VoiceSettings voiceSettings;
+    float micInputLevel = 0.0f;
 
     // Horizontal Reel state
     float reelScrollX = 0.0f;

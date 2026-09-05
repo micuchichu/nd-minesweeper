@@ -19,7 +19,8 @@ enum class PacketType : uint8_t {
     Cursor = 3,
     Disconnect = 4,
     Sync = 5,
-    Handshake = 6
+    Handshake = 6,
+    Voice = 7
 };
 
 constexpr uint32_t HOST_PLAYER_ID = 0xFFFFFFFF;
@@ -67,6 +68,16 @@ struct PacketCursor {
     float y = 0.0f;
     uint8_t skin = 0;
     char name[16] = {0};
+};
+
+struct PacketVoice {
+    PacketType type = PacketType::Voice;
+    uint32_t playerID = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    uint16_t sampleCount = 640;
+    uint16_t dataSize = 320;
+    uint8_t data[320] = {0};
 };
 
 struct PacketDisconnect {
@@ -125,6 +136,8 @@ struct RemoteCursor {
     float y = 0.0f;
     uint8_t skin = 0;
     char name[16] = {0};
+    bool isSpeaking = false;
+    float speakingTimer = 0.0f;
 };
 
 } // namespace minesweeper::net

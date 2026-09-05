@@ -22,6 +22,11 @@ struct SaveData {
     bool randomizeSeed = true;
     uint8_t flagSkin = 0;
     uint8_t playerSkin = 0;
+    bool voiceEnabled = true;
+    bool voiceProximity = true;
+    bool voicePushToTalk = true;
+    float voiceVolume = 1.0f;
+    float micGain = 1.0f;
 };
 
 App::App() = default;
@@ -89,10 +94,17 @@ void App::init() {
 
     hud.init(board.config);
     startNewGame(board.config.dim, board.config.size, board.config.bombs, board.config.seed);
+
+    voiceMgr.init();
+    voiceMgr.getSettings() = menu.voiceSettings;
+    net.onVoiceReceived = [this](const net::PacketVoice& pkt) {
+        voiceMgr.receiveVoicePacket(pkt);
+    };
 }
 
 void App::cleanup() {
     saveSettings();
+    voiceMgr.cleanup();
     renderer.cleanup();
     net.cleanup();
     CloseWindow();
@@ -118,14 +130,21 @@ void App::loadSettings() {
             std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", hud.nextSeed);
             menu.crtEnabled = data.crtEnabled;
             menu.cursorSkin = std::max(0, static_cast<int>(data.cursorSkin));
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) * 2)) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) * 2 - (sizeof(bool) * 3 + sizeof(float) * 2))) {
                 hud.randomizeSeed = data.randomizeSeed;
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) - (sizeof(bool) * 3 + sizeof(float) * 2))) {
                 menu.flagSkin = std::max(0, static_cast<int>(data.flagSkin));
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - (sizeof(bool) * 3 + sizeof(float) * 2))) {
                 menu.playerSkin = std::max(0, static_cast<int>(data.playerSkin));
+            }
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+                menu.voiceSettings.enabled = data.voiceEnabled;
+                menu.voiceSettings.proximity = data.voiceProximity;
+                menu.voiceSettings.pushToTalk = data.voicePushToTalk;
+                menu.voiceSettings.voiceVolume = data.voiceVolume;
+                menu.voiceSettings.micGain = data.micGain;
             }
         }
         file.close();
@@ -148,6 +167,11 @@ void App::saveSettings() {
         data.randomizeSeed = hud.randomizeSeed;
         data.flagSkin = static_cast<uint8_t>(menu.flagSkin);
         data.playerSkin = static_cast<uint8_t>(menu.playerSkin);
+        data.voiceEnabled = menu.voiceSettings.enabled;
+        data.voiceProximity = menu.voiceSettings.proximity;
+        data.voicePushToTalk = menu.voiceSettings.pushToTalk;
+        data.voiceVolume = menu.voiceSettings.voiceVolume;
+        data.micGain = menu.voiceSettings.micGain;
 
         file.write(reinterpret_cast<const char*>(&data), sizeof(SaveData));
         file.close();
@@ -392,13 +416,36 @@ void App::update(float dt) {
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
 
+    // Synchronize voice settings and live mic meter with menu
+    voiceMgr.getSettings() = menu.voiceSettings;
+    menu.micInputLevel = voiceMgr.getMicLevel();
+
+    Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
+    voiceMgr.setLocalCursorPos(worldMouse.x, worldMouse.y);
+    voiceMgr.setPushToTalkActive(IsKeyDown(KEY_V));
+    voiceMgr.update(dt);
+
+    renderer.isLocalSpeaking = voiceMgr.isTransmitting();
+
     if (state == AppState::InGame) {
         // Camera input
         renderer.camera.handleInput(!hud.showLargeGridWarning);
 
+        // Multiplayer Voice Streaming
+        if (net.role != net::NetRole::Offline) {
+            net::PacketVoice vPkt;
+            while (voiceMgr.getOutgoingPacket(vPkt)) {
+                vPkt.playerID = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
+                if (net.role == net::NetRole::Client) {
+                    net.sendToServer(&vPkt, sizeof(vPkt), false);
+                } else if (net.role == net::NetRole::Host) {
+                    net.broadcast(&vPkt, sizeof(vPkt), false);
+                }
+            }
+        }
+
         // Multiplayer Cursor Broadcast
         if (net.role != net::NetRole::Offline) {
-            Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
             static Vector2 lastSent = { -9999.0f, -9999.0f };
             if (Vector2Distance(worldMouse, lastSent) > 3.0f) {
                 lastSent = worldMouse;
@@ -631,7 +678,7 @@ void App::draw() {
             int64_t hovered = renderer.getHoveredCellIndex(board);
             renderer.render(board, hovered, net);
 
-            ui::HUDActions hudAct = hud.drawAndProcess(screenW, screenH, board, timePlayed, net);
+            ui::HUDActions hudAct = hud.drawAndProcess(screenW, screenH, board, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
 
             if (hudAct.returnToMenu) {
                 net.disconnect();

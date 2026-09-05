@@ -43,7 +43,7 @@ void GameHUD::init(const core::BoardConfig& cfg) {
     endModalDismissed = false;
 }
 
-HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net) {
+HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net, bool isTransmitting, bool voiceEnabled, bool isPushToTalk) {
     HUDActions actions;
 
     float topBarH = 70.0f;
@@ -62,6 +62,35 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
 
     const char* dimTag = (board.config.dim == 2) ? "2D STANDARD" : ((board.config.dim == 3) ? "3D SLICES" : "4D HYPERCUBE");
     DrawText(dimTag, 130, static_cast<int>(topBarY + (topBarH - 20) * 0.5f), 19, Colors::Zinc300);
+
+    // Voice Chat HUD Indicator Pill
+    if (voiceEnabled) {
+        float micH = 28.0f;
+        float micY = topBarY + (topBarH - micH) * 0.5f;
+        float micX = 265.0f;
+
+        const char* micText = isTransmitting ? "MIC: LIVE" : (isPushToTalk ? "PTT: [V]" : "MIC: ON");
+        Color micBg = isTransmitting ? Fade(Colors::Green600, 0.4f) : Colors::Zinc900;
+        Color micBorder = isTransmitting ? Colors::Green500 : Colors::Zinc700;
+        Color micTextCol = isTransmitting ? Colors::Green400 : (isPushToTalk ? Colors::Zinc400 : Colors::Zinc300);
+
+        int textW = MeasureText(micText, 13);
+        float micW = static_cast<float>(textW + (isTransmitting ? 24 : 16));
+        Rectangle micRect = { micX, micY, micW, micH };
+
+        DrawRectangleRec(micRect, micBg);
+        DrawRectangleLinesEx(micRect, 1.0f, micBorder);
+
+        if (isTransmitting) {
+            float t = static_cast<float>(GetTime());
+            float pulse = (std::sin(t * 12.0f) + 1.0f) * 0.5f;
+            DrawCircle(static_cast<int>(micX + 10), static_cast<int>(micY + micH * 0.5f), 3.5f, Colors::Green400);
+            DrawCircleLines(static_cast<int>(micX + 10), static_cast<int>(micY + micH * 0.5f), 4.5f + pulse * 2.5f, Fade(Colors::Green400, 0.7f));
+            DrawText(micText, static_cast<int>(micX + 18), static_cast<int>(micY + (micH - 13) * 0.5f), 13, micTextCol);
+        } else {
+            DrawText(micText, static_cast<int>(micX + 8), static_cast<int>(micY + (micH - 13) * 0.5f), 13, micTextCol);
+        }
+    }
 
     // Mines Remaining Counter
     int remaining = board.config.bombs - static_cast<int>(board.flaggedCount);

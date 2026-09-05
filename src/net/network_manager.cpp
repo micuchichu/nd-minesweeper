@@ -318,6 +318,37 @@ void NetworkManager::update() {
                     }
                 }
             }
+            else if (header->type == PacketType::Voice && p2p.data.size() >= sizeof(PacketVoice)) {
+                auto* p = reinterpret_cast<PacketVoice*>(p2p.data.data());
+                uint32_t senderId = (role == NetRole::Host) ? peerId : p->playerID;
+
+                PacketVoice voicePkt = *p;
+                voicePkt.playerID = senderId;
+
+                auto it = remoteCursors.find(senderId);
+                if (it != remoteCursors.end()) {
+                    it->second.isSpeaking = true;
+                    it->second.speakingTimer = 0.35f;
+                }
+
+                if (onVoiceReceived) {
+                    onVoiceReceived(voicePkt);
+                }
+
+                if (role == NetRole::Host) {
+                    for (uint64_t otherSteamId : SteamManager::instance().getConnectedPeers()) {
+                        if (otherSteamId != p2p.senderSteamID) {
+                            SteamManager::instance().sendP2PPacket(otherSteamId, &voicePkt, sizeof(voicePkt), false);
+                        }
+                    }
+                    if (pimpl->host) {
+                        for (ENetPeer* client : pimpl->connectedClients) {
+                            ENetPacket* fwd = enet_packet_create(&voicePkt, sizeof(PacketVoice), 0);
+                            enet_peer_send(client, 1, fwd);
+                        }
+                    }
+                }
+            }
             else if (header->type == PacketType::Disconnect && p2p.data.size() >= sizeof(PacketDisconnect)) {
                 auto* p = reinterpret_cast<PacketDisconnect*>(p2p.data.data());
                 remoteCursors.erase(p->playerID);
@@ -443,6 +474,35 @@ void NetworkManager::update() {
                             }
                         }
                     }
+                    else if (header->type == PacketType::Voice && event.packet->dataLength >= sizeof(PacketVoice)) {
+                        auto* p = reinterpret_cast<PacketVoice*>(event.packet->data);
+                        uint32_t senderId = (role == NetRole::Host && event.peer) ? event.peer->incomingPeerID : p->playerID;
+
+                        PacketVoice voicePkt = *p;
+                        voicePkt.playerID = senderId;
+
+                        auto it = remoteCursors.find(senderId);
+                        if (it != remoteCursors.end()) {
+                            it->second.isSpeaking = true;
+                            it->second.speakingTimer = 0.35f;
+                        }
+
+                        if (onVoiceReceived) {
+                            onVoiceReceived(voicePkt);
+                        }
+
+                        if (role == NetRole::Host) {
+                            for (ENetPeer* client : pimpl->connectedClients) {
+                                if (client != event.peer) {
+                                    ENetPacket* fwd = enet_packet_create(&voicePkt, sizeof(PacketVoice), 0);
+                                    enet_peer_send(client, 1, fwd);
+                                }
+                            }
+                            for (uint64_t steamId : SteamManager::instance().getConnectedPeers()) {
+                                SteamManager::instance().sendP2PPacket(steamId, &voicePkt, sizeof(voicePkt), false);
+                            }
+                        }
+                    }
                     else if (header->type == PacketType::Disconnect && event.packet->dataLength >= sizeof(PacketDisconnect)) {
                         auto* p = reinterpret_cast<PacketDisconnect*>(event.packet->data);
                         remoteCursors.erase(p->playerID);
@@ -477,6 +537,16 @@ void NetworkManager::update() {
             }
             default:
                 break;
+        }
+    }
+
+    for (auto& [id, cursor] : remoteCursors) {
+        if (cursor.speakingTimer > 0.0f) {
+            cursor.speakingTimer -= 0.016f;
+            if (cursor.speakingTimer <= 0.0f) {
+                cursor.isSpeaking = false;
+                cursor.speakingTimer = 0.0f;
+            }
         }
     }
 }

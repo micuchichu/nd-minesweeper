@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <functional>
 
 namespace minesweeper::net {
 
@@ -13,6 +14,7 @@ public:
     NetRole role = NetRole::Offline;
     char playerName[16] = "Player";
     std::map<uint32_t, RemoteCursor> remoteCursors;
+    std::function<void(const PacketVoice&)> onVoiceReceived;
 
     NetworkManager();
     ~NetworkManager();

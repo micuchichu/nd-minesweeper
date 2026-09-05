@@ -679,7 +679,7 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
     }
 }
 
-void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const char* name, float scale) {
+void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const char* name, float scale, bool isSpeaking) {
     int skinIdx = static_cast<int>(skin);
     bool drewTexture = false;
 
@@ -698,12 +698,32 @@ void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const 
         DrawRectangleLines(px, py, 10, 10, WHITE);
     }
 
+    if (isSpeaking) {
+        float t = static_cast<float>(GetTime());
+        float pulse = (std::sin(t * 12.0f) + 1.0f) * 0.5f;
+        Color speakCol = ui::Colors::Green500;
+        DrawCircleLines(static_cast<int>(pos.x + 6.0f * scale), static_cast<int>(pos.y + 6.0f * scale), 13.0f * scale + pulse * 5.0f, Fade(speakCol, 0.85f));
+        DrawCircleLines(static_cast<int>(pos.x + 6.0f * scale), static_cast<int>(pos.y + 6.0f * scale), 19.0f * scale + pulse * 8.0f, Fade(speakCol, 0.45f));
+
+        // Animated sound wave arcs )))
+        float wavePhase = std::fmod(t * 5.0f, 3.0f);
+        for (int i = 0; i < 3; ++i) {
+            float alpha = (wavePhase >= i) ? 0.9f : 0.2f;
+            DrawCircleSectorLines({ pos.x + 18.0f * scale, pos.y - 2.0f * scale }, (8.0f + i * 5.0f) * scale, 305.0f, 415.0f, 10, Fade(speakCol, alpha));
+        }
+    }
+
     if (name && name[0] != '\0') {
         int nameW = MeasureText(name, 12);
-        Rectangle badge = { pos.x + 12.0f * scale, pos.y + 12.0f * scale, static_cast<float>(nameW + 8), 16.0f };
+        Rectangle badge = { pos.x + 12.0f * scale, pos.y + 12.0f * scale, static_cast<float>(nameW + (isSpeaking ? 20 : 8)), 16.0f };
         DrawRectangleRec(badge, Fade(BLACK, 0.85f));
-        DrawRectangleLinesEx(badge, 1.0f, col);
-        DrawText(name, static_cast<int>(badge.x + 4), static_cast<int>(badge.y + 2), 12, WHITE);
+        DrawRectangleLinesEx(badge, 1.0f, isSpeaking ? ui::Colors::Green500 : col);
+        if (isSpeaking) {
+            DrawCircle(static_cast<int>(badge.x + 6), static_cast<int>(badge.y + 8), 3.0f, ui::Colors::Green500);
+            DrawText(name, static_cast<int>(badge.x + 14), static_cast<int>(badge.y + 2), 12, WHITE);
+        } else {
+            DrawText(name, static_cast<int>(badge.x + 4), static_cast<int>(badge.y + 2), 12, WHITE);
+        }
     }
 }
 
@@ -745,14 +765,24 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
 
     particles.updateAndDraw(GetFrameTime());
 
-    // Draw remote multiplayer cursors with custom skins
+    // Draw remote multiplayer cursors with custom skins and speaking effects
     for (const auto& [id, cursor] : net.remoteCursors) {
         Color curCol = ui::Colors::Red500;
         if (id != 0) {
             curCol = ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f);
         }
         const char* tag = cursor.name[0] != '\0' ? cursor.name : (id == 0 ? "HOST" : TextFormat("P%u", id));
-        drawCursorSkin(cursor.skin, { cursor.x, cursor.y }, curCol, tag);
+        drawCursorSkin(cursor.skin, { cursor.x, cursor.y }, curCol, tag, 1.0f, cursor.isSpeaking);
+    }
+
+    // Draw local cursor voice transmission indicator
+    if (isLocalSpeaking) {
+        Vector2 localMouse = camera.getScreenToWorld(camera.getCRTMousePosition());
+        float t = static_cast<float>(GetTime());
+        float pulse = (std::sin(t * 12.0f) + 1.0f) * 0.5f;
+        Color speakCol = ui::Colors::Green500;
+        DrawCircleLines(static_cast<int>(localMouse.x), static_cast<int>(localMouse.y), 14.0f + pulse * 6.0f, Fade(speakCol, 0.85f));
+        DrawCircleLines(static_cast<int>(localMouse.x), static_cast<int>(localMouse.y), 21.0f + pulse * 9.0f, Fade(speakCol, 0.45f));
     }
 
     EndMode2D();

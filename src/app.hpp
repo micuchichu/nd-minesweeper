@@ -5,6 +5,7 @@
 #include "net/network_manager.hpp"
 #include "ui/hud.hpp"
 #include "ui/menu.hpp"
+#include "audio/voice_manager.hpp"
 
 namespace minesweeper {
 
@@ -32,6 +33,7 @@ private:
     net::NetworkManager net;
     ui::GameHUD hud;
     ui::MainMenu menu;
+    audio::VoiceManager voiceMgr;
 
     void init();
     void update(float dt);

@@ -38,7 +38,9 @@ public:
     static std::vector<CursorSkinItem> cursorSkins;
     static int getCursorSkinCount();
     static const char* getCursorSkinName(int skin);
-    static void drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const char* name = nullptr, float scale = 1.0f);
+    static void drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const char* name = nullptr, float scale = 1.0f, bool isSpeaking = false);
+
+    bool isLocalSpeaking = false;
 
     static std::vector<FlagSkinItem> flagSkins;
     static int getFlagSkinCount();

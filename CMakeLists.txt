@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SOURCES
     src/main.cpp
     src/app.cpp
+    src/audio/voice_manager.cpp
     src/core/board.cpp
     src/net/network_manager.cpp
     src/net/steam_manager.cpp
@@ -24,6 +25,7 @@ add_executable(minesweeper ${SOURCES})
 # Target Include directories
 target_include_directories(minesweeper PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniaudio
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/steamworks/public/steam
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/steamworks/public
 )
@@ -77,11 +79,15 @@ if(APPLE)
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREVIDEO_FRAMEWORK CoreVideo REQUIRED)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    find_library(COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
+    find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
     target_link_libraries(minesweeper PRIVATE
         ${COCOA_FRAMEWORK}
         ${IOKIT_FRAMEWORK}
         ${COREVIDEO_FRAMEWORK}
         ${OPENGL_FRAMEWORK}
+        ${COREAUDIO_FRAMEWORK}
+        ${AUDIOTOOLBOX_FRAMEWORK}
     )
 
     # Steamworks macOS dylib

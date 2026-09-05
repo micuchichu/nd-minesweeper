@@ -31,7 +31,7 @@ public:
     static uint64_t parseSeed(const char* str);
 
     void init(const core::BoardConfig& cfg);
-    HUDActions drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net);
+    HUDActions drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net, bool isTransmitting = false, bool voiceEnabled = true, bool isPushToTalk = true);
 };
 
 

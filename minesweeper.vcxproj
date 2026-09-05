@@ -50,8 +50,9 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\steamworks\public\steam;$(ProjectDir)third_party\steamworks\public;C:\raylib\raylib\src;C:\Users\nucit\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\steamworks\public\steam;$(ProjectDir)third_party\steamworks\public;$(ProjectDir)third_party\miniaudio;C:\raylib\raylib\src;C:\Users\nucit\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ExceptionHandling>Sync</ExceptionHandling>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -77,8 +78,9 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
       <ConformanceMode>true</ConformanceMode>
       <Optimization>MaxSpeed</Optimization>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\steamworks\public\steam;$(ProjectDir)third_party\steamworks\public;C:\raylib\raylib\src;C:\Users\nucit\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\steamworks\public\steam;$(ProjectDir)third_party\steamworks\public;$(ProjectDir)third_party\miniaudio;C:\raylib\raylib\src;C:\Users\nucit\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ExceptionHandling>Sync</ExceptionHandling>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -102,12 +104,14 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\render\camera_controller.cpp" />
     <ClCompile Include="src\render\particles.cpp" />
     <ClCompile Include="src\render\raylib_renderer.cpp" />
+    <ClCompile Include="src\audio\voice_manager.cpp" />
     <ClCompile Include="src\ui\widgets.cpp" />
     <ClCompile Include="src\ui\hud.cpp" />
     <ClCompile Include="src\ui\menu.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app.hpp" />
+    <ClInclude Include="src\audio\voice_manager.hpp" />
     <ClInclude Include="src\core\types.hpp" />
     <ClInclude Include="src\core\coord.hpp" />
     <ClInclude Include="src\core\bitboard.hpp" />
