@@ -441,9 +441,9 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     }
     else if (currentScreen == MenuScreen::Settings) {
         float panelW = 620.0f;
-        float panelH = 500.0f;
+        float panelH = 460.0f;
         float panelX = centerX - panelW * 0.5f;
-        float panelY = centerY - 250.0f;
+        float panelY = centerY - 230.0f;
 
         Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "SYSTEM SETTINGS", Colors::Cyan500);
 
@@ -476,15 +476,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             DrawText("Simulates authentic curved cathode-ray tube phosphor scanlines and vignette.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
             curY += 22.0f;
 
-            // 2. Doppler Effect Shader
-            if (Widgets::checkbox("ENABLE DOPPLER EFFECT SHADER", { rowX, curY }, dopplerEnabled, false)) {
-                actions.toggleDoppler = true;
-            }
-            curY += 26.0f;
-            DrawText("Simulates relativistic blueshift in motion direction and redshift behind camera.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
-            curY += 22.0f;
-
-            // 3. VSync
+            // 2. VSync
             if (Widgets::checkbox("VERTICAL SYNC (VSYNC)", { rowX, curY }, vsyncEnabled, false)) {
                 actions.vsyncChanged = true;
             }

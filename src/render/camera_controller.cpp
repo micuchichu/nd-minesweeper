@@ -13,8 +13,6 @@ void CameraController::reset(Vector2 targetPos, float zoom) {
     camera.target = targetPos;
     camera.rotation = 0.0f;
     camera.zoom = std::clamp(zoom, 0.01f, 30.0f);
-    prevTarget = targetPos;
-    velocity = {0.0f, 0.0f};
 }
 
 Vector2 CameraController::getCRTMousePosition() const {
@@ -56,22 +54,6 @@ void CameraController::handleInput(bool allowPanAndZoom) {
         camera.target.y -= delta.y / camera.zoom;
     }
 
-    // Pan with WASD / Arrow keys
-    float panSpeed = 650.0f / camera.zoom;
-    float dt = GetFrameTime();
-    Vector2 keyDir = { 0.0f, 0.0f };
-    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) keyDir.y -= 1.0f;
-    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) keyDir.y += 1.0f;
-    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) keyDir.x -= 1.0f;
-    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) keyDir.x += 1.0f;
-    if (keyDir.x != 0.0f || keyDir.y != 0.0f) {
-        float len = std::sqrt(keyDir.x * keyDir.x + keyDir.y * keyDir.y);
-        keyDir.x /= len;
-        keyDir.y /= len;
-        camera.target.x += keyDir.x * panSpeed * dt;
-        camera.target.y += keyDir.y * panSpeed * dt;
-    }
-
     // Zoom with mouse wheel towards cursor position
     float wheel = GetMouseWheelMove();
     if (wheel != 0.0f) {
@@ -85,31 +67,6 @@ void CameraController::handleInput(bool allowPanAndZoom) {
         camera.target.x += mouseWorldBefore.x - mouseWorldAfter.x;
         camera.target.y += mouseWorldBefore.y - mouseWorldAfter.y;
     }
-}
-
-void CameraController::update(float dt) {
-    if (dt <= 0.0f) return;
-    if (dt > 0.1f) dt = 0.1f;
-
-    float screenH = static_cast<float>(GetScreenHeight());
-    if (screenH <= 0.0f) screenH = 900.0f;
-
-    Vector2 deltaTarget = {
-        (camera.target.x - prevTarget.x) * camera.zoom,
-        (camera.target.y - prevTarget.y) * camera.zoom
-    };
-
-    Vector2 instantVel = {
-        (deltaTarget.x / dt) / screenH,
-        (deltaTarget.y / dt) / screenH
-    };
-
-    velocity = instantVel;
-
-    if (std::abs(velocity.x) < 0.001f) velocity.x = 0.0f;
-    if (std::abs(velocity.y) < 0.001f) velocity.y = 0.0f;
-
-    prevTarget = camera.target;
 }
 
 } // namespace minesweeper::render

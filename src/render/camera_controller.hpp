@@ -14,9 +14,6 @@ public:
 
     void reset(Vector2 targetPos = {0, 0}, float zoom = 1.0f);
     void handleInput(bool allowPanAndZoom = true);
-    void update(float dt);
-
-    Vector2 getVelocity() const { return velocity; }
 
     Vector2 getCRTMousePosition() const;
     Vector2 getScreenToWorld(Vector2 screenPos) const;
@@ -27,10 +24,6 @@ public:
 
     float middleDragDistance = 0.0f;
     bool isMiddleDragging() const { return middleDragDistance > 5.0f; }
-
-private:
-    Vector2 prevTarget = {0.0f, 0.0f};
-    Vector2 velocity = {0.0f, 0.0f};
 };
 
 } // namespace minesweeper::render

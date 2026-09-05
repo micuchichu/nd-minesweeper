@@ -303,9 +303,6 @@ void RaylibRenderer::initShaders() {
         postProcessShader = LoadShader(nullptr, "assets/shader.glsl");
         ppTimeLoc = GetShaderLocation(postProcessShader, "time");
         ppResLoc = GetShaderLocation(postProcessShader, "resolution");
-        ppVelocityLoc = GetShaderLocation(postProcessShader, "cameraVelocity");
-        ppCrtLoc = GetShaderLocation(postProcessShader, "enableCRT");
-        ppDopplerLoc = GetShaderLocation(postProcessShader, "enableDoppler");
     }
 
     if (FileExists("assets/grid.glsl")) {
@@ -386,7 +383,7 @@ void RaylibRenderer::unloadAssets() {
 }
 
 void RaylibRenderer::update(float dt) {
-    camera.update(dt);
+    (void)dt;
     if (IsWindowResized()) {
         int w = GetScreenWidth();
         int h = GetScreenHeight();
@@ -407,25 +404,14 @@ void RaylibRenderer::endOffscreen() {
 }
 
 void RaylibRenderer::drawOffscreenToScreen() {
-    bool needShader = (enableCRT || enableDoppler) && (postProcessShader.id != 0);
-    if (needShader) {
+    if (enableCRT && postProcessShader.id != 0) {
         BeginShaderMode(postProcessShader);
 
         float timeVal = static_cast<float>(GetTime());
-        if (ppTimeLoc >= 0) SetShaderValue(postProcessShader, ppTimeLoc, &timeVal, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(postProcessShader, ppTimeLoc, &timeVal, SHADER_UNIFORM_FLOAT);
 
         float resVal[2] = { static_cast<float>(offscreenTarget.texture.width), static_cast<float>(offscreenTarget.texture.height) };
-        if (ppResLoc >= 0) SetShaderValue(postProcessShader, ppResLoc, resVal, SHADER_UNIFORM_VEC2);
-
-        Vector2 vel = camera.getVelocity();
-        float velVal[2] = { vel.x, vel.y };
-        if (ppVelocityLoc >= 0) SetShaderValue(postProcessShader, ppVelocityLoc, velVal, SHADER_UNIFORM_VEC2);
-
-        float crtVal = enableCRT ? 1.0f : 0.0f;
-        if (ppCrtLoc >= 0) SetShaderValue(postProcessShader, ppCrtLoc, &crtVal, SHADER_UNIFORM_FLOAT);
-
-        float dopVal = enableDoppler ? 1.0f : 0.0f;
-        if (ppDopplerLoc >= 0) SetShaderValue(postProcessShader, ppDopplerLoc, &dopVal, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(postProcessShader, ppResLoc, resVal, SHADER_UNIFORM_VEC2);
 
         Rectangle source = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), -static_cast<float>(offscreenTarget.texture.height) };
         Rectangle dest = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), static_cast<float>(offscreenTarget.texture.height) };

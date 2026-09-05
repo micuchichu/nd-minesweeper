@@ -34,7 +34,6 @@ public:
     float cellMargin = 2.0f;
     float slicePadding = 45.0f;
     bool enableCRT = true;
-    bool enableDoppler = true;
 
     static std::vector<CursorSkinItem> cursorSkins;
     static int getCursorSkinCount();
@@ -87,9 +86,6 @@ private:
     Shader postProcessShader = {0};
     int ppTimeLoc = -1;
     int ppResLoc = -1;
-    int ppVelocityLoc = -1;
-    int ppCrtLoc = -1;
-    int ppDopplerLoc = -1;
     RenderTexture2D offscreenTarget = {0};
 
     void initShaders();

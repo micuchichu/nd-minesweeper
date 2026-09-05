@@ -34,7 +34,6 @@ struct MenuActions {
     uint16_t hostPort = 7777;
     std::string joinAddress = "127.0.0.1:7777";
     bool toggleCRT = false;
-    bool toggleDoppler = false;
     bool vsyncChanged = false;
     bool fpsLimitChanged = false;
     bool guiScaleChanged = false;
@@ -51,7 +50,6 @@ public:
     char hostPortBuf[16] = "7777";
     std::string statusMessage = "";
     bool crtEnabled = true;
-    bool dopplerEnabled = true;
     bool vsyncEnabled = true;
     bool showFPS = false;
     float fpsLimit = 144.0f;
