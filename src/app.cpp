@@ -31,6 +31,7 @@ struct SaveData {
     bool showFPS = false;
     float fpsLimit = 144.0f;
     float guiScale = 1.0f;
+    bool dopplerEnabled = true;
 };
 
 App::App() = default;
@@ -83,6 +84,7 @@ void App::init() {
 
     renderer.enableCRT = menu.crtEnabled;
     renderer.camera.enableCRT = menu.crtEnabled;
+    renderer.enableDoppler = menu.dopplerEnabled;
     renderer.init();
     if (render::RaylibRenderer::getCursorSkinCount() > 0) {
         menu.cursorSkin = std::clamp<int>(menu.cursorSkin, 0, render::RaylibRenderer::getCursorSkinCount() - 1);
@@ -165,11 +167,14 @@ void App::loadSettings() {
                 menu.voiceSettings.voiceVolume = data.voiceVolume;
                 menu.voiceSettings.micGain = data.micGain;
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(bool))) {
                 menu.vsyncEnabled = data.vsyncEnabled;
                 menu.showFPS = data.showFPS;
                 menu.fpsLimit = data.fpsLimit;
                 menu.guiScale = std::clamp(data.guiScale, 0.75f, 1.50f);
+            }
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+                menu.dopplerEnabled = data.dopplerEnabled;
             }
         }
         file.close();
@@ -201,6 +206,7 @@ void App::saveSettings() {
         data.showFPS = menu.showFPS;
         data.fpsLimit = menu.fpsLimit;
         data.guiScale = menu.guiScale;
+        data.dopplerEnabled = menu.dopplerEnabled;
 
         file.write(reinterpret_cast<const char*>(&data), sizeof(SaveData));
         file.close();
@@ -441,6 +447,7 @@ void App::update(float dt) {
 
     renderer.enableCRT = menu.crtEnabled;
     renderer.camera.enableCRT = menu.crtEnabled;
+    renderer.enableDoppler = menu.dopplerEnabled;
     renderer.activeFlagSkin = menu.flagSkin;
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
@@ -666,9 +673,10 @@ void App::draw() {
         ui::MenuActions menuAct = menu.drawAndProcess(uiW, uiH);
         EndMode2D();
 
-        if (menuAct.toggleCRT || menuAct.vsyncChanged || menuAct.fpsLimitChanged || menuAct.guiScaleChanged) {
+        if (menuAct.toggleCRT || menuAct.toggleDoppler || menuAct.vsyncChanged || menuAct.fpsLimitChanged || menuAct.guiScaleChanged) {
             renderer.enableCRT = menu.crtEnabled;
             renderer.camera.enableCRT = menu.crtEnabled;
+            renderer.enableDoppler = menu.dopplerEnabled;
             renderer.guiScale = menu.guiScale;
             ui::Widgets::setScale(menu.guiScale);
 
