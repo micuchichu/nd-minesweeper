@@ -41,6 +41,8 @@ test_core.exe
 
 # Saved user data
 savegame.dat
+*.zip
+
 
 # Steam SDK non-redistributable tools (saving repo space)
 third_party/steamworks/tools/

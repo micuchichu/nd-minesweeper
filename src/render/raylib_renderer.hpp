@@ -88,6 +88,7 @@ private:
     void initCellTextures();
     void unloadAssets();
     void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex);
+    void drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex);
 };
 
 } // namespace minesweeper::render

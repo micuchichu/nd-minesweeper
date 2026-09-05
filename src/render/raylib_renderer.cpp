@@ -750,6 +750,254 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     }
 
     EndMode2D();
+
+    // Draw off-screen neighbor previews on the sides of the screen (in screen space)
+    drawNeighborPreviews(board, hoveredIndex);
+}
+
+void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex) {
+    if (hoveredIndex < 0 || board.config.dim < 3 || board.coord.totalCells == 0) return;
+
+    size_t hX = 0, hY = 0, hZ = 0, hW = 0;
+    if (board.config.dim == 3) {
+        board.coord.toCoord3D(static_cast<size_t>(hoveredIndex), hX, hY, hZ);
+    } else {
+        board.coord.toCoord4D(static_cast<size_t>(hoveredIndex), hX, hY, hZ, hW);
+    }
+
+    float screenW = static_cast<float>(GetScreenWidth());
+    float screenH = static_cast<float>(GetScreenHeight());
+
+    float viewLeft = 20.0f;
+    float viewRight = screenW - 20.0f;
+    float viewTop = 85.0f;
+    float viewBottom = screenH - 95.0f;
+
+    float boardWidth = board.config.size * cellSize;
+    float sliceStride = boardWidth + slicePadding;
+    float boxWorldSize = 3.0f * cellSize;
+    float boxScreenSize = boxWorldSize * camera.getZoom();
+
+    Vector2 mouseCRT = camera.getCRTMousePosition();
+
+    struct MiniCell {
+        bool valid = false;
+        core::CellState state = core::CellState::Hidden;
+        uint8_t count = 0;
+        bool isBomb = false;
+        uint8_t flagSkin = 0;
+        bool isCenter = false;
+    };
+
+    struct PreviewCard {
+        std::string title;
+        bool onLeft = true;
+        int flags = 0;
+        int hidden = 0;
+        MiniCell cells[9];
+    };
+
+    std::vector<PreviewCard> leftCards;
+    std::vector<PreviewCard> rightCards;
+
+    auto processSlice = [&](int dz, int dw, const char* title, bool onLeft) {
+        int nz = static_cast<int>(hZ) + dz;
+        int nw = static_cast<int>(hW) + dw;
+        if (nz < 0 || nz >= board.config.size || nw < 0 || nw >= board.config.size) return;
+
+        Vector2 worldCenter;
+        if (board.config.dim == 3) {
+            worldCenter = { (static_cast<float>(hX) + 0.5f) * cellSize, (static_cast<float>(nz) * sliceStride) + (static_cast<float>(hY) + 0.5f) * cellSize };
+        } else {
+            worldCenter = { (static_cast<float>(nz) * sliceStride) + (static_cast<float>(hX) + 0.5f) * cellSize, (static_cast<float>(nw) * sliceStride) + (static_cast<float>(hY) + 0.5f) * cellSize };
+        }
+
+        Vector2 screenCenter = camera.getWorldToScreen(worldCenter);
+
+        float minX = screenCenter.x - boxScreenSize * 0.5f;
+        float maxX = screenCenter.x + boxScreenSize * 0.5f;
+        float minY = screenCenter.y - boxScreenSize * 0.5f;
+        float maxY = screenCenter.y + boxScreenSize * 0.5f;
+
+        // If the 3x3 neighborhood of this slice is fully visible on screen, skip preview
+        bool fullyVisible = (minX >= viewLeft && maxX <= viewRight && minY >= viewTop && maxY <= viewBottom);
+        if (fullyVisible) return;
+
+        PreviewCard card;
+        card.title = title;
+        card.onLeft = onLeft;
+
+        for (int r = 0; r < 3; ++r) {
+            int dy = r - 1;
+            int ny = static_cast<int>(hY) + dy;
+            for (int c = 0; c < 3; ++c) {
+                int dx = c - 1;
+                int nx = static_cast<int>(hX) + dx;
+                int cellIdx = r * 3 + c;
+
+                if (nx >= 0 && nx < board.config.size && ny >= 0 && ny < board.config.size) {
+                    size_t idx = (board.config.dim == 3)
+                        ? board.coord.toIndex3D(static_cast<size_t>(nx), static_cast<size_t>(ny), static_cast<size_t>(nz))
+                        : board.coord.toIndex4D(static_cast<size_t>(nx), static_cast<size_t>(ny), static_cast<size_t>(nz), static_cast<size_t>(nw));
+
+                    card.cells[cellIdx].valid = true;
+                    card.cells[cellIdx].state = board.getState(idx);
+                    card.cells[cellIdx].count = board.getCount(idx);
+                    card.cells[cellIdx].isBomb = board.isBomb(idx);
+                    card.cells[cellIdx].flagSkin = board.getFlagSkin(idx, static_cast<uint8_t>(activeFlagSkin));
+                    card.cells[cellIdx].isCenter = (dx == 0 && dy == 0);
+
+                    if (card.cells[cellIdx].state == core::CellState::Flagged) card.flags++;
+                    else if (card.cells[cellIdx].state == core::CellState::Hidden) card.hidden++;
+                } else {
+                    card.cells[cellIdx].valid = false;
+                }
+            }
+        }
+
+        if (onLeft) leftCards.push_back(card);
+        else rightCards.push_back(card);
+    };
+
+    if (board.config.dim == 3) {
+        if (hZ > 0) {
+            processSlice(-1, 0, TextFormat("< SLICE Z - 1 (Z=%zu)", hZ - 1), true);
+        }
+        if (hZ + 1 < static_cast<size_t>(board.config.size)) {
+            processSlice(1, 0, TextFormat("SLICE Z + 1 (Z=%zu) >", hZ + 1), false);
+        }
+    } else {
+        // 4D Neighbor Slices
+        struct OffsetDef { int dz; int dw; const char* prefix; bool left; };
+        const OffsetDef defs[] = {
+            {-1,  0, "< Z - 1 (Z=%d)", true},
+            { 1,  0, "Z + 1 (Z=%d) >", false},
+            { 0, -1, "< W - 1 (W=%d)", true},
+            { 0,  1, "W + 1 (W=%d) >", false},
+            {-1, -1, "< Z-1,W-1 (%d,%d)", true},
+            { 1, -1, "Z+1,W-1 (%d,%d) >", false},
+            {-1,  1, "< Z-1,W+1 (%d,%d)", true},
+            { 1,  1, "Z+1,W+1 (%d,%d) >", false}
+        };
+
+        for (const auto& d : defs) {
+            int nz = static_cast<int>(hZ) + d.dz;
+            int nw = static_cast<int>(hW) + d.dw;
+            if (nz >= 0 && nz < board.config.size && nw >= 0 && nw < board.config.size) {
+                std::string title;
+                if (d.dw == 0) title = TextFormat(d.prefix, nz);
+                else if (d.dz == 0) title = TextFormat(d.prefix, nw);
+                else title = TextFormat(d.prefix, nz, nw);
+                processSlice(d.dz, d.dw, title.c_str(), d.left);
+            }
+        }
+    }
+
+    auto drawCardList = [&](const std::vector<PreviewCard>& cards, bool onLeft) {
+        if (cards.empty()) return;
+
+        float cardW = 126.0f;
+        float cardH = 118.0f;
+        float spacing = 8.0f;
+
+        float availableH = viewBottom - viewTop;
+        float totalH = static_cast<float>(cards.size()) * cardH + static_cast<float>(cards.size() - 1) * spacing;
+
+        float scaleFactor = 1.0f;
+        if (totalH > availableH && availableH > 60.0f) {
+            scaleFactor = availableH / totalH;
+            cardH *= scaleFactor;
+            spacing *= scaleFactor;
+            totalH = availableH;
+        }
+
+        float startY = viewTop + (availableH - totalH) * 0.5f;
+        float cardX = onLeft ? 16.0f : (screenW - cardW - 16.0f);
+
+        for (size_t i = 0; i < cards.size(); ++i) {
+            const auto& card = cards[i];
+            float currY = startY + static_cast<float>(i) * (cardH + spacing);
+            Rectangle cardRect = { cardX, currY, cardW, cardH };
+
+            bool mouseOver = CheckCollisionPointRec(mouseCRT, cardRect);
+            float alpha = mouseOver ? 0.28f : 0.94f;
+
+            // Drop shadow
+            DrawRectangleRounded({ cardRect.x + 2.0f, cardRect.y + 2.0f, cardW, cardH }, 0.12f, 4, Fade(BLACK, 0.40f * alpha));
+            // Card background
+            DrawRectangleRounded(cardRect, 0.12f, 4, Fade(ui::Colors::Zinc950, alpha));
+            // Border
+            DrawRectangleLinesEx(cardRect, 1.5f, Fade(ui::Colors::Zinc700, alpha));
+
+            // Header Title
+            int tw = MeasureText(card.title.c_str(), 10);
+            DrawText(card.title.c_str(), static_cast<int>(cardRect.x + (cardW - tw) * 0.5f), static_cast<int>(cardRect.y + 6.0f), 10, Fade(ui::Colors::Green400, alpha));
+
+            // 3x3 Grid
+            float miniCellSize = 24.0f * scaleFactor;
+            float miniCellMargin = 2.0f * scaleFactor;
+            float gridStartX = cardRect.x + (cardW - 3.0f * miniCellSize) * 0.5f;
+            float gridStartY = cardRect.y + 21.0f * scaleFactor;
+
+            for (int r = 0; r < 3; ++r) {
+                for (int c = 0; c < 3; ++c) {
+                    const auto& cell = card.cells[r * 3 + c];
+                    Rectangle mRect = {
+                        gridStartX + static_cast<float>(c) * miniCellSize + miniCellMargin,
+                        gridStartY + static_cast<float>(r) * miniCellSize + miniCellMargin,
+                        miniCellSize - miniCellMargin * 2.0f,
+                        miniCellSize - miniCellMargin * 2.0f
+                    };
+
+                    if (!cell.valid) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Zinc900, 0.6f * alpha));
+                        continue;
+                    }
+
+                    if (cell.state == core::CellState::Revealed) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellRevealed, alpha));
+                        if (cell.count > 0) {
+                            Color tc = ui::getNeighborColor(cell.count);
+                            tc.a = static_cast<unsigned char>(255 * alpha);
+                            int fs = std::clamp(static_cast<int>(12 * scaleFactor), 9, 14);
+                            const char* num = TextFormat("%d", cell.count);
+                            int nw = MeasureText(num, fs);
+                            DrawText(num, static_cast<int>(mRect.x + (mRect.width - nw) * 0.5f), static_cast<int>(mRect.y + (mRect.height - fs) * 0.5f), fs, tc);
+                        }
+                    }
+                    else if (cell.state == core::CellState::Flagged) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
+                        DrawRectangleRounded({ mRect.x + 2, mRect.y + 2, mRect.width - 4, mRect.height - 4 }, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
+                        int fs = std::clamp(static_cast<int>(11 * scaleFactor), 8, 12);
+                        int fw = MeasureText("F", fs);
+                        DrawText("F", static_cast<int>(mRect.x + (mRect.width - fw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(WHITE, alpha));
+                    }
+                    else {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
+                        if (board.isGameOver && cell.isBomb) {
+                            DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
+                            int fs = std::clamp(static_cast<int>(12 * scaleFactor), 9, 14);
+                            int bw = MeasureText("*", fs);
+                            DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(ui::Colors::Red700, alpha));
+                        }
+                    }
+
+                    // Direct projected center neighbor receives a distinct white border
+                    if (cell.isCenter) {
+                        DrawRectangleLinesEx(mRect, 1.5f, Fade(WHITE, 0.95f * alpha));
+                    }
+                }
+            }
+
+            // Footer showing flag and hidden totals in that slice's 3x3
+            std::string footer = TextFormat("FLAGS: %d  HIDDEN: %d", card.flags, card.hidden);
+            int ftw = MeasureText(footer.c_str(), 9);
+            DrawText(footer.c_str(), static_cast<int>(cardRect.x + (cardW - ftw) * 0.5f), static_cast<int>(cardRect.y + cardH - 16.0f * scaleFactor), 9, Fade(ui::Colors::Zinc400, alpha));
+        }
+    };
+
+    drawCardList(leftCards, true);
+    drawCardList(rightCards, false);
 }
 
 } // namespace minesweeper::render
