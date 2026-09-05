@@ -440,89 +440,128 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         }
     }
     else if (currentScreen == MenuScreen::Settings) {
-        float panelW = 600.0f;
-        float panelH = 500.0f;
+        float panelW = 620.0f;
+        float panelH = 460.0f;
         float panelX = centerX - panelW * 0.5f;
-        float panelY = centerY - 250.0f;
+        float panelY = centerY - 230.0f;
 
-        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "SYSTEM & AUDIO CONFIGURATION", Colors::Cyan500);
+        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "SYSTEM SETTINGS", Colors::Cyan500);
 
         float rowX = panelX + 24.0f;
         float rowW = panelW - 48.0f;
-        float curY = panelY + 42.0f;
 
-        // Section 1: Display & Graphics
-        DrawText("// DISPLAY & SHADERS //", static_cast<int>(rowX), static_cast<int>(curY), 13, Colors::Zinc400);
-        curY += 22.0f;
+        // Top Tabs: [ GRAPHICS ] and [ AUDIO ]
+        float tabW = (rowW - 8.0f) * 0.5f;
+        float tabH = 36.0f;
+        float tabY = panelY + 44.0f;
 
-        if (Widgets::checkbox("ENABLE RETRO CRT SHADER", { rowX, curY }, crtEnabled, false)) {
-            actions.toggleCRT = true;
+        bool isGfx = (activeSettingsTab == SettingsTab::Graphics);
+        bool isAud = (activeSettingsTab == SettingsTab::Audio);
+
+        if (Widgets::button("GRAPHICS", { rowX, tabY, tabW, tabH }, isGfx ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 16)) {
+            activeSettingsTab = SettingsTab::Graphics;
         }
-        curY += 30.0f;
+        if (Widgets::button("AUDIO", { rowX + tabW + 8.0f, tabY, tabW, tabH }, isAud ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 16)) {
+            activeSettingsTab = SettingsTab::Audio;
+        }
 
-        const char* crtDesc = "Simulates authentic curved cathode-ray tube phosphor scanlines and vignette.";
-        DrawText(crtDesc, static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
-        curY += 22.0f;
+        float curY = tabY + tabH + 16.0f;
 
-        DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
-        curY += 14.0f;
-
-        // Section 2: Proximity Voice Chat
-        DrawText("// PROXIMITY VOICE CHAT //", static_cast<int>(rowX), static_cast<int>(curY), 13, Colors::Cyan400);
-        curY += 22.0f;
-
-        Widgets::checkbox("ENABLE PROXIMITY VOICE CHAT", { rowX, curY }, voiceSettings.enabled, false);
-        curY += 30.0f;
-
-        if (voiceSettings.enabled) {
-            Widgets::checkbox("SPATIAL 3D/4D PROXIMITY ATTENUATION", { rowX + 16.0f, curY }, voiceSettings.proximity, false);
-            curY += 28.0f;
-
-            Widgets::checkbox("PUSH-TO-TALK (HOLD [V] TO SPEAK)", { rowX + 16.0f, curY }, voiceSettings.pushToTalk, false);
-            curY += 32.0f;
-
-            Rectangle volRect = { rowX + 16.0f, curY, rowW - 32.0f, 24.0f };
-            Widgets::slider("VOICE VOLUME", volRect, voiceSettings.voiceVolume, 0.0f, 1.5f, 160, "%.0f%%", true);
-            curY += 30.0f;
-
-            Rectangle micRect = { rowX + 16.0f, curY, rowW - 32.0f, 24.0f };
-            Widgets::slider("MIC INPUT GAIN", micRect, voiceSettings.micGain, 0.5f, 2.5f, 160, "%.0f%%", true);
-            curY += 32.0f;
-
-            // Live Microphone Level Meter
-            DrawText("MIC TEST LEVEL:", static_cast<int>(rowX + 16.0f), static_cast<int>(curY + 3.0f), 15, Colors::Zinc300);
-            float meterX = rowX + 180.0f;
-            float meterW = rowW - 200.0f;
-            float meterH = 14.0f;
-            float meterY = curY + 4.0f;
-
-            DrawRectangleRec({ meterX, meterY, meterW, meterH }, Colors::Zinc900);
-            DrawRectangleLinesEx({ meterX, meterY, meterW, meterH }, 1.0f, Colors::Zinc700);
-
-            float levelClamped = std::clamp(micInputLevel * voiceSettings.micGain, 0.0f, 1.0f);
-            if (levelClamped > 0.01f) {
-                Color meterCol = (levelClamped > 0.85f) ? Colors::Red500 : ((levelClamped > 0.6f) ? Colors::Amber500 : Colors::Green500);
-                DrawRectangleRec({ meterX + 2.0f, meterY + 2.0f, (meterW - 4.0f) * levelClamped, meterH - 4.0f }, meterCol);
+        if (activeSettingsTab == SettingsTab::Graphics) {
+            // 1. CRT Shader
+            if (Widgets::checkbox("ENABLE RETRO CRT SHADER", { rowX, curY }, crtEnabled, false)) {
+                actions.toggleCRT = true;
             }
             curY += 26.0f;
-        } else {
-            DrawText("Voice chat is disabled. No audio capture or playback will occur.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 13, Colors::Zinc500);
-            curY += 30.0f;
-        }
-
-        DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
-        curY += 14.0f;
-
-        // Section 3: Hotkeys info
-        auto drawInfoRow = [&](const char* title, const char* val) {
-            DrawText(title, static_cast<int>(rowX), static_cast<int>(curY), 13, Colors::Zinc400);
-            int valW = MeasureText(val, 13);
-            DrawText(val, static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 13, Colors::Cyan400);
+            DrawText("Simulates authentic curved cathode-ray tube phosphor scanlines and vignette.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
             curY += 22.0f;
-        };
 
-        drawInfoRow("PUSH-TO-TALK KEY", "KEYBOARD [ V ]");
-        drawInfoRow("TOGGLE FULLSCREEN", "KEYBOARD [ F11 ]");
+            // 2. VSync
+            if (Widgets::checkbox("VERTICAL SYNC (VSYNC)", { rowX, curY }, vsyncEnabled, false)) {
+                actions.vsyncChanged = true;
+            }
+            curY += 26.0f;
+            DrawText("Synchronizes frame presentation to your monitor's refresh rate to eliminate tearing.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
+            curY += 22.0f;
+
+            // 3. Show FPS
+            Widgets::checkbox("SHOW FPS COUNTER", { rowX, curY }, showFPS, false);
+            curY += 26.0f;
+            DrawText("Displays a live real-time frames-per-second performance overlay.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
+            curY += 24.0f;
+
+            // 4. Frame Rate Limit Slider
+            Rectangle fpsRect = { rowX, curY, rowW, 24.0f };
+            const char* fpsCustom = (fpsLimit >= 245.0f) ? "NO LIMIT" : TextFormat("%d FPS", static_cast<int>(fpsLimit));
+            if (Widgets::slider("FRAME RATE LIMIT", fpsRect, fpsLimit, 30.0f, 250.0f, 170, "%.0f", false, fpsCustom)) {
+                actions.fpsLimitChanged = true;
+            }
+            curY += 32.0f;
+
+            // 5. GUI Scale Slider
+            Rectangle scaleRect = { rowX, curY, rowW, 24.0f };
+            if (Widgets::slider("GUI SCALE", scaleRect, guiScale, 0.75f, 1.50f, 170, "%.0f%%", true)) {
+                actions.guiScaleChanged = true;
+            }
+            curY += 26.0f;
+            DrawText("Adjusts interface scale and menu element size (75% to 150%).", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
+            curY += 24.0f;
+
+            DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
+            curY += 12.0f;
+
+            DrawText("TOGGLE FULLSCREEN", static_cast<int>(rowX), static_cast<int>(curY), 13, Colors::Zinc400);
+            int valW = MeasureText("KEYBOARD [ F11 ]", 13);
+            DrawText("KEYBOARD [ F11 ]", static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 13, Colors::Cyan400);
+        }
+        else if (activeSettingsTab == SettingsTab::Audio) {
+            // Section: Proximity Voice Chat
+            Widgets::checkbox("ENABLE PROXIMITY VOICE CHAT", { rowX, curY }, voiceSettings.enabled, false);
+            curY += 30.0f;
+
+            if (voiceSettings.enabled) {
+                Widgets::checkbox("SPATIAL 3D/4D PROXIMITY ATTENUATION", { rowX + 16.0f, curY }, voiceSettings.proximity, false);
+                curY += 28.0f;
+
+                Widgets::checkbox("PUSH-TO-TALK (HOLD [V] TO SPEAK)", { rowX + 16.0f, curY }, voiceSettings.pushToTalk, false);
+                curY += 32.0f;
+
+                Rectangle volRect = { rowX + 16.0f, curY, rowW - 32.0f, 24.0f };
+                Widgets::slider("VOICE VOLUME", volRect, voiceSettings.voiceVolume, 0.0f, 1.5f, 160, "%.0f%%", true);
+                curY += 30.0f;
+
+                Rectangle micRect = { rowX + 16.0f, curY, rowW - 32.0f, 24.0f };
+                Widgets::slider("MIC INPUT GAIN", micRect, voiceSettings.micGain, 0.5f, 2.5f, 160, "%.0f%%", true);
+                curY += 32.0f;
+
+                // Live Microphone Level Meter
+                DrawText("MIC TEST LEVEL:", static_cast<int>(rowX + 16.0f), static_cast<int>(curY + 3.0f), 15, Colors::Zinc300);
+                float meterX = rowX + 180.0f;
+                float meterW = rowW - 200.0f;
+                float meterH = 14.0f;
+                float meterY = curY + 4.0f;
+
+                DrawRectangleRec({ meterX, meterY, meterW, meterH }, Colors::Zinc900);
+                DrawRectangleLinesEx({ meterX, meterY, meterW, meterH }, 1.0f, Colors::Zinc700);
+
+                float levelClamped = std::clamp(micInputLevel * voiceSettings.micGain, 0.0f, 1.0f);
+                if (levelClamped > 0.01f) {
+                    Color meterCol = (levelClamped > 0.85f) ? Colors::Red500 : ((levelClamped > 0.6f) ? Colors::Amber500 : Colors::Green500);
+                    DrawRectangleRec({ meterX + 2.0f, meterY + 2.0f, (meterW - 4.0f) * levelClamped, meterH - 4.0f }, meterCol);
+                }
+                curY += 28.0f;
+            } else {
+                DrawText("Voice chat is disabled. No audio capture or playback will occur.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 13, Colors::Zinc500);
+                curY += 36.0f;
+            }
+
+            DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
+            curY += 14.0f;
+
+            DrawText("PUSH-TO-TALK KEY", static_cast<int>(rowX), static_cast<int>(curY), 13, Colors::Zinc400);
+            int valW = MeasureText("KEYBOARD [ V ]", 13);
+            DrawText("KEYBOARD [ V ]", static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 13, Colors::Cyan400);
+        }
 
         // DONE BUTTON
         float doneBtnW = 240.0f;

@@ -27,6 +27,10 @@ struct SaveData {
     bool voicePushToTalk = true;
     float voiceVolume = 1.0f;
     float micGain = 1.0f;
+    bool vsyncEnabled = true;
+    bool showFPS = false;
+    float fpsLimit = 144.0f;
+    float guiScale = 1.0f;
 };
 
 App::App() = default;
@@ -95,6 +99,21 @@ void App::init() {
     hud.init(board.config);
     startNewGame(board.config.dim, board.config.size, board.config.bombs, board.config.seed);
 
+    if (menu.vsyncEnabled) {
+        SetWindowState(FLAG_VSYNC_HINT);
+    } else {
+        ClearWindowState(FLAG_VSYNC_HINT);
+    }
+
+    if (menu.fpsLimit >= 245.0f) {
+        SetTargetFPS(0);
+    } else {
+        SetTargetFPS(static_cast<int>(menu.fpsLimit));
+    }
+
+    ui::Widgets::setScale(menu.guiScale);
+    renderer.guiScale = menu.guiScale;
+
     voiceMgr.init();
     voiceMgr.getSettings() = menu.voiceSettings;
     net.onVoiceReceived = [this](const net::PacketVoice& pkt) {
@@ -130,21 +149,27 @@ void App::loadSettings() {
             std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", hud.nextSeed);
             menu.crtEnabled = data.crtEnabled;
             menu.cursorSkin = std::max(0, static_cast<int>(data.cursorSkin));
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) * 2 - (sizeof(bool) * 3 + sizeof(float) * 2))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) * 2 - (sizeof(bool) * 5 + sizeof(float) * 4))) {
                 hud.randomizeSeed = data.randomizeSeed;
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) - (sizeof(bool) * 3 + sizeof(float) * 2))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) - (sizeof(bool) * 5 + sizeof(float) * 4))) {
                 menu.flagSkin = std::max(0, static_cast<int>(data.flagSkin));
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - (sizeof(bool) * 3 + sizeof(float) * 2))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - (sizeof(bool) * 5 + sizeof(float) * 4))) {
                 menu.playerSkin = std::max(0, static_cast<int>(data.playerSkin));
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - (sizeof(bool) * 2 + sizeof(float) * 2))) {
                 menu.voiceSettings.enabled = data.voiceEnabled;
                 menu.voiceSettings.proximity = data.voiceProximity;
                 menu.voiceSettings.pushToTalk = data.voicePushToTalk;
                 menu.voiceSettings.voiceVolume = data.voiceVolume;
                 menu.voiceSettings.micGain = data.micGain;
+            }
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+                menu.vsyncEnabled = data.vsyncEnabled;
+                menu.showFPS = data.showFPS;
+                menu.fpsLimit = data.fpsLimit;
+                menu.guiScale = std::clamp(data.guiScale, 0.75f, 1.50f);
             }
         }
         file.close();
@@ -172,6 +197,10 @@ void App::saveSettings() {
         data.voicePushToTalk = menu.voiceSettings.pushToTalk;
         data.voiceVolume = menu.voiceSettings.voiceVolume;
         data.micGain = menu.voiceSettings.micGain;
+        data.vsyncEnabled = menu.vsyncEnabled;
+        data.showFPS = menu.showFPS;
+        data.fpsLimit = menu.fpsLimit;
+        data.guiScale = menu.guiScale;
 
         file.write(reinterpret_cast<const char*>(&data), sizeof(SaveData));
         file.close();
@@ -616,18 +645,45 @@ void App::update(float dt) {
 }
 
 void App::draw() {
+    float scale = std::clamp(menu.guiScale, 0.75f, 1.50f);
+    ui::Widgets::setScale(scale);
+    renderer.guiScale = scale;
+
     int screenW = GetScreenWidth();
     int screenH = GetScreenHeight();
+    int uiW = static_cast<int>(screenW / scale);
+    int uiH = static_cast<int>(screenH / scale);
+
+    Camera2D uiCam = { 0 };
+    uiCam.zoom = scale;
 
     renderer.beginOffscreen();
 
     if (state == AppState::Menu) {
         ClearBackground(ui::Colors::Zinc950);
-        ui::MenuActions menuAct = menu.drawAndProcess(screenW, screenH);
 
-        if (menuAct.toggleCRT) {
+        BeginMode2D(uiCam);
+        ui::MenuActions menuAct = menu.drawAndProcess(uiW, uiH);
+        EndMode2D();
+
+        if (menuAct.toggleCRT || menuAct.vsyncChanged || menuAct.fpsLimitChanged || menuAct.guiScaleChanged) {
             renderer.enableCRT = menu.crtEnabled;
             renderer.camera.enableCRT = menu.crtEnabled;
+            renderer.guiScale = menu.guiScale;
+            ui::Widgets::setScale(menu.guiScale);
+
+            if (menu.vsyncEnabled) {
+                SetWindowState(FLAG_VSYNC_HINT);
+            } else {
+                ClearWindowState(FLAG_VSYNC_HINT);
+            }
+
+            if (menu.fpsLimit >= 245.0f) {
+                SetTargetFPS(0);
+            } else {
+                SetTargetFPS(static_cast<int>(menu.fpsLimit));
+            }
+
             saveSettings();
         }
 
@@ -666,19 +722,23 @@ void App::draw() {
             std::string msg = "SYNCHRONIZING BOARD WITH HOST";
             for (int d = 0; d < dots; ++d) msg += ".";
 
+            BeginMode2D(uiCam);
             int msgW = MeasureText(msg.c_str(), 20);
-            DrawText(msg.c_str(), screenW / 2 - msgW / 2, screenH / 2 - 25, 20, ui::Colors::Zinc400);
+            DrawText(msg.c_str(), uiW / 2 - msgW / 2, uiH / 2 - 25, 20, ui::Colors::Zinc400);
 
-            if (ui::Widgets::button("CANCEL", { static_cast<float>(screenW / 2 - 60), static_cast<float>(screenH / 2 + 25), 120.0f, 38.0f }, ui::Colors::Zinc800, ui::Colors::Zinc600, false, 16)) {
+            if (ui::Widgets::button("CANCEL", { static_cast<float>(uiW / 2 - 60), static_cast<float>(uiH / 2 + 25), 120.0f, 38.0f }, ui::Colors::Zinc800, ui::Colors::Zinc600, false, 16)) {
                 net.disconnect();
                 state = AppState::Menu;
             }
+            EndMode2D();
         }
         else {
             int64_t hovered = renderer.getHoveredCellIndex(board);
             renderer.render(board, hovered, net);
 
-            ui::HUDActions hudAct = hud.drawAndProcess(screenW, screenH, board, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
+            BeginMode2D(uiCam);
+            ui::HUDActions hudAct = hud.drawAndProcess(uiW, uiH, board, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
+            EndMode2D();
 
             if (hudAct.returnToMenu) {
                 net.disconnect();
@@ -709,6 +769,23 @@ void App::draw() {
                 net.disconnect();
             }
         }
+    }
+
+    // On-Screen FPS Counter Overlay
+    if (menu.showFPS) {
+        int fps = GetFPS();
+        Color fpsCol = (fps >= 55) ? ui::Colors::Green400 : ((fps >= 30) ? ui::Colors::Amber400 : ui::Colors::Red500);
+        const char* fpsText = TextFormat("%d FPS", fps);
+        int tw = MeasureText(fpsText, 14);
+        float badgeW = static_cast<float>(tw + 14);
+        float badgeH = 22.0f;
+        float badgeX = static_cast<float>(screenW - badgeW - 10.0f);
+        float badgeY = (state == AppState::InGame ? (74.0f * scale + 4.0f) : 8.0f);
+
+        Rectangle badgeRect = { badgeX, badgeY, badgeW, badgeH };
+        DrawRectangleRec(badgeRect, Fade(BLACK, 0.8f));
+        DrawRectangleLinesEx(badgeRect, 1.0f, ui::Colors::Zinc700);
+        DrawText(fpsText, static_cast<int>(badgeX + 7), static_cast<int>(badgeY + 4), 14, fpsCol);
     }
 
     renderer.endOffscreen();

@@ -427,11 +427,11 @@ void RaylibRenderer::drawOffscreenToScreen() {
 
 int64_t RaylibRenderer::getHoveredCellIndex(const core::Board& board) const {
     Vector2 mouseCRT = camera.getCRTMousePosition();
-    float topH = 70.0f;
+    float topH = 70.0f * guiScale;
     if (mouseCRT.y >= 0.0f && mouseCRT.y < topH) {
         return -1;
     }
-    float btmH = 92.0f;
+    float btmH = 92.0f * guiScale;
     float btmY = static_cast<float>(GetScreenHeight()) - btmH;
     if (mouseCRT.y >= btmY && mouseCRT.y <= btmY + btmH) {
         return -1;

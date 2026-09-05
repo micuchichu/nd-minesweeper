@@ -21,6 +21,11 @@ enum class CustomizeTab {
     Flags = 1
 };
 
+enum class SettingsTab {
+    Graphics = 0,
+    Audio = 1
+};
+
 struct MenuActions {
     bool playSolo = false;
     bool hostGame = false;
@@ -29,18 +34,26 @@ struct MenuActions {
     uint16_t hostPort = 7777;
     std::string joinAddress = "127.0.0.1:7777";
     bool toggleCRT = false;
+    bool vsyncChanged = false;
+    bool fpsLimitChanged = false;
+    bool guiScaleChanged = false;
 };
 
 class MainMenu {
 public:
     MenuScreen currentScreen = MenuScreen::Main;
     CustomizeTab activeTab = CustomizeTab::Cursors;
+    SettingsTab activeSettingsTab = SettingsTab::Graphics;
 
     char playerName[16] = "Player";
     char joinIpBuf[64] = "127.0.0.1:7777";
     char hostPortBuf[16] = "7777";
     std::string statusMessage = "";
     bool crtEnabled = true;
+    bool vsyncEnabled = true;
+    bool showFPS = false;
+    float fpsLimit = 144.0f;
+    float guiScale = 1.0f;
 
     int cursorSkin = 0;
     int flagSkin = 0;

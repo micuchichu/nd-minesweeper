@@ -6,19 +6,27 @@
 
 namespace minesweeper::ui {
 
+float Widgets::guiScale = 1.0f;
+
+void Widgets::setScale(float scale) {
+    guiScale = (scale > 0.01f) ? scale : 1.0f;
+}
+
 Vector2 Widgets::getUIMousePos() {
     Vector2 mouse = GetMousePosition();
     float screenW = static_cast<float>(GetScreenWidth());
     float screenH = static_cast<float>(GetScreenHeight());
-    if (screenW <= 0.0f || screenH <= 0.0f) return mouse;
+    if (screenW <= 0.0f || screenH <= 0.0f) return { mouse.x / guiScale, mouse.y / guiScale };
 
     Vector2 centered = { (mouse.x / screenW) - 0.5f, (mouse.y / screenH) - 0.5f };
     float r2 = (centered.x * centered.x) + (centered.y * centered.y);
 
-    return {
+    Vector2 crtMouse = {
         (mouse.x / screenW + centered.x * (r2 * 0.05f)) * screenW,
         (mouse.y / screenH + centered.y * (r2 * 0.05f)) * screenH
     };
+
+    return { crtMouse.x / guiScale, crtMouse.y / guiScale };
 }
 
 bool Widgets::button(const char* label, Rectangle rect, Color baseCol, Color hoverCol, bool locked, int fontSize) {
@@ -143,7 +151,7 @@ bool Widgets::spinner(const char* label, Vector2 pos, int& value, int minVal, in
     return hover;
 }
 
-bool Widgets::slider(const char* label, Rectangle rect, float& value, float minVal, float maxVal, int labelWidth, const char* format, bool asPercent) {
+bool Widgets::slider(const char* label, Rectangle rect, float& value, float minVal, float maxVal, int labelWidth, const char* format, bool asPercent, const char* customDisplay) {
     Vector2 mouse = getUIMousePos();
     bool changed = false;
 
@@ -153,7 +161,7 @@ bool Widgets::slider(const char* label, Rectangle rect, float& value, float minV
     }
 
     float trackX = rect.x + labelWidth;
-    float valueWidth = 54.0f;
+    float valueWidth = (customDisplay != nullptr) ? 75.0f : 54.0f;
     float trackWidth = std::max(60.0f, rect.width - labelWidth - valueWidth - 10.0f);
     float trackHeight = 6.0f;
     float trackY = rect.y + (rect.height - trackHeight) * 0.5f;
@@ -196,7 +204,9 @@ bool Widgets::slider(const char* label, Rectangle rect, float& value, float minV
 
     // Value text
     char valBuf[32];
-    if (asPercent) {
+    if (customDisplay && customDisplay[0] != '\0') {
+        snprintf(valBuf, sizeof(valBuf), "%s", customDisplay);
+    } else if (asPercent) {
         snprintf(valBuf, sizeof(valBuf), format, value * 100.0f);
     } else {
         snprintf(valBuf, sizeof(valBuf), format, value);

@@ -41,6 +41,7 @@ public:
     static void drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const char* name = nullptr, float scale = 1.0f, bool isSpeaking = false);
 
     bool isLocalSpeaking = false;
+    float guiScale = 1.0f;
 
     static std::vector<FlagSkinItem> flagSkins;
     static int getFlagSkinCount();
