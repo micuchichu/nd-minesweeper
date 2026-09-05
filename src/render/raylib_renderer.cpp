@@ -6,6 +6,33 @@
 
 namespace minesweeper::render {
 
+namespace {
+inline float hashTile(int32_t x, int32_t y, int32_t z = 0, int32_t w = 0) {
+    uint32_t seed = 0x5D1B4A5D;
+    uint32_t mx = 0x85EBCA6B;
+    uint32_t my = 0xC2B2AE35;
+    uint32_t mz = 0x7A9D1C2F;
+    uint32_t mw = 0x9E3779B9;
+
+    uint32_t hash = static_cast<uint32_t>(x) * mx;
+    hash = (hash << 13) ^ hash;
+
+    hash ^= static_cast<uint32_t>(y) * my;
+    hash = (hash >> 15) ^ hash;
+
+    hash ^= static_cast<uint32_t>(z) * mz;
+    hash = (hash << 11) ^ hash;
+
+    hash ^= static_cast<uint32_t>(w) * mw;
+    hash = (hash >> 17) ^ hash;
+
+    hash *= seed;
+    hash ^= hash >> 16;
+
+    return static_cast<float>(hash) / static_cast<float>(0xFFFFFFFF);
+}
+}
+
 std::vector<CursorSkinItem> RaylibRenderer::cursorSkins;
 
 int RaylibRenderer::getCursorSkinCount() {
@@ -575,13 +602,22 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     Texture2D curFlag = getFlagTexture(cellFlagSkin);
 
                     if (curFlag.id != 0) {
-                        float time = static_cast<float>(GetTime()) + ((x * 17 + y * 31) % 10) * 0.1f;
-                        int numFrames = (curFlag.width >= curFlag.height * 2) ? 3 : 1;
+                        float time = static_cast<float>(GetTime()) + (hashTile(static_cast<int32_t>(x), static_cast<int32_t>(y), static_cast<int32_t>(sliceZ), static_cast<int32_t>(sliceW)) * 10.0f);
+                        int numFrames = (curFlag.width >= curFlag.height * 2) ? (curFlag.width / curFlag.height) : 1;
+                        if (numFrames < 1) numFrames = 1;
                         float frameW = static_cast<float>(curFlag.width) / static_cast<float>(numFrames);
-                        int frame = (numFrames > 1) ? (static_cast<int>(time * 4.0f) % numFrames) : 0;
-                        Rectangle flagSrc = { frame * frameW, 0.0f, frameW, static_cast<float>(curFlag.height) };
-                        Rectangle flagDest = { cellRect.x + cellRect.width * 0.15f, cellRect.y + cellRect.height * 0.15f, cellRect.width * 0.7f, cellRect.height * 0.7f };
-                        DrawTexturePro(curFlag, flagSrc, flagDest, {0, 0}, 0.0f, WHITE);
+                        float frameH = static_cast<float>(curFlag.height);
+                        int frame = (numFrames > 1) ? (static_cast<int>(time) % numFrames) : 0;
+                        Rectangle flagSrc = { frame * frameW, 0.0f, frameW, frameH };
+
+                        float flagScale = 1.05f;
+                        float flagW = cellRect.width * flagScale;
+                        float flagH = cellRect.height * flagScale;
+                        Vector2 origin = { 4.0f * flagW / 16.0f, 12.0f * flagH / 16.0f };
+                        Rectangle destRect = { cellRect.x + 4.0f * cellRect.width / 16.0f, cellRect.y + 12.0f * cellRect.height / 16.0f, flagW, flagH };
+                        float tilt = std::sin(time) * 5.0f;
+
+                        DrawTexturePro(curFlag, flagSrc, destRect, origin, tilt, WHITE);
                     } else {
                         DrawRectangleRounded({ cellRect.x + 4, cellRect.y + 4, cellRect.width - 8, cellRect.height - 8 }, 0.2f, 4, ui::Colors::Red500);
                     }

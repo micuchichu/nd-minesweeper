@@ -5,6 +5,7 @@
 #include "../net/steam_manager.hpp"
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 
 namespace minesweeper::ui {
 
@@ -353,10 +354,17 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
                 float t = static_cast<float>(GetTime());
                 int numFrames = (curFlagTex.width >= curFlagTex.height * 2) ? 3 : 1;
                 float frameW = static_cast<float>(curFlagTex.width) / static_cast<float>(numFrames);
-                int fFrame = (numFrames > 1) ? (static_cast<int>(t * 4.0f) % numFrames) : 0;
+                int fFrame = (numFrames > 1) ? (static_cast<int>(t) % numFrames) : 0;
                 Rectangle src = { fFrame * frameW, 0.0f, frameW, static_cast<float>(curFlagTex.height) };
-                Rectangle dst = { previewBoxX + previewBoxW * 0.5f - 44.0f, previewBoxY + 18.0f, 28.0f, 28.0f };
-                DrawTexturePro(curFlagTex, src, dst, {0, 0}, 0.0f, WHITE);
+                float cellX = previewBoxX + previewBoxW * 0.5f - 48.0f + 2.0f;
+                float cellY = previewBoxY + 14.0f + 2.0f;
+                float cellSize = 32.0f;
+                float flagW = cellSize * 1.05f;
+                float flagH = cellSize * 1.05f;
+                Vector2 origin = { 4.0f * flagW / 16.0f, 12.0f * flagH / 16.0f };
+                Rectangle dst = { cellX + 4.0f * cellSize / 16.0f, cellY + 12.0f * cellSize / 16.0f, flagW, flagH };
+                float tilt = std::sin(t) * 5.0f;
+                DrawTexturePro(curFlagTex, src, dst, origin, tilt, WHITE);
             }
             const char* curFlagName = render::RaylibRenderer::getFlagSkinName(flagSkin);
             DrawText(curFlagName, static_cast<int>(previewBoxX + previewBoxW * 0.5f), static_cast<int>(previewBoxY + 24.0f), 16, Colors::Green400);
