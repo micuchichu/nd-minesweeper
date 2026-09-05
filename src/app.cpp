@@ -161,6 +161,10 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", seed);
     timePlayed = 0.0f;
     hud.endModalDismissed = false;
+    leftDownIndex = -1;
+    leftDragDistance = 0.0f;
+    rightDownIndex = -1;
+    rightDragDistance = 0.0f;
 
     // Center camera on board
     float boardWidth = size * renderer.cellSize;
@@ -357,6 +361,9 @@ void App::handleNetEvents() {
             case net::NetEventType::BoardResult: {
                 size_t idx = ev.resultData.index;
                 if (ev.resultData.state == 0) {
+                    if (board.getState(idx) == core::CellState::Flagged) {
+                        board.unflag(idx);
+                    }
                     core::RevealResult res = board.reveal(idx);
                     Vector2 pos = renderer.getCellWorldPosition(idx, board);
                     if (res == core::RevealResult::HitBomb) {
@@ -418,75 +425,104 @@ void App::update(float dt) {
         int64_t hovered = renderer.getHoveredCellIndex(board);
 
         // In-game Input Handling
-        if (!board.isGameOver && !board.isVictory && !hud.showLargeGridWarning && hovered >= 0) {
-            size_t hIdx = static_cast<size_t>(hovered);
-
-            // Left Click: Reveal
+        if (!board.isGameOver && !board.isVictory && !hud.showLargeGridWarning) {
+            // Track Left Mouse Click vs Drag
             if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                if (net.role == net::NetRole::Client) {
-                    net::PacketClick pc;
-                    pc.index = hIdx;
-                    pc.action = 0;
-                    pc.flagSkin = 0;
-                    net.sendToServer(&pc, sizeof(pc));
-                } else {
-                    if (board.getState(hIdx) == core::CellState::Hidden) {
-                        core::RevealResult res = board.reveal(hIdx);
-                        Vector2 pos = renderer.getCellWorldPosition(hIdx, board);
-                        if (res == core::RevealResult::HitBomb) {
-                            renderer.emitExplosion(pos, ui::Colors::CellFlag);
-                        } else {
-                            renderer.emitDebris(pos, ui::Colors::Zinc400);
-                        }
+                leftDownIndex = hovered;
+                leftDragDistance = 0.0f;
+            }
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                Vector2 d = GetMouseDelta();
+                leftDragDistance += std::abs(d.x) + std::abs(d.y);
+            }
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                if (hovered >= 0 && leftDownIndex >= 0 && leftDownIndex == hovered && leftDragDistance < 6.0f) {
+                    size_t hIdx = static_cast<size_t>(hovered);
+                    if (net.role == net::NetRole::Client) {
+                        net::PacketClick pc;
+                        pc.index = hIdx;
+                        pc.action = 0;
+                        pc.flagSkin = 0;
+                        net.sendToServer(&pc, sizeof(pc));
+                    } else {
+                        if (board.getState(hIdx) == core::CellState::Hidden) {
+                            core::RevealResult res = board.reveal(hIdx);
+                            Vector2 pos = renderer.getCellWorldPosition(hIdx, board);
+                            if (res == core::RevealResult::HitBomb) {
+                                renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                            } else {
+                                renderer.emitDebris(pos, ui::Colors::Zinc400);
+                            }
 
-                        if (net.role == net::NetRole::Host) {
-                            net::PacketResult pr;
-                            pr.index = hIdx;
-                            pr.state = 0;
-                            pr.placerId = 0;
-                            pr.flagSkin = 0;
-                            net.broadcast(&pr, sizeof(pr));
+                            if (net.role == net::NetRole::Host) {
+                                net::PacketResult pr;
+                                pr.index = hIdx;
+                                pr.state = 0;
+                                pr.placerId = 0;
+                                pr.flagSkin = 0;
+                                net.broadcast(&pr, sizeof(pr));
+                            }
                         }
                     }
                 }
+                leftDownIndex = -1;
             }
-            // Right Click: Toggle Flag
-            else if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                if (net.role == net::NetRole::Client) {
-                    net::PacketClick pc;
-                    pc.index = hIdx;
-                    pc.action = 2;
-                    pc.flagSkin = static_cast<uint8_t>(menu.flagSkin);
-                    net.sendToServer(&pc, sizeof(pc));
-                } else {
-                    uint32_t myId = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
-                    core::CellState cs = board.getState(hIdx);
-                    if (cs == core::CellState::Flagged) {
-                        board.unflag(hIdx);
-                        if (net.role == net::NetRole::Host) {
-                            net::PacketResult pr;
-                            pr.index = hIdx;
-                            pr.state = 1; // Hidden / unflagged
-                            pr.placerId = myId;
-                            pr.flagSkin = 0;
-                            net.broadcast(&pr, sizeof(pr));
-                        }
-                    } else if (cs == core::CellState::Hidden) {
-                        board.setFlag(hIdx, myId, static_cast<uint8_t>(menu.flagSkin));
-                        if (net.role == net::NetRole::Host) {
-                            net::PacketResult pr;
-                            pr.index = hIdx;
-                            pr.state = 2; // Flagged
-                            pr.placerId = myId;
-                            pr.flagSkin = static_cast<uint8_t>(menu.flagSkin);
-                            net.broadcast(&pr, sizeof(pr));
+
+            // Track Right Mouse Click vs Drag
+            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+                rightDownIndex = hovered;
+                rightDragDistance = 0.0f;
+            }
+            if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+                Vector2 d = GetMouseDelta();
+                rightDragDistance += std::abs(d.x) + std::abs(d.y);
+            }
+            if (IsMouseButtonReleased(MOUSE_RIGHT_BUTTON)) {
+                if (hovered >= 0 && rightDownIndex >= 0 && rightDownIndex == hovered && rightDragDistance < 6.0f) {
+                    size_t hIdx = static_cast<size_t>(hovered);
+                    if (net.role == net::NetRole::Client) {
+                        net::PacketClick pc;
+                        pc.index = hIdx;
+                        pc.action = 2;
+                        pc.flagSkin = static_cast<uint8_t>(menu.flagSkin);
+                        net.sendToServer(&pc, sizeof(pc));
+                    } else {
+                        uint32_t myId = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
+                        core::CellState cs = board.getState(hIdx);
+                        if (cs == core::CellState::Flagged) {
+                            board.unflag(hIdx);
+                            if (net.role == net::NetRole::Host) {
+                                net::PacketResult pr;
+                                pr.index = hIdx;
+                                pr.state = 1; // Hidden / unflagged
+                                pr.placerId = myId;
+                                pr.flagSkin = 0;
+                                net.broadcast(&pr, sizeof(pr));
+                            }
+                        } else if (cs == core::CellState::Hidden) {
+                            board.setFlag(hIdx, myId, static_cast<uint8_t>(menu.flagSkin));
+                            if (net.role == net::NetRole::Host) {
+                                net::PacketResult pr;
+                                pr.index = hIdx;
+                                pr.state = 2; // Flagged
+                                pr.placerId = myId;
+                                pr.flagSkin = static_cast<uint8_t>(menu.flagSkin);
+                                net.broadcast(&pr, sizeof(pr));
+                            }
                         }
                     }
                 }
+                rightDownIndex = -1;
             }
 
-            // Chording: Middle click or pressing C on revealed numbered cell
-            if (IsMouseButtonPressed(MOUSE_MIDDLE_BUTTON) || IsKeyPressed(KEY_C)) {
+            // Chording: Key C or Middle Mouse Button click (ONLY if not dragging/panning!)
+            bool triggerChord = IsKeyPressed(KEY_C);
+            if (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON) && !renderer.camera.isMiddleDragging()) {
+                triggerChord = true;
+            }
+
+            if (triggerChord && hovered >= 0) {
+                size_t hIdx = static_cast<size_t>(hovered);
                 if (board.getState(hIdx) == core::CellState::Revealed) {
                     if (net.role == net::NetRole::Client) {
                         net::PacketClick pc;
@@ -517,6 +553,9 @@ void App::update(float dt) {
                     }
                 }
             }
+        } else {
+            leftDownIndex = -1;
+            rightDownIndex = -1;
         }
 
         // Periodic Handshake retry if Client is waiting for initial board synchronization

@@ -27,6 +27,11 @@ private:
     bool shouldQuit = false;
     float timePlayed = 0.0f;
 
+    int64_t leftDownIndex = -1;
+    float leftDragDistance = 0.0f;
+    int64_t rightDownIndex = -1;
+    float rightDragDistance = 0.0f;
+
     core::Board board;
     render::RaylibRenderer renderer;
     net::NetworkManager net;

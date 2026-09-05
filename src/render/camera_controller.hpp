@@ -21,6 +21,9 @@ public:
 
     float getZoom() const { return camera.zoom; }
     void setZoom(float z) { camera.zoom = z; }
+
+    float middleDragDistance = 0.0f;
+    bool isMiddleDragging() const { return middleDragDistance > 5.0f; }
 };
 
 } // namespace minesweeper::render

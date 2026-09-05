@@ -528,16 +528,17 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
             float posY = sliceOriginY + (y * cellSize);
 
             bool isHovered = (hasHover && static_cast<size_t>(hoveredIndex) == idx);
-            bool isNeighbor = false;
-            if (hasHover) {
-                bool zMatch = (board.config.dim < 3) || (sliceZ == hZ) || (std::abs(static_cast<int>(sliceZ) - static_cast<int>(hZ)) <= 1);
-                bool wMatch = (board.config.dim < 4) || (sliceW == hW) || (std::abs(static_cast<int>(sliceW) - static_cast<int>(hW)) <= 1);
-                if (zMatch && wMatch && std::abs(static_cast<int>(x) - static_cast<int>(hX)) <= 1 && std::abs(static_cast<int>(y) - static_cast<int>(hY)) <= 1) {
-                    isNeighbor = true;
-                }
-            }
 
-            if (state == core::CellState::Revealed && count == 0 && !isNeighbor) {
+            // Empty revealed cells (0 count) are fully cleared
+            if (state == core::CellState::Revealed && count == 0) {
+                if (isHovered) {
+                    Rectangle cellRect = {
+                        posX + cellMargin, posY + cellMargin,
+                        cellSize - (cellMargin * 2.0f),
+                        cellSize - (cellMargin * 2.0f)
+                    };
+                    DrawRectangleLinesEx(cellRect, 2.0f, WHITE);
+                }
                 continue;
             }
 
@@ -594,13 +595,8 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     }
                 }
 
-                if (isNeighbor) {
-                    if (isHovered) {
-                        DrawRectangleRec(cellRect, Fade(WHITE, 0.25f));
-                        DrawRectangleLinesEx(cellRect, 2.0f, WHITE);
-                    } else {
-                        DrawRectangleRounded(cellRect, 0.2f, 4, Fade(WHITE, 0.08f));
-                    }
+                if (isHovered) {
+                    DrawRectangleLinesEx(cellRect, 2.0f, WHITE);
                 }
 
                 if (state == core::CellState::Revealed && count > 0) {
@@ -620,6 +616,11 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                 else if (state == core::CellState::Flagged) lodCol = ui::Colors::Red500;
 
                 DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), lodCol);
+
+                if (isHovered) {
+                    Rectangle lodRect = { posX + 1.0f, posY + 1.0f, cellSize - 2.0f, cellSize - 2.0f };
+                    DrawRectangleLinesEx(lodRect, 1.5f, WHITE);
+                }
             }
         }
     }

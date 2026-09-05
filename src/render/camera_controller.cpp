@@ -43,9 +43,13 @@ Vector2 CameraController::getWorldToScreen(Vector2 worldPos) const {
 void CameraController::handleInput(bool allowPanAndZoom) {
     if (!allowPanAndZoom) return;
 
-    // Pan with middle mouse button or right mouse button while holding space/ctrl
+    // Pan with middle mouse button
+    if (IsMouseButtonPressed(MOUSE_MIDDLE_BUTTON)) {
+        middleDragDistance = 0.0f;
+    }
     if (IsMouseButtonDown(MOUSE_MIDDLE_BUTTON)) {
         Vector2 delta = GetMouseDelta();
+        middleDragDistance += std::abs(delta.x) + std::abs(delta.y);
         camera.target.x -= delta.x / camera.zoom;
         camera.target.y -= delta.y / camera.zoom;
     }
