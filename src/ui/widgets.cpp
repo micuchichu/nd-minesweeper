@@ -143,7 +143,109 @@ bool Widgets::spinner(const char* label, Vector2 pos, int& value, int minVal, in
     return hover;
 }
 
+bool Widgets::slider(const char* label, Rectangle rect, float& value, float minVal, float maxVal, int labelWidth, const char* format, bool asPercent) {
+    Vector2 mouse = getUIMousePos();
+    bool changed = false;
+
+    float textY = rect.y + (rect.height - 16.0f) * 0.5f;
+    if (label && label[0] != '\0' && labelWidth > 0) {
+        DrawText(label, static_cast<int>(rect.x), static_cast<int>(textY), 16, Colors::Zinc300);
+    }
+
+    float trackX = rect.x + labelWidth;
+    float valueWidth = 54.0f;
+    float trackWidth = std::max(60.0f, rect.width - labelWidth - valueWidth - 10.0f);
+    float trackHeight = 6.0f;
+    float trackY = rect.y + (rect.height - trackHeight) * 0.5f;
+
+    Rectangle interactionRect = { trackX - 6.0f, rect.y, trackWidth + 12.0f, rect.height };
+
+    static const char* activeSliderLabel = nullptr;
+    bool hover = CheckCollisionPointRec(mouse, interactionRect);
+
+    if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        activeSliderLabel = label;
+    }
+    if (activeSliderLabel == label) {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            float frac = std::clamp((mouse.x - trackX) / trackWidth, 0.0f, 1.0f);
+            float newVal = minVal + frac * (maxVal - minVal);
+            if (std::abs(newVal - value) > 0.001f) {
+                value = newVal;
+                changed = true;
+            }
+        } else {
+            activeSliderLabel = nullptr;
+        }
+    }
+
+    float frac = std::clamp((value - minVal) / (maxVal - minVal), 0.0f, 1.0f);
+
+    // Draw background track
+    DrawRectangleRounded({ trackX, trackY, trackWidth, trackHeight }, 0.5f, 2, Colors::Zinc800);
+    // Draw filled portion
+    if (frac > 0.0f) {
+        DrawRectangleRounded({ trackX, trackY, trackWidth * frac, trackHeight }, 0.5f, 2, Colors::Green500);
+    }
+
+    // Draw thumb handle
+    float thumbRadius = (hover || activeSliderLabel == label) ? 8.0f : 6.5f;
+    Vector2 thumbCenter = { trackX + trackWidth * frac, rect.y + rect.height * 0.5f };
+    DrawCircleV(thumbCenter, thumbRadius, Colors::Zinc200);
+    DrawCircleLines(static_cast<int>(thumbCenter.x), static_cast<int>(thumbCenter.y), thumbRadius, Colors::Green400);
+
+    // Value text
+    char valBuf[32];
+    if (asPercent) {
+        snprintf(valBuf, sizeof(valBuf), format, value * 100.0f);
+    } else {
+        snprintf(valBuf, sizeof(valBuf), format, value);
+    }
+    float valX = trackX + trackWidth + 12.0f;
+    DrawText(valBuf, static_cast<int>(valX), static_cast<int>(textY), 15, Colors::Green400);
+
+    return changed;
+}
+
+bool Widgets::segmented(const char* label, Rectangle rect, int& selectedIdx, const char* const* options, int optionCount, int labelWidth) {
+    if (optionCount <= 0) return false;
+    bool changed = false;
+
+    float textY = rect.y + (rect.height - 16.0f) * 0.5f;
+    if (label && label[0] != '\0' && labelWidth > 0) {
+        DrawText(label, static_cast<int>(rect.x), static_cast<int>(textY), 16, Colors::Zinc300);
+    }
+
+    float segStartX = rect.x + labelWidth;
+    float segTotalW = rect.width - labelWidth;
+    float itemW = segTotalW / static_cast<float>(optionCount);
+
+    Vector2 mouse = getUIMousePos();
+
+    for (int i = 0; i < optionCount; ++i) {
+        Rectangle itemRect = { segStartX + i * itemW, rect.y, itemW, rect.height };
+        bool isSelected = (selectedIdx == i);
+        bool hover = CheckCollisionPointRec(mouse, itemRect);
+
+        if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            selectedIdx = i;
+            changed = true;
+        }
+
+        Color bg = isSelected ? Colors::Zinc800 : (hover ? Colors::Zinc900 : Colors::Zinc950);
+        Color border = isSelected ? Colors::Green500 : (hover ? Colors::Zinc600 : Colors::Zinc800);
+        DrawRectangleRec(itemRect, bg);
+        DrawRectangleLinesEx(itemRect, isSelected ? 2.0f : 1.0f, border);
+
+        int tw = MeasureText(options[i], 14);
+        DrawText(options[i], static_cast<int>(itemRect.x + (itemW - tw) * 0.5f), static_cast<int>(rect.y + (rect.height - 14.0f) * 0.5f), 14, isSelected ? Colors::Green400 : (hover ? WHITE : Colors::Zinc400));
+    }
+
+    return changed;
+}
+
 bool Widgets::textInput(Rectangle rect, char* buffer, size_t maxLen, bool& isActive, const char* placeholder, bool leftAlign, int fontSize) {
+
     Vector2 mouse = getUIMousePos();
     bool hover = CheckCollisionPointRec(mouse, rect);
 

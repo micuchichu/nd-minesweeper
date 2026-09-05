@@ -26,6 +26,7 @@ private:
     AppState state = AppState::Menu;
     bool shouldQuit = false;
     float timePlayed = 0.0f;
+    bool returnToInGame = false;
 
     core::Board board;
     render::RaylibRenderer renderer;

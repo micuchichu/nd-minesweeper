@@ -22,6 +22,14 @@ struct SaveData {
     bool randomizeSeed = true;
     uint8_t flagSkin = 0;
     uint8_t playerSkin = 0;
+    float globalScale = 1.0f;
+    float hudScale = 1.0f;
+    float previewScale = 1.0f;
+    float topBarY = 0.0f;
+    float bottomBarOffsetY = 0.0f;
+    float previewMarginX = 14.0f;
+    float previewMarginY = 74.0f;
+    uint8_t previewMode = 0;
 };
 
 App::App() = default;
@@ -75,6 +83,7 @@ void App::init() {
     renderer.enableCRT = menu.crtEnabled;
     renderer.camera.enableCRT = menu.crtEnabled;
     renderer.init();
+    renderer.layoutConfig = menu.layoutConfig;
     if (render::RaylibRenderer::getCursorSkinCount() > 0) {
         menu.cursorSkin = std::clamp<int>(menu.cursorSkin, 0, render::RaylibRenderer::getCursorSkinCount() - 1);
     }
@@ -118,14 +127,26 @@ void App::loadSettings() {
             std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", hud.nextSeed);
             menu.crtEnabled = data.crtEnabled;
             menu.cursorSkin = std::max(0, static_cast<int>(data.cursorSkin));
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) * 2)) {
+            constexpr size_t layoutFieldsSize = sizeof(float) * 7 + sizeof(uint8_t);
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) * 2 - layoutFieldsSize)) {
                 hud.randomizeSeed = data.randomizeSeed;
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) - layoutFieldsSize)) {
                 menu.flagSkin = std::max(0, static_cast<int>(data.flagSkin));
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - layoutFieldsSize)) {
                 menu.playerSkin = std::max(0, static_cast<int>(data.playerSkin));
+            }
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+                menu.layoutConfig.globalScale = data.globalScale;
+                menu.layoutConfig.hudScale = data.hudScale;
+                menu.layoutConfig.previewScale = data.previewScale;
+                menu.layoutConfig.topBarY = data.topBarY;
+                menu.layoutConfig.bottomBarOffsetY = data.bottomBarOffsetY;
+                menu.layoutConfig.previewMarginX = data.previewMarginX;
+                menu.layoutConfig.previewMarginY = data.previewMarginY;
+                menu.layoutConfig.previewMode = static_cast<ui::PreviewLayoutMode>(data.previewMode);
+                menu.layoutConfig.clampValues();
             }
         }
         file.close();
@@ -148,6 +169,15 @@ void App::saveSettings() {
         data.randomizeSeed = hud.randomizeSeed;
         data.flagSkin = static_cast<uint8_t>(menu.flagSkin);
         data.playerSkin = static_cast<uint8_t>(menu.playerSkin);
+
+        data.globalScale = menu.layoutConfig.globalScale;
+        data.hudScale = menu.layoutConfig.hudScale;
+        data.previewScale = menu.layoutConfig.previewScale;
+        data.topBarY = menu.layoutConfig.topBarY;
+        data.bottomBarOffsetY = menu.layoutConfig.bottomBarOffsetY;
+        data.previewMarginX = menu.layoutConfig.previewMarginX;
+        data.previewMarginY = menu.layoutConfig.previewMarginY;
+        data.previewMode = static_cast<uint8_t>(menu.layoutConfig.previewMode);
 
         file.write(reinterpret_cast<const char*>(&data), sizeof(SaveData));
         file.close();
@@ -390,6 +420,7 @@ void App::update(float dt) {
     renderer.camera.enableCRT = menu.crtEnabled;
     renderer.activeFlagSkin = menu.flagSkin;
     renderer.activePlayerSkin = menu.playerSkin;
+    renderer.layoutConfig = menu.layoutConfig;
     renderer.update(dt);
 
     if (state == AppState::InGame) {
@@ -578,7 +609,16 @@ void App::draw() {
         ClearBackground(ui::Colors::Zinc950);
         ui::MenuActions menuAct = menu.drawAndProcess(screenW, screenH);
 
-        if (menuAct.playSolo) {
+        if (menuAct.layoutChanged) {
+            saveSettings();
+        }
+
+        if (returnToInGame && !menu.isEditingLayoutCanvas) {
+            state = AppState::InGame;
+            returnToInGame = false;
+            saveSettings();
+        }
+        else if (menuAct.playSolo) {
             state = AppState::InGame;
         }
         else if (menuAct.hostGame) {
@@ -623,10 +663,17 @@ void App::draw() {
         }
         else {
             int64_t hovered = renderer.getHoveredCellIndex(board);
-            renderer.render(board, hovered, net);
+            renderer.render(board, hovered, net, menu.layoutConfig);
 
-            ui::HUDActions hudAct = hud.drawAndProcess(screenW, screenH, board, timePlayed, net);
+            ui::HUDActions hudAct = hud.drawAndProcess(screenW, screenH, board, timePlayed, net, menu.layoutConfig);
 
+            if (hudAct.openLayoutEditor) {
+                state = AppState::Menu;
+                menu.currentScreen = ui::MenuScreen::Customize;
+                menu.activeTab = ui::CustomizeTab::Layout;
+                menu.isEditingLayoutCanvas = true;
+                returnToInGame = true;
+            }
             if (hudAct.returnToMenu) {
                 net.disconnect();
                 state = AppState::Menu;

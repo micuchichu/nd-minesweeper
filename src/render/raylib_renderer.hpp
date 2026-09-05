@@ -4,10 +4,12 @@
 #include "camera_controller.hpp"
 #include "particles.hpp"
 #include "../ui/theme.hpp"
+#include "../ui/layout_config.hpp"
 #include <string>
 #include <vector>
 
 namespace minesweeper::render {
+
 
 struct CursorSkinItem {
     std::string name;
@@ -54,9 +56,12 @@ public:
     RaylibRenderer();
     ~RaylibRenderer() override;
 
+    ui::UILayoutConfig layoutConfig;
+
     void init() override;
     void update(float dt) override;
     void render(const core::Board& board, int64_t hoveredIndex, const net::NetworkManager& net) override;
+    void render(const core::Board& board, int64_t hoveredIndex, const net::NetworkManager& net, const ui::UILayoutConfig& layout);
     void cleanup() override;
 
     int64_t getHoveredCellIndex(const core::Board& board) const override;
@@ -88,7 +93,8 @@ private:
     void initCellTextures();
     void unloadAssets();
     void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex);
-    void drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex);
+    void drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex, const ui::UILayoutConfig& layout);
 };
+
 
 } // namespace minesweeper::render
