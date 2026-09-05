@@ -16,7 +16,8 @@ public:
     static bool segmented(const char* label, Rectangle rect, int& selectedIdx, const char* const* options, int optionCount, int labelWidth = 140);
     static bool textInput(Rectangle rect, char* buffer, size_t maxLen, bool& isActive, const char* placeholder = "", bool leftAlign = false, int fontSize = 20);
     static int modal(int screenW, int screenH, const char* title, const char* message, const char* btnConfirm, const char* btnCancel = nullptr, bool allowClose = true, bool confirmLocked = false);
-
+    static bool mindustryButton(const char* label, const char* sublabel, Rectangle rect, Color accentCol = Colors::Amber500, bool locked = false, int fontSize = 20);
+    static void mindustryPanel(Rectangle rect, const char* headerTitle = nullptr, Color accentCol = Colors::Amber500);
 };
 
 } // namespace minesweeper::ui

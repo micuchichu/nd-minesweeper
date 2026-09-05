@@ -669,8 +669,8 @@ void App::draw() {
 
             if (hudAct.openLayoutEditor) {
                 state = AppState::Menu;
-                menu.currentScreen = ui::MenuScreen::Customize;
-                menu.activeTab = ui::CustomizeTab::Layout;
+                menu.currentScreen = ui::MenuScreen::Settings;
+                menu.activeSettingsTab = ui::SettingsTab::Layout;
                 menu.isEditingLayoutCanvas = true;
                 returnToInGame = true;
             }

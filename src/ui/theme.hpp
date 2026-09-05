@@ -30,6 +30,18 @@ namespace Colors {
 
     constexpr Color Blue500 = { 59, 130, 246, 255 };
 
+    constexpr Color Amber400 = { 251, 191, 36, 255 };
+    constexpr Color Amber500 = { 245, 158, 11, 255 };
+    constexpr Color Amber600 = { 217, 119, 6, 255 };
+
+    constexpr Color Cyan400 = { 56, 189, 248, 255 };
+    constexpr Color Cyan500 = { 6, 182, 212, 255 };
+
+    constexpr Color PanelBg = { 16, 16, 20, 248 };
+    constexpr Color PanelBorder = { 48, 48, 58, 255 };
+    constexpr Color MetalDark = { 22, 22, 26, 255 };
+    constexpr Color MetalLight = { 34, 34, 40, 255 };
+
     constexpr Color CellHidden = Zinc600;
     constexpr Color CellRevealed = Zinc900;
     constexpr Color CellFlag = Red500;

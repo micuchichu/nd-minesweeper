@@ -9,15 +9,21 @@ namespace minesweeper::ui {
 
 enum class MenuScreen {
     Main,
+    Play,
     Host,
     Join,
-    Customize
+    Customize,
+    Settings
 };
 
 enum class CustomizeTab {
     Cursors = 0,
-    Flags = 1,
-    Layout = 2
+    Flags = 1
+};
+
+enum class SettingsTab {
+    Layout = 0,
+    Graphics = 1
 };
 
 struct MenuActions {
@@ -35,6 +41,7 @@ class MainMenu {
 public:
     MenuScreen currentScreen = MenuScreen::Main;
     CustomizeTab activeTab = CustomizeTab::Cursors;
+    SettingsTab activeSettingsTab = SettingsTab::Layout;
 
     char playerName[16] = "Player";
     char joinIpBuf[64] = "127.0.0.1:7777";
