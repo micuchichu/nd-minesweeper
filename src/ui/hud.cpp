@@ -43,29 +43,25 @@ void GameHUD::init(const core::BoardConfig& cfg) {
     endModalDismissed = false;
 }
 
-HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net, const UILayoutConfig& layout) {
+HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net) {
     HUDActions actions;
 
-    float topBarH = 70.0f * layout.hudScale;
-    float topBarY = layout.topBarY;
+    float topBarH = 70.0f;
+    float topBarY = 0.0f;
 
     // 1. Top Header Bar
     DrawRectangle(0, static_cast<int>(topBarY), screenW, static_cast<int>(topBarH), Colors::Zinc900Translucent);
     DrawRectangle(0, static_cast<int>(topBarY + topBarH - 1), screenW, 1, Colors::Zinc800);
 
-    float btnH = 36.0f * layout.hudScale;
+    float btnH = 36.0f;
     float btnY = topBarY + (topBarH - btnH) * 0.5f;
 
     if (Widgets::button("<- MENU", { 20, btnY, 96, btnH }, Colors::Zinc800, Colors::Zinc700, false, 16)) {
         actions.returnToMenu = true;
     }
 
-    if (Widgets::button("LAYOUT", { 124, btnY, 78, btnH }, Colors::Zinc800, Colors::Green500, false, 15) || IsKeyPressed(KEY_O)) {
-        actions.openLayoutEditor = true;
-    }
-
     const char* dimTag = (board.config.dim == 2) ? "2D STANDARD" : ((board.config.dim == 3) ? "3D SLICES" : "4D HYPERCUBE");
-    DrawText(dimTag, 214, static_cast<int>(topBarY + (topBarH - 20) * 0.5f), 19, Colors::Zinc300);
+    DrawText(dimTag, 130, static_cast<int>(topBarY + (topBarH - 20) * 0.5f), 19, Colors::Zinc300);
 
     // Mines Remaining Counter
     int remaining = board.config.bombs - static_cast<int>(board.flaggedCount);
@@ -144,17 +140,16 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
     }
 
     // 2. Bottom Footer Control Bar (Uncrammed Two-Row Layout)
-    float footerH = 92.0f * layout.hudScale;
-    float footerY = screenH - footerH + layout.bottomBarOffsetY;
+    float footerH = 92.0f;
+    float footerY = screenH - footerH;
     DrawRectangle(0, static_cast<int>(footerY), screenW, static_cast<int>(footerH), Colors::Zinc900Translucent);
     DrawRectangle(0, static_cast<int>(footerY), screenW, 1, Colors::Zinc800);
-    DrawRectangle(16, static_cast<int>(footerY + 46.0f * layout.hudScale), screenW - 32, 1, Fade(Colors::Zinc800, 0.7f));
-
+    DrawRectangle(16, static_cast<int>(footerY + 46.0f), screenW - 32, 1, Fade(Colors::Zinc800, 0.7f));
 
     bool isClient = (net.role == net::NetRole::Client);
 
     // --- ROW 1: Board Configuration (DIM, SIZE, BOMBS, Density Stats, Shift Hint) ---
-    float row1Y = footerY + 11.0f * layout.hudScale;
+    float row1Y = footerY + 11.0f;
     float curX = 20.0f;
 
     Widgets::spinner("DIM", { curX, row1Y }, nextDim, 2, 4, isClient, 38);
@@ -185,7 +180,7 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
     DrawText(shiftHint, screenW - hintW - 20, static_cast<int>(row1Y + 6), 13, Colors::Zinc600);
 
     // --- ROW 2: Action & Seed Controls (NEW GAME, RANDOM SEED, SEED INPUT, REROLL, FPS) ---
-    float row2Y = footerY + 53.0f * layout.hudScale;
+    float row2Y = footerY + 53.0f;
 
     curX = 20.0f;
 

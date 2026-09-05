@@ -14,12 +14,6 @@ MainMenu::MainMenu() = default;
 MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     MenuActions actions;
 
-    if (isEditingLayoutCanvas) {
-        drawLayoutCanvas(screenW, screenH);
-        actions.layoutChanged = true;
-        return actions;
-    }
-
     // Title text: "DIMENSION" and "SWEEPER"
     const char* title1 = "DIMENSION";
     const char* title2 = "SWEEPER";
@@ -446,150 +440,40 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         }
     }
     else if (currentScreen == MenuScreen::Settings) {
-        Vector2 mouse = Widgets::getUIMousePos();
-        float startY = centerY - 170.0f;
-
-        // SETTINGS CATEGORY TABS (SCALING & LAYOUT, GRAPHICS)
-        float tabW = 200.0f;
-        float tabH = 34.0f;
-        float tabGap = 16.0f;
-        float tabsTotalW = 2 * tabW + tabGap;
-        float tabStartX = centerX - tabsTotalW * 0.5f;
-        float tabY = startY;
-
-        struct SettingsTabDef {
-            SettingsTab id;
-            const char* label;
-        };
-        SettingsTabDef sTabs[2] = {
-            { SettingsTab::Layout,   "SCALING & LAYOUT" },
-            { SettingsTab::Graphics, "GRAPHICS" }
-        };
-
-        for (int i = 0; i < 2; ++i) {
-            float tX = tabStartX + i * (tabW + tabGap);
-            Rectangle tRect = { tX, tabY, tabW, tabH };
-            bool isActive = (activeSettingsTab == sTabs[i].id);
-            bool isHover = CheckCollisionPointRec(mouse, tRect);
-
-            if (isHover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                activeSettingsTab = sTabs[i].id;
-            }
-
-            Color tBg = isActive ? Colors::Zinc800 : (isHover ? Colors::Zinc900 : Colors::MetalDark);
-            Color tBorder = isActive ? Colors::Cyan500 : (isHover ? Colors::Zinc600 : Colors::PanelBorder);
-            DrawRectangleRec(tRect, tBg);
-            DrawRectangleLinesEx(tRect, isActive ? 2.0f : 1.0f, tBorder);
-            if (isActive) {
-                DrawRectangle(static_cast<int>(tX + 4), static_cast<int>(tabY + tabH - 3), static_cast<int>(tabW - 8), 3, Colors::Cyan500);
-            }
-
-            int tw = MeasureText(sTabs[i].label, 13);
-            DrawText(sTabs[i].label, static_cast<int>(tX + (tabW - tw) * 0.5f), static_cast<int>(tabY + (tabH - 13) * 0.5f), 13, isActive ? Colors::Cyan400 : (isHover ? WHITE : Colors::Zinc400));
-        }
-
-        if (IsKeyPressed(KEY_TAB)) {
-            activeSettingsTab = (activeSettingsTab == SettingsTab::Layout) ? SettingsTab::Graphics : SettingsTab::Layout;
-        }
-
-        float panelW = 600.0f;
-        float panelH = 268.0f;
+        float panelW = 560.0f;
+        float panelH = 260.0f;
         float panelX = centerX - panelW * 0.5f;
-        float panelY = tabY + 44.0f;
+        float panelY = centerY - 140.0f;
 
-        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, (activeSettingsTab == SettingsTab::Layout) ? "SCALING & LAYOUT CONFIGURATION" : "GRAPHICS & DISPLAY CONFIGURATION", Colors::Cyan500);
+        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "GRAPHICS & DISPLAY CONFIGURATION", Colors::Cyan500);
 
         float rowX = panelX + 24.0f;
         float rowW = panelW - 48.0f;
-        float curY = panelY + 48.0f;
+        float curY = panelY + 50.0f;
 
-        if (activeSettingsTab == SettingsTab::Layout) {
-            float rowH = 25.0f;
-            float rowGap = 9.0f;
-
-            // 1. Global UI Scale Slider
-            if (Widgets::slider("GLOBAL UI SCALE", { rowX, curY, rowW, rowH }, layoutConfig.globalScale, 0.70f, 1.50f, 160)) {
-                actions.layoutChanged = true;
-            }
-            curY += rowH + rowGap;
-
-            // 2. HUD Scale Slider
-            if (Widgets::slider("HUD BARS SCALE", { rowX, curY, rowW, rowH }, layoutConfig.hudScale, 0.70f, 1.40f, 160)) {
-                actions.layoutChanged = true;
-            }
-            curY += rowH + rowGap;
-
-            // 3. Previews Scale Slider
-            if (Widgets::slider("PREVIEWS SCALE", { rowX, curY, rowW, rowH }, layoutConfig.previewScale, 0.60f, 1.50f, 160)) {
-                actions.layoutChanged = true;
-            }
-            curY += rowH + rowGap;
-
-            // 4. Previews Screen Margin Slider
-            if (Widgets::slider("PREVIEW MARGIN", { rowX, curY, rowW, rowH }, layoutConfig.previewMarginX, 4.0f, 60.0f, 160, "%.0fpx", false)) {
-                actions.layoutChanged = true;
-            }
-            curY += rowH + rowGap;
-
-            // 5. Previews Layout Mode Segmented
-            const char* const previewModes[] = { "CAMERA PERIMETER", "SIDE COLUMNS" };
-            int pMode = static_cast<int>(layoutConfig.previewMode);
-            if (Widgets::segmented("PREVIEWS LAYOUT", { rowX, curY, rowW, rowH }, pMode, previewModes, 2, 160)) {
-                layoutConfig.previewMode = static_cast<PreviewLayoutMode>(pMode);
-                actions.layoutChanged = true;
-            }
-            curY += rowH + rowGap + 6.0f;
-
-            // 6. Presets and Interactive Rearrange Button
-            float btnPresetW = 100.0f;
-            float btnPresetH = 32.0f;
-            float curBtnX = rowX;
-
-            if (Widgets::button("COMPACT", { curBtnX, curY, btnPresetW, btnPresetH }, Colors::Zinc900, Colors::Zinc600, false, 13)) {
-                layoutConfig.applyPresetCompact();
-                actions.layoutChanged = true;
-            }
-            curBtnX += btnPresetW + 8.0f;
-
-            if (Widgets::button("DEFAULT", { curBtnX, curY, btnPresetW, btnPresetH }, Colors::Zinc900, Colors::Zinc600, false, 13)) {
-                layoutConfig.resetDefaults();
-                actions.layoutChanged = true;
-            }
-            curBtnX += btnPresetW + 8.0f;
-
-            if (Widgets::button("LARGE UI", { curBtnX, curY, btnPresetW, btnPresetH }, Colors::Zinc900, Colors::Zinc600, false, 13)) {
-                layoutConfig.applyPresetLarge();
-                actions.layoutChanged = true;
-            }
-            curBtnX += btnPresetW + 12.0f;
-
-            float arrangeBtnW = rowW - (curBtnX - rowX);
-            if (Widgets::mindustryButton("DRAG & REARRANGE", "CANVAS EDITOR", { curBtnX, curY, arrangeBtnW, btnPresetH }, Colors::Cyan500, false, 13)) {
-                isEditingLayoutCanvas = true;
-            }
-        } else {
-            // Graphics Settings
-            Widgets::checkbox("ENABLE RETRO CRT SHADER", { rowX, curY }, crtEnabled, false);
-            curY += 36.0f;
-
-            const char* crtDesc = "Simulates authentic curved cathode-ray tube phosphor scanlines and vignette.";
-            DrawText(crtDesc, static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 13, Colors::Zinc500);
-            curY += 34.0f;
-
-            DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
-            curY += 20.0f;
-
-            auto drawInfoRow = [&](const char* title, const char* val) {
-                DrawText(title, static_cast<int>(rowX), static_cast<int>(curY), 14, Colors::Zinc400);
-                int valW = MeasureText(val, 14);
-                DrawText(val, static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 14, Colors::Cyan400);
-                curY += 28.0f;
-            };
-
-            drawInfoRow("TOGGLE FULLSCREEN", "KEYBOARD [ F11 ]");
-            drawInfoRow("TARGET FRAME RATE", "144 FPS / VSYNC ACTIVE");
-            drawInfoRow("MINIMUM RESOLUTION", "800 x 600 RESIZABLE");
+        // Graphics Settings
+        if (Widgets::checkbox("ENABLE RETRO CRT SHADER", { rowX, curY }, crtEnabled, false)) {
+            actions.toggleCRT = true;
         }
+        curY += 36.0f;
+
+        const char* crtDesc = "Simulates authentic curved cathode-ray tube phosphor scanlines and vignette.";
+        DrawText(crtDesc, static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 13, Colors::Zinc500);
+        curY += 34.0f;
+
+        DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
+        curY += 20.0f;
+
+        auto drawInfoRow = [&](const char* title, const char* val) {
+            DrawText(title, static_cast<int>(rowX), static_cast<int>(curY), 14, Colors::Zinc400);
+            int valW = MeasureText(val, 14);
+            DrawText(val, static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 14, Colors::Cyan400);
+            curY += 28.0f;
+        };
+
+        drawInfoRow("TOGGLE FULLSCREEN", "KEYBOARD [ F11 ]");
+        drawInfoRow("TARGET FRAME RATE", "144 FPS / VSYNC ACTIVE");
+        drawInfoRow("MINIMUM RESOLUTION", "800 x 600 RESIZABLE");
 
         // DONE BUTTON
         float doneBtnW = 240.0f;
@@ -608,144 +492,6 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     }
 
     return actions;
-}
-
-void MainMenu::drawLayoutCanvas(int screenW, int screenH) {
-    Vector2 mouse = Widgets::getUIMousePos();
-
-    // Dark canvas background with grid
-    DrawRectangle(0, 0, screenW, screenH, Fade(Colors::Zinc950, 0.94f));
-
-    // Draw subtle grid lines
-    Color gridLineCol = Fade(Colors::Zinc800, 0.35f);
-    for (int x = 0; x < screenW; x += 40) {
-        DrawLine(x, 0, x, screenH, gridLineCol);
-    }
-    for (int y = 0; y < screenH; y += 40) {
-        DrawLine(0, y, screenW, y, gridLineCol);
-    }
-
-    // 1. TOP BAR BOUNDING BOX
-    float topBarH = 70.0f * layoutConfig.hudScale;
-    float topBarY = layoutConfig.topBarY;
-    Rectangle topRect = { 10.0f, topBarY, screenW - 20.0f, topBarH };
-    bool topHover = CheckCollisionPointRec(mouse, topRect);
-
-    // 2. BOTTOM BAR BOUNDING BOX
-    float btmBarH = 92.0f * layoutConfig.hudScale;
-    float btmBarY = screenH - btmBarH + layoutConfig.bottomBarOffsetY;
-    Rectangle btmRect = { 10.0f, btmBarY, screenW - 20.0f, btmBarH };
-    bool btmHover = CheckCollisionPointRec(mouse, btmRect);
-
-    // 3. PREVIEW SLICES ZONE
-    float pCardW = 124.0f * layoutConfig.previewScale;
-    float pCardH = 116.0f * layoutConfig.previewScale;
-    float pMarginX = layoutConfig.previewMarginX;
-    float pMarginY = layoutConfig.previewMarginY;
-    Rectangle previewSampleTop = { (screenW - pCardW) * 0.5f, pMarginY, pCardW, pCardH };
-    Rectangle previewSampleLeft = { pMarginX, (topBarY + topBarH + btmBarY - pCardH) * 0.5f, pCardW, pCardH };
-    Rectangle previewSampleRight = { screenW - pCardW - pMarginX, (topBarY + topBarH + btmBarY - pCardH) * 0.5f, pCardW, pCardH };
-    Rectangle previewSampleBottom = { (screenW - pCardW) * 0.5f, btmBarY - pCardH - 4.0f, pCardW, pCardH };
-    bool prevHover = CheckCollisionPointRec(mouse, previewSampleTop) || CheckCollisionPointRec(mouse, previewSampleLeft) ||
-                     CheckCollisionPointRec(mouse, previewSampleRight) || CheckCollisionPointRec(mouse, previewSampleBottom);
-
-    // Mouse Dragging Logic
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        if (topHover) {
-            draggingElement = 0;
-            dragOffset = Vector2{ mouse.x - topRect.x, mouse.y - topRect.y };
-        } else if (btmHover) {
-            draggingElement = 1;
-            dragOffset = Vector2{ mouse.x - btmRect.x, mouse.y - btmRect.y };
-        } else if (prevHover) {
-            draggingElement = 2;
-            dragOffset = mouse;
-        }
-    }
-
-    if (draggingElement != -1 && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-        if (draggingElement == 0) {
-            float maxTopY = static_cast<float>(screenH) - btmBarH - topBarH - 50.0f;
-            layoutConfig.topBarY = std::clamp(mouse.y - dragOffset.y, 0.0f, maxTopY);
-        } else if (draggingElement == 1) {
-            float desiredBtmY = mouse.y - dragOffset.y;
-            float minBtmOffset = -(static_cast<float>(screenH) - btmBarH - 100.0f);
-            layoutConfig.bottomBarOffsetY = std::clamp(desiredBtmY - (static_cast<float>(screenH) - btmBarH), minBtmOffset, 0.0f);
-        } else if (draggingElement == 2) {
-            // Dragging previews adjusts margins
-            float distFromEdgeX = std::min(mouse.x, static_cast<float>(screenW) - mouse.x);
-            layoutConfig.previewMarginX = std::clamp(distFromEdgeX - pCardW * 0.5f, 4.0f, 100.0f);
-            layoutConfig.previewMarginY = std::clamp(mouse.y, topBarY + topBarH + 4.0f, static_cast<float>(screenH) * 0.5f);
-        }
-    }
-
-    if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-        draggingElement = -1;
-    }
-
-    // Draw Top Bar Mockup
-    DrawRectangleRec(topRect, Fade(Colors::Zinc900, (draggingElement == 0) ? 0.90f : 0.75f));
-    DrawRectangleLinesEx(topRect, 2.0f, (draggingElement == 0 || topHover) ? Colors::Green500 : Colors::Zinc700);
-    const char* topTag = "HUD TOP BAR  |  Click & Drag to reposition";
-    int ttW = MeasureText(topTag, 16);
-    DrawText(topTag, static_cast<int>(topRect.x + (topRect.width - ttW) * 0.5f), static_cast<int>(topRect.y + (topBarH - 16.0f) * 0.5f), 16, (draggingElement == 0 || topHover) ? Colors::Green400 : Colors::Zinc300);
-
-    // Draw Bottom Bar Mockup
-    DrawRectangleRec(btmRect, Fade(Colors::Zinc900, (draggingElement == 1) ? 0.90f : 0.75f));
-    DrawRectangleLinesEx(btmRect, 2.0f, (draggingElement == 1 || btmHover) ? Colors::Green500 : Colors::Zinc700);
-    const char* btmTag = "HUD CONTROLS BAR  |  Click & Drag to reposition";
-    int btW = MeasureText(btmTag, 16);
-    DrawText(btmTag, static_cast<int>(btmRect.x + (btmRect.width - btW) * 0.5f), static_cast<int>(btmRect.y + (btmBarH - 16.0f) * 0.5f), 16, (draggingElement == 1 || btmHover) ? Colors::Green400 : Colors::Zinc300);
-
-    // Draw Preview Cards Mockup
-    auto drawMockCard = [&](Rectangle r, const char* name) {
-        DrawRectangleRounded(r, 0.12f, 4, Fade(Colors::Zinc900, 0.85f));
-        DrawRectangleLinesEx(r, 1.5f, (draggingElement == 2 || prevHover) ? Colors::Green500 : Colors::Zinc700);
-        int nw = MeasureText(name, 10);
-        DrawText(name, static_cast<int>(r.x + (r.width - nw) * 0.5f), static_cast<int>(r.y + 6.0f), 10, Colors::Green400);
-        int sw = MeasureText("3x3 SLICE", 12);
-        DrawText("3x3 SLICE", static_cast<int>(r.x + (r.width - sw) * 0.5f), static_cast<int>(r.y + r.height * 0.45f), 12, Colors::Zinc400);
-    };
-
-    drawMockCard(previewSampleTop, "TOP PREVIEW");
-    drawMockCard(previewSampleBottom, "BOTTOM PREVIEW");
-    drawMockCard(previewSampleLeft, "LEFT PREVIEW");
-    drawMockCard(previewSampleRight, "RIGHT PREVIEW");
-
-    // Center Dialog: Instructions, Scale Adjustments & Exit Button
-    float diagW = 440.0f;
-    float diagH = 210.0f;
-    float diagX = (screenW - diagW) * 0.5f;
-    float diagY = (screenH - diagH) * 0.5f;
-
-    DrawRectangleRounded({ diagX, diagY, diagW, diagH }, 0.08f, 4, Fade(Colors::Zinc950, 0.95f));
-    DrawRectangleLinesEx({ diagX, diagY, diagW, diagH }, 2.0f, Colors::Green500);
-
-    int ehW = MeasureText("SCREEN LAYOUT EDITOR", 18);
-    DrawText("SCREEN LAYOUT EDITOR", static_cast<int>(diagX + (diagW - ehW) * 0.5f), static_cast<int>(diagY + 16.0f), 18, WHITE);
-    const char* sub = "Click and drag top bar, controls, or previews to position them.";
-    int subW = MeasureText(sub, 12);
-    DrawText(sub, static_cast<int>(diagX + (diagW - subW) * 0.5f), static_cast<int>(diagY + 44.0f), 12, Colors::Zinc400);
-
-    // Quick scale sliders inside editor
-    float curY = diagY + 70.0f;
-    Widgets::slider("HUD SCALE", { diagX + 24.0f, curY, diagW - 48.0f, 24.0f }, layoutConfig.hudScale, 0.70f, 1.40f, 140);
-    curY += 30.0f;
-    Widgets::slider("PREVIEWS SCALE", { diagX + 24.0f, curY, diagW - 48.0f, 24.0f }, layoutConfig.previewScale, 0.60f, 1.50f, 140);
-    curY += 34.0f;
-
-    float btnW = 180.0f;
-    float btnH = 34.0f;
-    if (Widgets::button("RESET POSITIONS", { diagX + 28.0f, curY, btnW, btnH }, Colors::Zinc900, Colors::Zinc600, false, 13)) {
-        layoutConfig.topBarY = 0.0f;
-        layoutConfig.bottomBarOffsetY = 0.0f;
-        layoutConfig.previewMarginX = 14.0f;
-        layoutConfig.previewMarginY = 74.0f;
-    }
-    if (Widgets::button("APPLY & EXIT", { diagX + diagW - btnW - 28.0f, curY, btnW, btnH }, Colors::Zinc800, Colors::Green500, false, 14) || IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER)) {
-        isEditingLayoutCanvas = false;
-        draggingElement = -1;
-    }
 }
 
 } // namespace minesweeper::ui

@@ -2,7 +2,6 @@
 
 #include <raylib.h>
 #include "../net/network_manager.hpp"
-#include "layout_config.hpp"
 #include <string>
 
 namespace minesweeper::ui {
@@ -21,11 +20,6 @@ enum class CustomizeTab {
     Flags = 1
 };
 
-enum class SettingsTab {
-    Layout = 0,
-    Graphics = 1
-};
-
 struct MenuActions {
     bool playSolo = false;
     bool hostGame = false;
@@ -34,14 +28,12 @@ struct MenuActions {
     uint16_t hostPort = 7777;
     std::string joinAddress = "127.0.0.1:7777";
     bool toggleCRT = false;
-    bool layoutChanged = false;
 };
 
 class MainMenu {
 public:
     MenuScreen currentScreen = MenuScreen::Main;
     CustomizeTab activeTab = CustomizeTab::Cursors;
-    SettingsTab activeSettingsTab = SettingsTab::Layout;
 
     char playerName[16] = "Player";
     char joinIpBuf[64] = "127.0.0.1:7777";
@@ -53,11 +45,6 @@ public:
     int flagSkin = 0;
     int playerSkin = 0;
 
-    UILayoutConfig layoutConfig;
-    bool isEditingLayoutCanvas = false;
-    int draggingElement = -1; // -1: none, 0: top bar, 1: bottom bar, 2: preview card
-    Vector2 dragOffset = { 0.0f, 0.0f };
-
     // Horizontal Reel state
     float reelScrollX = 0.0f;
     float reelTargetScrollX = 0.0f;
@@ -68,7 +55,6 @@ public:
     MainMenu();
 
     MenuActions drawAndProcess(int screenW, int screenH);
-    void drawLayoutCanvas(int screenW, int screenH);
 };
 
 

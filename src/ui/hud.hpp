@@ -2,7 +2,6 @@
 
 #include "../core/board.hpp"
 #include "../net/network_manager.hpp"
-#include "layout_config.hpp"
 #include <cstdint>
 
 namespace minesweeper::ui {
@@ -13,7 +12,6 @@ struct HUDActions {
     bool restartGame = false;
     bool toggleHost = false;
     bool disconnect = false;
-    bool openLayoutEditor = false;
 };
 
 class GameHUD {
@@ -33,7 +31,7 @@ public:
     static uint64_t parseSeed(const char* str);
 
     void init(const core::BoardConfig& cfg);
-    HUDActions drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net, const UILayoutConfig& layout = UILayoutConfig{});
+    HUDActions drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net);
 };
 
 
