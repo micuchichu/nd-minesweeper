@@ -532,6 +532,9 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
     bool highDetail = visualSize > 14.0f;
     float fade = std::clamp((25.0f - visualSize) / 15.0f, 0.0f, 1.0f);
 
+    float blink = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 7.0f);
+    float neighborAlpha = 0.02f + 0.14f * blink;
+
     size_t hX = 0, hY = 0, hZ = 0, hW = 0;
     bool hasHover = (hoveredIndex >= 0);
     if (hasHover) {
@@ -633,10 +636,10 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
 
                 if (isNeighbor) {
                     if (isHovered) {
-                        DrawRectangleRec(cellRect, Fade(WHITE, 0.25f));
+                        DrawRectangleRec(cellRect, Fade(WHITE, 0.22f + 0.06f * blink));
                         DrawRectangleLinesEx(cellRect, 2.0f, WHITE);
                     } else {
-                        DrawRectangleRounded(cellRect, 0.2f, 4, Fade(WHITE, 0.08f));
+                        DrawRectangleRounded(cellRect, 0.2f, 4, Fade(WHITE, neighborAlpha));
                     }
                 }
 
@@ -663,7 +666,7 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     Rectangle lodRect = { posX + 1.0f, posY + 1.0f, cellSize - 2.0f, cellSize - 2.0f };
                     DrawRectangleLinesEx(lodRect, 1.5f, WHITE);
                 } else if (isNeighbor) {
-                    DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), Fade(WHITE, 0.08f));
+                    DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), Fade(WHITE, neighborAlpha));
                 }
             }
         }
