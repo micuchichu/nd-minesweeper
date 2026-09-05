@@ -789,18 +789,28 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
         bool isCenter = false;
     };
 
+    enum class CardSlot {
+        TopLeft,
+        Top,
+        TopRight,
+        Left,
+        Right,
+        BottomLeft,
+        Bottom,
+        BottomRight
+    };
+
     struct PreviewCard {
         std::string title;
-        bool onLeft = true;
+        CardSlot slot = CardSlot::Top;
         int flags = 0;
         int hidden = 0;
         MiniCell cells[9];
     };
 
-    std::vector<PreviewCard> leftCards;
-    std::vector<PreviewCard> rightCards;
+    std::vector<PreviewCard> activeCards;
 
-    auto processSlice = [&](int dz, int dw, const char* title, bool onLeft) {
+    auto processSlice = [&](int dz, int dw, const char* title, CardSlot slot) {
         int nz = static_cast<int>(hZ) + dz;
         int nw = static_cast<int>(hW) + dw;
         if (nz < 0 || nz >= board.config.size || nw < 0 || nw >= board.config.size) return;
@@ -825,7 +835,7 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
 
         PreviewCard card;
         card.title = title;
-        card.onLeft = onLeft;
+        card.slot = slot;
 
         for (int r = 0; r < 3; ++r) {
             int dy = r - 1;
@@ -855,29 +865,28 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
             }
         }
 
-        if (onLeft) leftCards.push_back(card);
-        else rightCards.push_back(card);
+        activeCards.push_back(card);
     };
 
     if (board.config.dim == 3) {
         if (hZ > 0) {
-            processSlice(-1, 0, TextFormat("< SLICE Z - 1 (Z=%zu)", hZ - 1), true);
+            processSlice(-1, 0, TextFormat("SLICE Z - 1 (Z=%zu)", hZ - 1), CardSlot::Top);
         }
         if (hZ + 1 < static_cast<size_t>(board.config.size)) {
-            processSlice(1, 0, TextFormat("SLICE Z + 1 (Z=%zu) >", hZ + 1), false);
+            processSlice(1, 0, TextFormat("SLICE Z + 1 (Z=%zu)", hZ + 1), CardSlot::Bottom);
         }
     } else {
-        // 4D Neighbor Slices
-        struct OffsetDef { int dz; int dw; const char* prefix; bool left; };
+        // 4D Neighbor Slices positioned around the screen perimeter
+        struct OffsetDef { int dz; int dw; const char* prefix; CardSlot slot; };
         const OffsetDef defs[] = {
-            {-1,  0, "< Z - 1 (Z=%d)", true},
-            { 1,  0, "Z + 1 (Z=%d) >", false},
-            { 0, -1, "< W - 1 (W=%d)", true},
-            { 0,  1, "W + 1 (W=%d) >", false},
-            {-1, -1, "< Z-1,W-1 (%d,%d)", true},
-            { 1, -1, "Z+1,W-1 (%d,%d) >", false},
-            {-1,  1, "< Z-1,W+1 (%d,%d)", true},
-            { 1,  1, "Z+1,W+1 (%d,%d) >", false}
+            {-1, -1, "Z-1, W-1 (%d,%d)", CardSlot::TopLeft},
+            { 0, -1, "SLICE W - 1 (W=%d)", CardSlot::Top},
+            { 1, -1, "Z+1, W-1 (%d,%d)", CardSlot::TopRight},
+            {-1,  0, "SLICE Z - 1 (Z=%d)", CardSlot::Left},
+            { 1,  0, "SLICE Z + 1 (Z=%d)", CardSlot::Right},
+            {-1,  1, "Z-1, W+1 (%d,%d)", CardSlot::BottomLeft},
+            { 0,  1, "SLICE W + 1 (W=%d)", CardSlot::Bottom},
+            { 1,  1, "Z+1, W+1 (%d,%d)", CardSlot::BottomRight}
         };
 
         for (const auto& d : defs) {
@@ -888,116 +897,158 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
                 if (d.dw == 0) title = TextFormat(d.prefix, nz);
                 else if (d.dz == 0) title = TextFormat(d.prefix, nw);
                 else title = TextFormat(d.prefix, nz, nw);
-                processSlice(d.dz, d.dw, title.c_str(), d.left);
+                processSlice(d.dz, d.dw, title.c_str(), d.slot);
             }
         }
     }
 
-    auto drawCardList = [&](const std::vector<PreviewCard>& cards, bool onLeft) {
-        if (cards.empty()) return;
+    if (activeCards.empty()) return;
 
-        float cardW = 126.0f;
-        float cardH = 118.0f;
-        float spacing = 8.0f;
+    float cardW = 124.0f;
+    float cardH = 116.0f;
 
-        float availableH = viewBottom - viewTop;
-        float totalH = static_cast<float>(cards.size()) * cardH + static_cast<float>(cards.size() - 1) * spacing;
+    float marginX = 14.0f;
+    float marginY = 74.0f;
+    float btmY = screenH - 92.0f - cardH - 4.0f;
+    float midY = marginY + (btmY - marginY) * 0.5f;
+    float leftX = marginX;
+    float rightX = screenW - cardW - marginX;
+    float midX = (screenW - cardW) * 0.5f;
 
-        float scaleFactor = 1.0f;
-        if (totalH > availableH && availableH > 60.0f) {
-            scaleFactor = availableH / totalH;
-            cardH *= scaleFactor;
-            spacing *= scaleFactor;
-            totalH = availableH;
+    // In 3D, clamp top/bottom cards to align with the hovered cell's screen column if desired
+    float topBottomX_3D = midX;
+    if (board.config.dim == 3) {
+        Vector2 hWorld = { (static_cast<float>(hX) + 0.5f) * cellSize, (static_cast<float>(hZ) * sliceStride) + (static_cast<float>(hY) + 0.5f) * cellSize };
+        Vector2 hScreen = camera.getWorldToScreen(hWorld);
+        topBottomX_3D = std::clamp(hScreen.x - cardW * 0.5f, leftX, rightX);
+    }
+
+    auto getSlotRect = [&](CardSlot slot) -> Rectangle {
+        switch (slot) {
+            case CardSlot::TopLeft:     return { leftX,  marginY, cardW, cardH };
+            case CardSlot::Top:         return { (board.config.dim == 3 ? topBottomX_3D : midX), marginY, cardW, cardH };
+            case CardSlot::TopRight:    return { rightX, marginY, cardW, cardH };
+            case CardSlot::Left:        return { leftX,  midY,    cardW, cardH };
+            case CardSlot::Right:       return { rightX, midY,    cardW, cardH };
+            case CardSlot::BottomLeft:  return { leftX,  btmY,    cardW, cardH };
+            case CardSlot::Bottom:      return { (board.config.dim == 3 ? topBottomX_3D : midX), btmY, cardW, cardH };
+            case CardSlot::BottomRight: return { rightX, btmY,    cardW, cardH };
         }
+        return { midX, midY, cardW, cardH };
+    };
 
-        float startY = viewTop + (availableH - totalH) * 0.5f;
-        float cardX = onLeft ? 16.0f : (screenW - cardW - 16.0f);
-
-        for (size_t i = 0; i < cards.size(); ++i) {
-            const auto& card = cards[i];
-            float currY = startY + static_cast<float>(i) * (cardH + spacing);
-            Rectangle cardRect = { cardX, currY, cardW, cardH };
-
-            bool mouseOver = CheckCollisionPointRec(mouseCRT, cardRect);
-            float alpha = mouseOver ? 0.28f : 0.94f;
-
-            // Drop shadow
-            DrawRectangleRounded({ cardRect.x + 2.0f, cardRect.y + 2.0f, cardW, cardH }, 0.12f, 4, Fade(BLACK, 0.40f * alpha));
-            // Card background
-            DrawRectangleRounded(cardRect, 0.12f, 4, Fade(ui::Colors::Zinc950, alpha));
-            // Border
-            DrawRectangleLinesEx(cardRect, 1.5f, Fade(ui::Colors::Zinc700, alpha));
-
-            // Header Title
-            int tw = MeasureText(card.title.c_str(), 10);
-            DrawText(card.title.c_str(), static_cast<int>(cardRect.x + (cardW - tw) * 0.5f), static_cast<int>(cardRect.y + 6.0f), 10, Fade(ui::Colors::Green400, alpha));
-
-            // 3x3 Grid
-            float miniCellSize = 24.0f * scaleFactor;
-            float miniCellMargin = 2.0f * scaleFactor;
-            float gridStartX = cardRect.x + (cardW - 3.0f * miniCellSize) * 0.5f;
-            float gridStartY = cardRect.y + 21.0f * scaleFactor;
-
-            for (int r = 0; r < 3; ++r) {
-                for (int c = 0; c < 3; ++c) {
-                    const auto& cell = card.cells[r * 3 + c];
-                    Rectangle mRect = {
-                        gridStartX + static_cast<float>(c) * miniCellSize + miniCellMargin,
-                        gridStartY + static_cast<float>(r) * miniCellSize + miniCellMargin,
-                        miniCellSize - miniCellMargin * 2.0f,
-                        miniCellSize - miniCellMargin * 2.0f
-                    };
-
-                    if (!cell.valid) {
-                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Zinc900, 0.6f * alpha));
-                        continue;
-                    }
-
-                    if (cell.state == core::CellState::Revealed) {
-                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellRevealed, alpha));
-                        if (cell.count > 0) {
-                            Color tc = ui::getNeighborColor(cell.count);
-                            tc.a = static_cast<unsigned char>(255 * alpha);
-                            int fs = std::clamp(static_cast<int>(12 * scaleFactor), 9, 14);
-                            const char* num = TextFormat("%d", cell.count);
-                            int nw = MeasureText(num, fs);
-                            DrawText(num, static_cast<int>(mRect.x + (mRect.width - nw) * 0.5f), static_cast<int>(mRect.y + (mRect.height - fs) * 0.5f), fs, tc);
-                        }
-                    }
-                    else if (cell.state == core::CellState::Flagged) {
-                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
-                        DrawRectangleRounded({ mRect.x + 2, mRect.y + 2, mRect.width - 4, mRect.height - 4 }, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
-                        int fs = std::clamp(static_cast<int>(11 * scaleFactor), 8, 12);
-                        int fw = MeasureText("F", fs);
-                        DrawText("F", static_cast<int>(mRect.x + (mRect.width - fw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(WHITE, alpha));
-                    }
-                    else {
-                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
-                        if (board.isGameOver && cell.isBomb) {
-                            DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
-                            int fs = std::clamp(static_cast<int>(12 * scaleFactor), 9, 14);
-                            int bw = MeasureText("*", fs);
-                            DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(ui::Colors::Red700, alpha));
-                        }
-                    }
-
-                    // Direct projected center neighbor receives a distinct white border
-                    if (cell.isCenter) {
-                        DrawRectangleLinesEx(mRect, 1.5f, Fade(WHITE, 0.95f * alpha));
-                    }
-                }
-            }
-
-            // Footer showing flag and hidden totals in that slice's 3x3
-            std::string footer = TextFormat("FLAGS: %d  HIDDEN: %d", card.flags, card.hidden);
-            int ftw = MeasureText(footer.c_str(), 9);
-            DrawText(footer.c_str(), static_cast<int>(cardRect.x + (cardW - ftw) * 0.5f), static_cast<int>(cardRect.y + cardH - 16.0f * scaleFactor), 9, Fade(ui::Colors::Zinc400, alpha));
+    auto drawSlotArrow = [](CardSlot slot, float cx, float cy, Color color) {
+        float s = 4.0f;
+        switch (slot) {
+            case CardSlot::Top:
+                DrawTriangle({ cx, cy - s }, { cx - s, cy + s }, { cx + s, cy + s }, color);
+                break;
+            case CardSlot::Bottom:
+                DrawTriangle({ cx, cy + s }, { cx + s, cy - s }, { cx - s, cy - s }, color);
+                break;
+            case CardSlot::Left:
+                DrawTriangle({ cx - s, cy }, { cx + s, cy - s }, { cx + s, cy + s }, color);
+                break;
+            case CardSlot::Right:
+                DrawTriangle({ cx + s, cy }, { cx - s, cy + s }, { cx - s, cy - s }, color);
+                break;
+            case CardSlot::TopLeft:
+                DrawTriangle({ cx - s, cy - s }, { cx - s, cy + s }, { cx + s, cy - s }, color);
+                break;
+            case CardSlot::TopRight:
+                DrawTriangle({ cx + s, cy - s }, { cx - s, cy - s }, { cx + s, cy + s }, color);
+                break;
+            case CardSlot::BottomLeft:
+                DrawTriangle({ cx - s, cy + s }, { cx + s, cy + s }, { cx - s, cy - s }, color);
+                break;
+            case CardSlot::BottomRight:
+                DrawTriangle({ cx + s, cy + s }, { cx + s, cy - s }, { cx - s, cy + s }, color);
+                break;
         }
     };
 
-    drawCardList(leftCards, true);
-    drawCardList(rightCards, false);
+    for (const auto& card : activeCards) {
+        Rectangle cardRect = getSlotRect(card.slot);
+
+        Rectangle hoverBox = { cardRect.x - 8.0f, cardRect.y - 8.0f, cardRect.width + 16.0f, cardRect.height + 16.0f };
+        bool mouseNear = CheckCollisionPointRec(mouseCRT, hoverBox);
+        float alpha = mouseNear ? 0.22f : 0.94f;
+
+        // Drop shadow
+        DrawRectangleRounded({ cardRect.x + 2.0f, cardRect.y + 2.0f, cardW, cardH }, 0.12f, 4, Fade(BLACK, 0.40f * alpha));
+        // Card background
+        DrawRectangleRounded(cardRect, 0.12f, 4, Fade(ui::Colors::Zinc950, alpha));
+        // Border
+        DrawRectangleLinesEx(cardRect, 1.5f, Fade(ui::Colors::Zinc700, alpha));
+
+        // Header Title with Directional Chevron Indicator
+        int tw = MeasureText(card.title.c_str(), 10);
+        float textStartX = cardRect.x + (cardW - tw) * 0.5f;
+        float headerY = cardRect.y + 6.0f;
+        drawSlotArrow(card.slot, textStartX - 7.0f, headerY + 5.0f, Fade(ui::Colors::Green400, alpha));
+        DrawText(card.title.c_str(), static_cast<int>(textStartX), static_cast<int>(headerY), 10, Fade(ui::Colors::Green400, alpha));
+
+        // 3x3 Grid
+        float miniCellSize = 23.0f;
+        float miniCellMargin = 2.0f;
+        float gridStartX = cardRect.x + (cardW - 3.0f * miniCellSize) * 0.5f;
+        float gridStartY = cardRect.y + 21.0f;
+
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) {
+                const auto& cell = card.cells[r * 3 + c];
+                Rectangle mRect = {
+                    gridStartX + static_cast<float>(c) * miniCellSize + miniCellMargin,
+                    gridStartY + static_cast<float>(r) * miniCellSize + miniCellMargin,
+                    miniCellSize - miniCellMargin * 2.0f,
+                    miniCellSize - miniCellMargin * 2.0f
+                };
+
+                if (!cell.valid) {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Zinc900, 0.6f * alpha));
+                    continue;
+                }
+
+                if (cell.state == core::CellState::Revealed) {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellRevealed, alpha));
+                    if (cell.count > 0) {
+                        Color tc = ui::getNeighborColor(cell.count);
+                        tc.a = static_cast<unsigned char>(255 * alpha);
+                        int fs = 12;
+                        const char* num = TextFormat("%d", cell.count);
+                        int nw = MeasureText(num, fs);
+                        DrawText(num, static_cast<int>(mRect.x + (mRect.width - nw) * 0.5f), static_cast<int>(mRect.y + (mRect.height - fs) * 0.5f), fs, tc);
+                    }
+                }
+                else if (cell.state == core::CellState::Flagged) {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
+                    DrawRectangleRounded({ mRect.x + 2, mRect.y + 2, mRect.width - 4, mRect.height - 4 }, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
+                    int fs = 11;
+                    int fw = MeasureText("F", fs);
+                    DrawText("F", static_cast<int>(mRect.x + (mRect.width - fw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(WHITE, alpha));
+                }
+                else {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
+                    if (board.isGameOver && cell.isBomb) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
+                        int fs = 12;
+                        int bw = MeasureText("*", fs);
+                        DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(ui::Colors::Red700, alpha));
+                    }
+                }
+
+                // Direct projected center neighbor receives a distinct white border
+                if (cell.isCenter) {
+                    DrawRectangleLinesEx(mRect, 1.5f, Fade(WHITE, 0.95f * alpha));
+                }
+            }
+        }
+
+        // Footer showing flag and hidden totals in that slice's 3x3
+        std::string footer = TextFormat("FLAGS: %d  HIDDEN: %d", card.flags, card.hidden);
+        int ftw = MeasureText(footer.c_str(), 9);
+        DrawText(footer.c_str(), static_cast<int>(cardRect.x + (cardW - ftw) * 0.5f), static_cast<int>(cardRect.y + 96.0f), 9, Fade(ui::Colors::Zinc400, alpha));
+    }
 }
 
 } // namespace minesweeper::render
