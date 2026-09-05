@@ -14,7 +14,7 @@ void CameraController::reset(Vector2 targetPos, float zoom) {
     camera.rotation = 0.0f;
     camera.zoom = std::clamp(zoom, 0.01f, 30.0f);
     prevTarget = targetPos;
-    smoothedVelocity = {0.0f, 0.0f};
+    velocity = {0.0f, 0.0f};
 }
 
 Vector2 CameraController::getCRTMousePosition() const {
@@ -104,12 +104,10 @@ void CameraController::update(float dt) {
         (deltaTarget.y / dt) / screenH
     };
 
-    float alpha = 1.0f - std::exp(-dt / 0.08f);
-    smoothedVelocity.x += (instantVel.x - smoothedVelocity.x) * alpha;
-    smoothedVelocity.y += (instantVel.y - smoothedVelocity.y) * alpha;
+    velocity = instantVel;
 
-    if (std::abs(smoothedVelocity.x) < 0.001f) smoothedVelocity.x = 0.0f;
-    if (std::abs(smoothedVelocity.y) < 0.001f) smoothedVelocity.y = 0.0f;
+    if (std::abs(velocity.x) < 0.001f) velocity.x = 0.0f;
+    if (std::abs(velocity.y) < 0.001f) velocity.y = 0.0f;
 
     prevTarget = camera.target;
 }

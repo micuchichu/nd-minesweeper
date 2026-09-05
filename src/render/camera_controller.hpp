@@ -16,7 +16,7 @@ public:
     void handleInput(bool allowPanAndZoom = true);
     void update(float dt);
 
-    Vector2 getVelocity() const { return smoothedVelocity; }
+    Vector2 getVelocity() const { return velocity; }
 
     Vector2 getCRTMousePosition() const;
     Vector2 getScreenToWorld(Vector2 screenPos) const;
@@ -30,7 +30,7 @@ public:
 
 private:
     Vector2 prevTarget = {0.0f, 0.0f};
-    Vector2 smoothedVelocity = {0.0f, 0.0f};
+    Vector2 velocity = {0.0f, 0.0f};
 };
 
 } // namespace minesweeper::render
