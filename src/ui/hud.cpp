@@ -101,7 +101,9 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
     // Hover tooltip
     Vector2 mPos = GetMousePosition();
     if (CheckCollisionPointRec(mPos, scrapRect)) {
-        const char* tip = TextFormat("SCRAP: %llu (5%% chance from safe cells)", scrapCount);
+        float density = (board.totalCells() > 0) ? (static_cast<float>(board.config.bombs) / static_cast<float>(board.totalCells())) : 0.0f;
+        float currentDropRate = std::clamp(5.0f * (density / 0.15f), 0.0f, 25.0f);
+        const char* tip = TextFormat("SCRAP: %llu (%.2f%% drop rate from mine density)", scrapCount, currentDropRate);
         int tipW = MeasureText(tip, 12);
         DrawRectangle(static_cast<int>(scrapBadgeX), static_cast<int>(scrapBadgeY + scrapBadgeH + 4), tipW + 12, 20, Colors::Zinc950);
         DrawRectangleLines(static_cast<int>(scrapBadgeX), static_cast<int>(scrapBadgeY + scrapBadgeH + 4), tipW + 12, 20, Colors::Zinc700);

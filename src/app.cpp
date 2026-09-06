@@ -376,7 +376,7 @@ void App::handleNetEvents() {
                             } else {
                                 renderer.emitDebris(pos, ui::Colors::Zinc400);
                                 for (size_t cIdx : newlyRevealed) {
-                                    if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx)) {
+                                    if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                         Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
                                         scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
                                     }
@@ -401,7 +401,7 @@ void App::handleNetEvents() {
                                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                     } else {
                                         renderer.emitDebris(pos, ui::Colors::Zinc400);
-                                        if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx)) {
+                                        if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
                                             scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
                                         }
                                     }
@@ -452,7 +452,7 @@ void App::handleNetEvents() {
                     } else {
                         renderer.emitDebris(pos, ui::Colors::Zinc400);
                         for (size_t cIdx : newlyRevealed) {
-                            if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx)) {
+                            if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                 Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
                                 scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
                             }
@@ -555,7 +555,7 @@ void App::update(float dt) {
                         } else {
                             renderer.emitDebris(pos, ui::Colors::Zinc400);
                             for (size_t cIdx : newlyRevealed) {
-                                if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx)) {
+                                if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                     Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
                                     scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
                                 }
@@ -637,7 +637,7 @@ void App::update(float dt) {
                                     renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                 } else {
                                     renderer.emitDebris(pos, ui::Colors::Zinc400);
-                                    if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx)) {
+                                    if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
                                         scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
                                     }
                                 }

@@ -74,13 +74,23 @@ void ScrapSystem::clear() {
     pendingCollected = 0;
 }
 
-bool ScrapSystem::isScrapCell(uint64_t seed, size_t cellIndex) {
+bool ScrapSystem::isScrapCell(uint64_t seed, size_t cellIndex, size_t totalCells, int bombCount) {
+    if (totalCells == 0 || bombCount <= 0) return false;
+
+    double density = static_cast<double>(bombCount) / static_cast<double>(totalCells);
+    // Baseline standard density is 15% (0.15) for a 5.0% base drop rate
+    double dropRate = 0.05 * (density / 0.15);
+    dropRate = std::clamp(dropRate, 0.0, 0.25); // Cap at 25% max for extreme density
+
+    uint64_t threshold = static_cast<uint64_t>(dropRate * 1000000.0);
+    if (threshold == 0) return false;
+
     // SplitMix64 hash
     uint64_t z = seed + static_cast<uint64_t>(cellIndex) * 0x9E3779B97F4A7C15ULL + 0x5C8A9DULL;
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
     z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
     z = z ^ (z >> 31);
-    return (z % 100) < 5; // 5% chance
+    return (z % 1000000ULL) < threshold;
 }
 
 void ScrapSystem::spawn(Vector2 cellCenterPos) {

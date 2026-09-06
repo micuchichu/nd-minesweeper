@@ -71,7 +71,7 @@ public:
     int collectPending();
     int collectAll();
 
-    static bool isScrapCell(uint64_t seed, size_t cellIndex);
+    static bool isScrapCell(uint64_t seed, size_t cellIndex, size_t totalCells, int bombCount);
 };
 
 } // namespace minesweeper::render
