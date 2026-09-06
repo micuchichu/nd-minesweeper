@@ -30,9 +30,13 @@ namespace Colors {
 
     constexpr Color Blue500 = { 59, 130, 246, 255 };
 
+    constexpr Color Amber300 = { 252, 211, 77, 255 };
     constexpr Color Amber400 = { 251, 191, 36, 255 };
     constexpr Color Amber500 = { 245, 158, 11, 255 };
     constexpr Color Amber600 = { 217, 119, 6, 255 };
+
+    constexpr Color Orange500 = { 249, 115, 22, 255 };
+    constexpr Color Yellow400 = { 250, 204, 21, 255 };
 
     constexpr Color Cyan400 = { 56, 189, 248, 255 };
     constexpr Color Cyan500 = { 6, 182, 212, 255 };
