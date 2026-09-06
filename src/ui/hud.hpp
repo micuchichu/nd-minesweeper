@@ -32,7 +32,7 @@ public:
     uint64_t scrapCount = 0;
     float scrapPulseTimer = 0.0f;
     Vector2 scrapBadgeScreenPos = { 150.0f, 35.0f };
-    Texture2D scrapTexture = {0};
+    Texture2D scrapTexture{};
 
     Vector2 getScrapBadgeScreenPos() const { return scrapBadgeScreenPos; }
     void triggerScrapPulse() { scrapPulseTimer = 0.35f; }

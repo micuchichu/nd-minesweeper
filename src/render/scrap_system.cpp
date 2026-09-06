@@ -62,7 +62,7 @@ void ScrapSystem::init() {
 void ScrapSystem::cleanup() {
     if (texture.id != 0) {
         UnloadTexture(texture);
-        texture = {0};
+        texture = {};
     }
     clear();
 }
@@ -269,7 +269,8 @@ void ScrapSystem::drawWorld(const Camera2D& camera) {
         // Subtle yellow/amber halo glow when settled
         if (it.state == ScrapState::Settled) {
             float pulse = 0.5f + 0.5f * std::sin(it.stateTimer * 9.0f);
-            DrawCircleGradient(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 16.0f + pulse * 4.0f, Fade(ui::Colors::Amber400, 0.25f * pulse), Fade(ui::Colors::Amber400, 0.0f));
+            DrawCircle(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 13.0f + pulse * 4.0f, Fade(ui::Colors::Amber400, 0.12f * pulse));
+            DrawCircleLines(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 14.0f + pulse * 5.0f, Fade(ui::Colors::Amber400, 0.25f * pulse));
         }
 
         DrawTexturePro(texture, src, dst, origin, it.rotation, WHITE);
@@ -324,7 +325,7 @@ void ScrapSystem::drawScreen(float guiScale) {
         Vector2 origin = { drawSize * 0.5f, drawSize * 0.5f };
 
         // Gold trail glow
-        DrawCircleGradient(static_cast<int>(cur.x), static_cast<int>(cur.y), 12.0f, Fade(ui::Colors::Amber400, 0.4f * (1.0f - ease)), Fade(ui::Colors::Amber400, 0.0f));
+        DrawCircle(static_cast<int>(cur.x), static_cast<int>(cur.y), 9.0f, Fade(ui::Colors::Amber400, 0.25f * (1.0f - ease)));
         DrawTexturePro(texture, src, dst, origin, t * 360.0f, WHITE);
     }
 }

@@ -50,7 +50,7 @@ struct ScrapSpark {
 
 class ScrapSystem {
 public:
-    Texture2D texture = {0};
+    Texture2D texture{};
     std::vector<ScrapItem> items;
     std::vector<FloatingText> floatingTexts;
     std::vector<ScrapSpark> sparks;
