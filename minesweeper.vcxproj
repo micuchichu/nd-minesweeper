@@ -99,6 +99,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\app.cpp" />
     <ClCompile Include="src\core\board.cpp" />
+    <ClCompile Include="src\core\save_manager.cpp" />
     <ClCompile Include="src\net\network_manager.cpp" />
     <ClCompile Include="src\net\steam_manager.cpp" />
     <ClCompile Include="src\render\camera_controller.cpp" />
@@ -117,6 +118,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\core\coord.hpp" />
     <ClInclude Include="src\core\bitboard.hpp" />
     <ClInclude Include="src\core\board.hpp" />
+    <ClInclude Include="src\core\save_manager.hpp" />
     <ClInclude Include="src\core\rng.hpp" />
     <ClInclude Include="src\net\protocol.hpp" />
     <ClInclude Include="src\net\network_manager.hpp" />

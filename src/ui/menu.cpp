@@ -3,9 +3,11 @@
 #include "theme.hpp"
 #include "../render/raylib_renderer.hpp"
 #include "../net/steam_manager.hpp"
+#include "../core/save_manager.hpp"
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
+#include <algorithm>
 
 namespace minesweeper::ui {
 
@@ -63,10 +65,11 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         DrawText(title2, static_cast<int>(centerX - t2W * 0.5f + 4), static_cast<int>(centerY - 146), 70, Fade(BLACK, 0.85f));
         DrawText(title2, static_cast<int>(centerX - t2W * 0.5f), static_cast<int>(centerY - 150), 70, Colors::Amber500);
     } else {
-        const char* subTitle = (currentScreen == MenuScreen::Play) ? "// SELECT GAME MODE //"
-            : ((currentScreen == MenuScreen::Host) ? "// HOST MULTIPLAYER //"
+        const char* subTitle = (currentScreen == MenuScreen::Play) ? "// SAVED WORLDS //"
+            : ((currentScreen == MenuScreen::NewSave) ? "// CONFIGURE NEW SAVE //"
+            : ((currentScreen == MenuScreen::HostConfirm) ? "// HOST CO-OP LOBBY //"
             : ((currentScreen == MenuScreen::Join) ? "// JOIN MULTIPLAYER //"
-            : ((currentScreen == MenuScreen::Settings) ? "// SETTINGS //" : "// CUSTOMIZATION //")));
+            : ((currentScreen == MenuScreen::Settings) ? "// SETTINGS //" : "// CUSTOMIZATION //"))));
         int subW = MeasureText(subTitle, 28);
         DrawText(subTitle, static_cast<int>(centerX - subW * 0.5f + 2), static_cast<int>(centerY - 228), 28, Fade(BLACK, 0.85f));
         DrawText(subTitle, static_cast<int>(centerX - subW * 0.5f), static_cast<int>(centerY - 230), 28, Colors::Amber400);
@@ -124,64 +127,241 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         DrawText(verText, 16, screenH - 24, 12, Colors::Zinc600);
     }
     else if (currentScreen == MenuScreen::Play) {
-        float panelW = 420.0f;
-        float panelH = 306.0f;
+        float panelW = 680.0f;
+        float panelH = 430.0f;
         float panelX = centerX - panelW * 0.5f;
-        float panelY = centerY - 100.0f;
+        float panelY = centerY - 160.0f;
 
-        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "SELECT MODE", Colors::Amber500);
+        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "SAVED WORLDS", Colors::Amber500);
 
-        float pBtnW = panelW - 40.0f;
-        float pBtnH = 50.0f;
-        float pBtnX = panelX + 20.0f;
-        float curY = panelY + 50.0f;
-        float gap = 9.0f;
-
-        if (Widgets::mindustryButton("PLAY SOLO", "OFFLINE SINGLEPLAYER MATCH", { pBtnX, curY, pBtnW, pBtnH }, Colors::Green500, false, 18)) {
-            actions.playSolo = true;
-            statusMessage.clear();
+        std::vector<core::SaveSlotMetadata> slots;
+        if (saveManager) {
+            slots = saveManager->getSlots();
+        } else {
+            slots.resize(core::SaveManager::NUM_SLOTS);
+            for (size_t i = 0; i < slots.size(); ++i) {
+                slots[i].slotIndex = static_cast<int>(i + 1);
+                slots[i].slotName = "Slot " + std::to_string(i + 1);
+            }
         }
-        curY += pBtnH + gap;
 
-        if (Widgets::mindustryButton("HOST MULTIPLAYER", "HOST LAN / INTERNET / STEAM LOBBY", { pBtnX, curY, pBtnW, pBtnH }, Colors::Amber500, false, 18)) {
-            currentScreen = MenuScreen::Host;
-            statusMessage.clear();
+        float cardW = panelW - 36.0f;
+        float cardH = 82.0f;
+        float cardX = panelX + 18.0f;
+        float startCardY = panelY + 44.0f;
+
+        for (size_t i = 0; i < slots.size(); ++i) {
+            const auto& sl = slots[i];
+            float cardY = startCardY + static_cast<float>(i) * (cardH + 10.0f);
+            Rectangle cardRect = { cardX, cardY, cardW, cardH };
+
+            if (!sl.isEmpty) {
+                DrawRectangleRec(cardRect, Colors::Zinc900);
+                DrawRectangleLinesEx(cardRect, 1.0f, (selectedSlot == sl.slotIndex) ? Colors::Amber500 : Colors::Zinc700);
+
+                // Slot Title & Name
+                const char* titleStr = TextFormat("[SLOT %d]  %s", sl.slotIndex, sl.slotName.c_str());
+                DrawText(titleStr, static_cast<int>(cardX + 14), static_cast<int>(cardY + 10), 16, Colors::Zinc200);
+
+                // Dimensions, size, bombs, seed
+                const char* dimStr = (sl.dim == 2) ? "2D" : ((sl.dim == 3) ? "3D" : "4D");
+                const char* specStr = TextFormat("%s • %dx%d • %d MINES • SEED %llu", dimStr, sl.size, sl.size, sl.bombs, sl.seed);
+                DrawText(specStr, static_cast<int>(cardX + 14), static_cast<int>(cardY + 32), 12, Colors::Zinc400);
+
+                // Progression stats & scrap
+                float clearPct = (sl.totalCells > static_cast<size_t>(sl.bombs))
+                    ? (static_cast<float>(sl.revealedCount) / static_cast<float>(sl.totalCells - static_cast<size_t>(sl.bombs)) * 100.0f)
+                    : 0.0f;
+                const char* statusStr = sl.isVictory ? "STATUS: VICTORY"
+                    : (sl.isGameOver ? "STATUS: DEFEAT"
+                    : TextFormat("CLEARED: %.0f%% (%llu/%llu)", clearPct, sl.revealedCount, sl.totalCells - sl.bombs));
+                Color statCol = sl.isVictory ? Colors::Green400 : (sl.isGameOver ? Colors::Red500 : Colors::Cyan400);
+                DrawText(statusStr, static_cast<int>(cardX + 14), static_cast<int>(cardY + 54), 13, statCol);
+
+                int sw = MeasureText(statusStr, 13);
+                const char* scrapTimeStr = TextFormat("SCRAP: %llu   TIME: %02d:%02d", sl.scrapCount, static_cast<int>(sl.timePlayed) / 60, static_cast<int>(sl.timePlayed) % 60);
+                DrawText(scrapTimeStr, static_cast<int>(cardX + 26 + sw), static_cast<int>(cardY + 54), 13, Colors::Amber400);
+
+                // Action buttons on right side
+                float rightBtnY = cardY + 24.0f;
+                float soloW = 72.0f;
+                float hostW = 72.0f;
+                float delW = 50.0f;
+                float curBtnX = cardX + cardW - 12.0f - delW;
+
+                // Delete / Confirm button
+                if (confirmingDeleteSlot == sl.slotIndex) {
+                    float confirmW = 90.0f;
+                    curBtnX = cardX + cardW - 12.0f - confirmW;
+                    if (Widgets::button("CONFIRM?", { curBtnX, rightBtnY - 6.0f, confirmW, 34.0f }, Colors::Red500, Colors::Red600, false, 13)) {
+                        if (saveManager) {
+                            saveManager->deleteSlot(sl.slotIndex);
+                        }
+                        confirmingDeleteSlot = 0;
+                    }
+                } else {
+                    if (Widgets::button("DEL", { curBtnX, rightBtnY - 6.0f, delW, 32.0f }, Colors::Zinc800, Colors::Zinc600, false, 12)) {
+                        confirmingDeleteSlot = sl.slotIndex;
+                    }
+
+                    curBtnX -= hostW + 8.0f;
+                    if (Widgets::button("HOST", { curBtnX, rightBtnY - 6.0f, hostW, 32.0f }, Colors::Amber500, Colors::Amber400, false, 13)) {
+                        selectedSlot = sl.slotIndex;
+                        currentScreen = MenuScreen::HostConfirm;
+                        confirmingDeleteSlot = 0;
+                    }
+
+                    curBtnX -= soloW + 8.0f;
+                    if (Widgets::button("SOLO", { curBtnX, rightBtnY - 6.0f, soloW, 32.0f }, Colors::Green500, Colors::Green400, false, 13)) {
+                        selectedSlot = sl.slotIndex;
+                        actions.selectedSlot = sl.slotIndex;
+                        actions.playSolo = true;
+                        confirmingDeleteSlot = 0;
+                    }
+                }
+            } else {
+                DrawRectangleRec(cardRect, Fade(Colors::Zinc900, 0.45f));
+                DrawRectangleLinesEx(cardRect, 1.0f, Fade(Colors::Zinc700, 0.45f));
+
+                const char* emptyTitle = TextFormat("[SLOT %d]  EMPTY SAVE FILE", sl.slotIndex);
+                DrawText(emptyTitle, static_cast<int>(cardX + 14), static_cast<int>(cardY + 18), 16, Colors::Zinc500);
+
+                const char* emptySub = "No mission data recorded. Ready for fresh solo or co-op expedition.";
+                DrawText(emptySub, static_cast<int>(cardX + 14), static_cast<int>(cardY + 44), 13, Colors::Zinc600);
+
+                float newBtnW = 120.0f;
+                float newBtnH = 38.0f;
+                float newBtnX = cardX + cardW - newBtnW - 14.0f;
+                float newBtnY = cardY + 22.0f;
+                if (Widgets::button("+ NEW GAME", { newBtnX, newBtnY, newBtnW, newBtnH }, Colors::Cyan500, Colors::Cyan400, false, 13)) {
+                    selectedSlot = sl.slotIndex;
+                    std::snprintf(newSaveNameBuf, sizeof(newSaveNameBuf), "World %d", selectedSlot);
+                    newSaveDim = 2;
+                    newSaveSize = 10;
+                    newSaveBombs = 15;
+                    newSaveSeed = (static_cast<uint64_t>(GetTime() * 100000.0) ^ 0x9E3779ULL) % 100000000ULL;
+                    if (newSaveSeed == 0) newSaveSeed = 12345;
+                    std::snprintf(newSaveSeedBuf, sizeof(newSaveSeedBuf), "%llu", newSaveSeed);
+                    newSaveNameActive = false;
+                    newSaveSeedActive = false;
+                    currentScreen = MenuScreen::NewSave;
+                    confirmingDeleteSlot = 0;
+                }
+            }
         }
-        curY += pBtnH + gap;
 
-        if (Widgets::mindustryButton("JOIN MULTIPLAYER", "CONNECT VIA IP OR INVITE", { pBtnX, curY, pBtnW, pBtnH }, Colors::Cyan500, false, 18)) {
+        // Bottom bar buttons
+        float bBtnY = panelY + panelH - 52.0f;
+        if (Widgets::mindustryButton("JOIN MULTIPLAYER", "CONNECT TO HOST VIA IP", { cardX, bBtnY, 220.0f, 40.0f }, Colors::Cyan500, false, 14)) {
             currentScreen = MenuScreen::Join;
             statusMessage.clear();
+            confirmingDeleteSlot = 0;
         }
-        curY += pBtnH + gap + 4.0f;
 
-        if (Widgets::mindustryButton("BACK", nullptr, { pBtnX, curY, pBtnW, 40.0f }, Colors::Zinc600, false, 15) || IsKeyPressed(KEY_ESCAPE)) {
+        if (Widgets::mindustryButton("BACK", nullptr, { cardX + cardW - 110.0f, bBtnY, 110.0f, 40.0f }, Colors::Zinc600, false, 14) || IsKeyPressed(KEY_ESCAPE)) {
             currentScreen = MenuScreen::Main;
             statusMessage.clear();
+            confirmingDeleteSlot = 0;
         }
     }
-    else if (currentScreen == MenuScreen::Host) {
+    else if (currentScreen == MenuScreen::NewSave) {
+        float panelW = 480.0f;
+        float panelH = 370.0f;
+        float panelX = centerX - panelW * 0.5f;
+        float panelY = centerY - 150.0f;
+
+        const char* pTitle = TextFormat("NEW SAVE - SLOT %d", selectedSlot);
+        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, pTitle, Colors::Amber500);
+
+        float curY = panelY + 46.0f;
+        float curX = panelX + 24.0f;
+
+        // Slot Name input
+        DrawText("SAVE NAME:", static_cast<int>(curX), static_cast<int>(curY + 6), 14, Colors::Zinc400);
+        Widgets::textInput({ curX + 100.0f, curY, 320.0f, 32.0f }, newSaveNameBuf, sizeof(newSaveNameBuf), newSaveNameActive, "World 1");
+        curY += 46.0f;
+
+        // Spinners: DIM, SIZE, BOMBS
+        Widgets::spinner("DIM", { curX, curY }, newSaveDim, 2, 4, false, 36);
+        Widgets::spinner("SIZE", { curX + 140.0f, curY }, newSaveSize, 4, 200, false, 40);
+
+        uint64_t maxCells = 1;
+        for (int d = 0; d < newSaveDim; ++d) maxCells *= newSaveSize;
+        int maxAllowedBombs = static_cast<int>(std::min<uint64_t>(maxCells - 1, 100000));
+        newSaveBombs = std::clamp(newSaveBombs, 1, maxAllowedBombs);
+
+        Widgets::spinner("BOMBS", { curX + 280.0f, curY }, newSaveBombs, 1, maxAllowedBombs, false, 56);
+        curY += 48.0f;
+
+        // Density stats
+        float density = (maxCells > 0) ? (static_cast<float>(newSaveBombs) / static_cast<float>(maxCells) * 100.0f) : 0.0f;
+        const char* densityStr = TextFormat("(%llu cells, %.1f%% mines)", maxCells, density);
+        DrawText(densityStr, static_cast<int>(curX + 6), static_cast<int>(curY), 13, Colors::Zinc500);
+        curY += 26.0f;
+
+        // Seed input & Reroll button
+        DrawText("SEED:", static_cast<int>(curX), static_cast<int>(curY + 6), 14, Colors::Zinc400);
+        Widgets::textInput({ curX + 54.0f, curY, 260.0f, 32.0f }, newSaveSeedBuf, sizeof(newSaveSeedBuf), newSaveSeedActive, "12345");
+        if (Widgets::button("REROLL", { curX + 324.0f, curY, 96.0f, 32.0f }, Colors::Zinc800, Colors::Zinc600, false, 13)) {
+            newSaveSeed = (static_cast<uint64_t>(GetTime() * 100000.0) ^ 0x9E3779ULL) % 100000000ULL;
+            if (newSaveSeed == 0) newSaveSeed = 12345;
+            std::snprintf(newSaveSeedBuf, sizeof(newSaveSeedBuf), "%llu", newSaveSeed);
+        }
+        newSaveSeed = std::strtoull(newSaveSeedBuf, nullptr, 10);
+        if (newSaveSeed == 0) newSaveSeed = 12345;
+        curY += 56.0f;
+
+        // Action buttons
+        float bW = 202.0f;
+        if (Widgets::mindustryButton("CREATE & SOLO", "START LOCAL GAME", { curX, curY, bW, 44.0f }, Colors::Green500, false, 15)) {
+            actions.selectedSlot = selectedSlot;
+            actions.startNewInSlot = true;
+            actions.newSlotName = (newSaveNameBuf[0] != '\0') ? newSaveNameBuf : TextFormat("World %d", selectedSlot);
+            actions.newSlotConfig = { newSaveDim, newSaveSize, newSaveBombs, newSaveSeed };
+            actions.playSolo = true;
+        }
+
+        if (Widgets::mindustryButton("CREATE & HOST", "START CO-OP LOBBY", { curX + bW + 20.0f, curY, bW, 44.0f }, Colors::Amber500, false, 15)) {
+            actions.selectedSlot = selectedSlot;
+            actions.startNewInSlot = true;
+            actions.newSlotName = (newSaveNameBuf[0] != '\0') ? newSaveNameBuf : TextFormat("World %d", selectedSlot);
+            actions.newSlotConfig = { newSaveDim, newSaveSize, newSaveBombs, newSaveSeed };
+            currentScreen = MenuScreen::HostConfirm;
+        }
+
+        if (Widgets::button("CANCEL", { curX + panelW - 48.0f - 80.0f, panelY + panelH - 34.0f, 80.0f, 26.0f }, Colors::Zinc800, Colors::Zinc600, false, 12) || IsKeyPressed(KEY_ESCAPE)) {
+            currentScreen = MenuScreen::Play;
+            newSaveNameActive = false;
+            newSaveSeedActive = false;
+        }
+    }
+    else if (currentScreen == MenuScreen::HostConfirm) {
         float panelW = 420.0f;
         float panelH = 260.0f;
         float panelX = centerX - panelW * 0.5f;
         float panelY = centerY - 85.0f;
 
-        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "HOST SERVER", Colors::Amber500);
+        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "HOST CO-OP LOBBY", Colors::Amber500);
+
+        const char* slotPrompt = TextFormat("HOSTING SAVE: SLOT %d", selectedSlot);
+        int spW = MeasureText(slotPrompt, 15);
+        DrawText(slotPrompt, static_cast<int>(centerX - spW * 0.5f), static_cast<int>(panelY + 48), 15, Colors::Amber400);
 
         const char* prompt = "HOST PORT:";
-        int pW = MeasureText(prompt, 16);
-        DrawText(prompt, static_cast<int>(centerX - pW * 0.5f), static_cast<int>(panelY + 54), 16, Colors::Zinc400);
+        int pW = MeasureText(prompt, 14);
+        DrawText(prompt, static_cast<int>(centerX - pW * 0.5f), static_cast<int>(panelY + 76), 14, Colors::Zinc400);
 
-        Widgets::textInput({ centerX - 110, panelY + 78, 220, 42 }, hostPortBuf, sizeof(hostPortBuf), hostPortActive, "7777");
+        Widgets::textInput({ centerX - 110, panelY + 98, 220, 38 }, hostPortBuf, sizeof(hostPortBuf), hostPortActive, "7777");
 
         float btnW = panelW - 48.0f;
         float btnX = panelX + 24.0f;
-        if (Widgets::mindustryButton("START SERVER", "BIND PORT & BEGIN HOSTING", { btnX, panelY + 138, btnW, 46 }, Colors::Green500, false, 18)) {
+        if (Widgets::mindustryButton("START SERVER", "BIND PORT & BEGIN HOSTING", { btnX, panelY + 146, btnW, 44 }, Colors::Green500, false, 16)) {
+            actions.selectedSlot = selectedSlot;
             actions.hostPort = static_cast<uint16_t>(std::atoi(hostPortBuf));
             if (actions.hostPort == 0) actions.hostPort = 7777;
             actions.hostGame = true;
         }
-        if (Widgets::mindustryButton("BACK", nullptr, { btnX, panelY + 196, btnW, 40 }, Colors::Zinc600, false, 15) || IsKeyPressed(KEY_ESCAPE)) {
+        if (Widgets::mindustryButton("BACK", nullptr, { btnX, panelY + 198, btnW, 36 }, Colors::Zinc600, false, 14) || IsKeyPressed(KEY_ESCAPE)) {
             currentScreen = MenuScreen::Play;
             statusMessage.clear();
             hostPortActive = false;

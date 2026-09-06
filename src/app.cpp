@@ -9,31 +9,6 @@
 
 namespace minesweeper {
 
-struct SaveData {
-    char joinIp[64] = "127.0.0.1:7777";
-    char hostPort[16] = "7777";
-    char playerName[16] = "Player";
-    int dim = 2;
-    int size = 10;
-    int bombs = 10;
-    uint64_t seed = 12345;
-    bool crtEnabled = true;
-    uint8_t cursorSkin = 0;
-    bool randomizeSeed = true;
-    uint8_t flagSkin = 0;
-    uint8_t playerSkin = 0;
-    bool voiceEnabled = true;
-    bool voiceProximity = true;
-    bool voicePushToTalk = true;
-    float voiceVolume = 1.0f;
-    float micGain = 1.0f;
-    bool vsyncEnabled = true;
-    bool showFPS = false;
-    float fpsLimit = 144.0f;
-    float guiScale = 1.0f;
-    uint64_t scrapCount = 0;
-};
-
 App::App() = default;
 
 App::~App() {
@@ -54,6 +29,8 @@ void App::init() {
 
     net.initialize();
 
+    saveMgr.init();
+    menu.saveManager = &saveMgr;
     loadSettings();
 
     // Setup Steam Overlay lobby join callback
@@ -97,8 +74,7 @@ void App::init() {
     renderer.activeFlagSkin = menu.flagSkin;
     renderer.activePlayerSkin = menu.playerSkin;
 
-    hud.init(board.config);
-    startNewGame(board.config.dim, board.config.size, board.config.bombs, board.config.seed);
+    loadSaveSlot(activeSaveSlot);
 
     if (menu.vsyncEnabled) {
         SetWindowState(FLAG_VSYNC_HINT);
@@ -129,6 +105,7 @@ void App::init() {
 }
 
 void App::cleanup() {
+    saveCurrentSlot();
     saveSettings();
     scrapSystem.cleanup();
     voiceMgr.cleanup();
@@ -138,87 +115,96 @@ void App::cleanup() {
 }
 
 void App::loadSettings() {
-    std::ifstream file("savegame.dat", std::ios::binary);
-    if (file.is_open()) {
-        SaveData data;
-        file.read(reinterpret_cast<char*>(&data), sizeof(SaveData));
-        std::streamsize bytesRead = file.gcount();
-        if (bytesRead >= static_cast<std::streamsize>(sizeof(data.joinIp) + sizeof(data.hostPort) + sizeof(data.playerName) + sizeof(int) * 3 + sizeof(uint64_t))) {
-            std::strncpy(menu.joinIpBuf, data.joinIp, sizeof(menu.joinIpBuf));
-            std::strncpy(menu.hostPortBuf, data.hostPort, sizeof(menu.hostPortBuf));
-            std::strncpy(menu.playerName, data.playerName, sizeof(menu.playerName));
-            std::strncpy(net.playerName, data.playerName, sizeof(net.playerName));
+    core::GlobalSettings gs;
+    if (saveMgr.loadGlobalSettings(gs)) {
+        std::strncpy(menu.joinIpBuf, gs.joinIp, sizeof(menu.joinIpBuf));
+        std::strncpy(menu.hostPortBuf, gs.hostPort, sizeof(menu.hostPortBuf));
+        std::strncpy(menu.playerName, gs.playerName, sizeof(menu.playerName));
+        std::strncpy(net.playerName, gs.playerName, sizeof(net.playerName));
 
-            board.config.dim = std::clamp(data.dim, 2, 4);
-            board.config.size = std::clamp(data.size, 4, 1000);
-            board.config.bombs = std::max(1, data.bombs);
-            board.config.seed = (data.seed != 0) ? data.seed : 12345;
-            hud.nextSeed = board.config.seed;
-            std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", hud.nextSeed);
-            menu.crtEnabled = data.crtEnabled;
-            menu.cursorSkin = std::max(0, static_cast<int>(data.cursorSkin));
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) * 2 - (sizeof(bool) * 5 + sizeof(float) * 4))) {
-                hud.randomizeSeed = data.randomizeSeed;
-            }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint8_t) - (sizeof(bool) * 5 + sizeof(float) * 4))) {
-                menu.flagSkin = std::max(0, static_cast<int>(data.flagSkin));
-            }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - (sizeof(bool) * 5 + sizeof(float) * 4))) {
-                menu.playerSkin = std::max(0, static_cast<int>(data.playerSkin));
-            }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - (sizeof(bool) * 2 + sizeof(float) * 2))) {
-                menu.voiceSettings.enabled = data.voiceEnabled;
-                menu.voiceSettings.proximity = data.voiceProximity;
-                menu.voiceSettings.pushToTalk = data.voicePushToTalk;
-                menu.voiceSettings.voiceVolume = data.voiceVolume;
-                menu.voiceSettings.micGain = data.micGain;
-            }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint64_t))) {
-                menu.vsyncEnabled = data.vsyncEnabled;
-                menu.showFPS = data.showFPS;
-                menu.fpsLimit = data.fpsLimit;
-                menu.guiScale = std::clamp(data.guiScale, 0.75f, 1.50f);
-            }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
-                scrapCount = data.scrapCount;
-                menu.scrapCount = scrapCount;
-                hud.scrapCount = scrapCount;
-            }
-        }
-        file.close();
+        menu.crtEnabled = gs.crtEnabled;
+        menu.cursorSkin = gs.cursorSkin;
+        menu.flagSkin = gs.flagSkin;
+        menu.playerSkin = gs.playerSkin;
+        hud.randomizeSeed = gs.randomizeSeed;
+
+        menu.voiceSettings.enabled = gs.voiceEnabled;
+        menu.voiceSettings.proximity = gs.voiceProximity;
+        menu.voiceSettings.pushToTalk = gs.voicePushToTalk;
+        menu.voiceSettings.voiceVolume = gs.voiceVolume;
+        menu.voiceSettings.micGain = gs.micGain;
+
+        menu.vsyncEnabled = gs.vsyncEnabled;
+        menu.showFPS = gs.showFPS;
+        menu.fpsLimit = gs.fpsLimit;
+        menu.guiScale = std::clamp(gs.guiScale, 0.75f, 1.50f);
+
+        activeSaveSlot = std::clamp(gs.lastActiveSlot, 1, core::SaveManager::NUM_SLOTS);
+        menu.selectedSlot = activeSaveSlot;
     }
 }
 
 void App::saveSettings() {
-    std::ofstream file("savegame.dat", std::ios::binary);
-    if (file.is_open()) {
-        SaveData data;
-        std::strncpy(data.joinIp, menu.joinIpBuf, sizeof(data.joinIp));
-        std::strncpy(data.hostPort, menu.hostPortBuf, sizeof(data.hostPort));
-        std::strncpy(data.playerName, menu.playerName, sizeof(data.playerName));
-        data.dim = board.config.dim;
-        data.size = board.config.size;
-        data.bombs = board.config.bombs;
-        data.seed = board.config.seed;
-        data.crtEnabled = menu.crtEnabled;
-        data.cursorSkin = static_cast<uint8_t>(menu.cursorSkin);
-        data.randomizeSeed = hud.randomizeSeed;
-        data.flagSkin = static_cast<uint8_t>(menu.flagSkin);
-        data.playerSkin = static_cast<uint8_t>(menu.playerSkin);
-        data.voiceEnabled = menu.voiceSettings.enabled;
-        data.voiceProximity = menu.voiceSettings.proximity;
-        data.voicePushToTalk = menu.voiceSettings.pushToTalk;
-        data.voiceVolume = menu.voiceSettings.voiceVolume;
-        data.micGain = menu.voiceSettings.micGain;
-        data.vsyncEnabled = menu.vsyncEnabled;
-        data.showFPS = menu.showFPS;
-        data.fpsLimit = menu.fpsLimit;
-        data.guiScale = menu.guiScale;
-        data.scrapCount = scrapCount;
+    core::GlobalSettings gs;
+    std::strncpy(gs.joinIp, menu.joinIpBuf, sizeof(gs.joinIp));
+    std::strncpy(gs.hostPort, menu.hostPortBuf, sizeof(gs.hostPort));
+    std::strncpy(gs.playerName, menu.playerName, sizeof(menu.playerName));
+    gs.crtEnabled = menu.crtEnabled;
+    gs.cursorSkin = static_cast<uint8_t>(menu.cursorSkin);
+    gs.flagSkin = static_cast<uint8_t>(menu.flagSkin);
+    gs.playerSkin = static_cast<uint8_t>(menu.playerSkin);
+    gs.randomizeSeed = hud.randomizeSeed;
 
-        file.write(reinterpret_cast<const char*>(&data), sizeof(SaveData));
-        file.close();
+    gs.voiceEnabled = menu.voiceSettings.enabled;
+    gs.voiceProximity = menu.voiceSettings.proximity;
+    gs.voicePushToTalk = menu.voiceSettings.pushToTalk;
+    gs.voiceVolume = menu.voiceSettings.voiceVolume;
+    gs.micGain = menu.voiceSettings.micGain;
+
+    gs.vsyncEnabled = menu.vsyncEnabled;
+    gs.showFPS = menu.showFPS;
+    gs.fpsLimit = menu.fpsLimit;
+    gs.guiScale = menu.guiScale;
+    gs.lastActiveSlot = activeSaveSlot;
+
+    saveMgr.saveGlobalSettings(gs);
+}
+
+void App::saveCurrentSlot() {
+    if (net.role != net::NetRole::Client && activeSaveSlot >= 1 && activeSaveSlot <= core::SaveManager::NUM_SLOTS) {
+        saveMgr.saveSlot(activeSaveSlot, activeSaveName, board, timePlayed, scrapCount);
     }
+}
+
+bool App::loadSaveSlot(int slotIndex) {
+    activeSaveSlot = slotIndex;
+    bool ok = saveMgr.loadSlot(slotIndex, board, timePlayed, scrapCount, activeSaveName);
+    if (!ok) {
+        activeSaveName = "World " + std::to_string(slotIndex);
+        board.init(2, 10, 15, 12345);
+        timePlayed = 0.0f;
+        scrapCount = 0;
+        saveCurrentSlot();
+    }
+    hud.init(board.config);
+    hud.nextSeed = board.config.seed;
+    std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", board.config.seed);
+    hud.scrapCount = scrapCount;
+    menu.scrapCount = scrapCount;
+
+    // Center camera on board
+    float boardWidth = board.config.size * renderer.cellSize;
+    float sliceStride = boardWidth + renderer.slicePadding;
+    Vector2 center = { boardWidth * 0.5f, boardWidth * 0.5f };
+    if (board.config.dim == 3) {
+        center = { boardWidth * 0.5f, (board.config.size * sliceStride) * 0.5f };
+    } else if (board.config.dim >= 4) {
+        center = { (board.config.size * sliceStride) * 0.5f, (board.config.size * sliceStride) * 0.5f };
+    }
+    float initialZoom = 1.0f;
+    if (board.config.size > 30) initialZoom = 30.0f / static_cast<float>(board.config.size);
+    renderer.camera.reset(center, initialZoom);
+    return ok;
 }
 
 void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
@@ -235,6 +221,7 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", seed);
     timePlayed = 0.0f;
     hud.endModalDismissed = false;
+    saveCurrentSlot();
 
     // Center camera on board
     float boardWidth = size * renderer.cellSize;
@@ -435,6 +422,7 @@ void App::handleNetEvents() {
                             net.broadcast(&pr, sizeof(pr));
                         }
                     }
+                    saveCurrentSlot();
                 }
                 break;
             }
@@ -572,6 +560,7 @@ void App::update(float dt) {
                                 net.broadcast(&pr, sizeof(pr));
                             }
                         }
+                        saveCurrentSlot();
                     }
                 }
             }
@@ -609,6 +598,7 @@ void App::update(float dt) {
                             net.broadcast(&pr, sizeof(pr));
                         }
                     }
+                    saveCurrentSlot();
                 }
             }
 
@@ -649,6 +639,7 @@ void App::update(float dt) {
                                     net.broadcast(&pr, sizeof(pr));
                                 }
                             }
+                            saveCurrentSlot();
                         }
                     }
                 }
@@ -704,6 +695,19 @@ void App::update(float dt) {
             menu.scrapCount = scrapCount;
             hud.triggerScrapPulse();
             saveSettings();
+            if (net.role != net::NetRole::Client) {
+                saveCurrentSlot();
+            }
+        }
+
+        // Periodic auto-save while in-game (every 3 seconds)
+        static float autoSaveTimer = 0.0f;
+        autoSaveTimer += dt;
+        if (autoSaveTimer >= 3.0f) {
+            autoSaveTimer = 0.0f;
+            if (net.role != net::NetRole::Client) {
+                saveCurrentSlot();
+            }
         }
     }
 }
@@ -752,20 +756,36 @@ void App::draw() {
         }
 
         if (menuAct.playSolo) {
+            activeSaveSlot = menuAct.selectedSlot;
+            if (menuAct.startNewInSlot) {
+                activeSaveName = menuAct.newSlotName;
+                saveMgr.createSlot(activeSaveSlot, activeSaveName, menuAct.newSlotConfig);
+            }
+            loadSaveSlot(activeSaveSlot);
             state = AppState::InGame;
+            saveSettings();
         }
         else if (menuAct.hostGame) {
+            activeSaveSlot = menuAct.selectedSlot;
+            if (menuAct.startNewInSlot) {
+                activeSaveName = menuAct.newSlotName;
+                saveMgr.createSlot(activeSaveSlot, activeSaveName, menuAct.newSlotConfig);
+            }
+            loadSaveSlot(activeSaveSlot);
             if (net.startHost(menuAct.hostPort)) {
                 state = AppState::InGame;
-                hud.init(board.config);
-                startNewGame(board.config.dim, board.config.size, board.config.bombs, board.config.seed);
+                saveSettings();
             } else {
                 menu.statusMessage = "FAILED TO BIND PORT";
             }
         }
         else if (menuAct.joinGame) {
+            activeSaveSlot = 0;
             if (net.connectToHost(menuAct.joinAddress)) {
                 board.init(2, 0, 0, 0);
+                timePlayed = 0.0f;
+                scrapCount = 0;
+                hud.scrapCount = 0;
                 state = AppState::InGame;
                 menu.statusMessage.clear();
             } else {
@@ -817,6 +837,7 @@ void App::draw() {
                     menu.scrapCount = scrapCount;
                     saveSettings();
                 }
+                saveCurrentSlot();
                 net.disconnect();
                 state = AppState::Menu;
             }

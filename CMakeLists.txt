@@ -10,6 +10,7 @@ set(SOURCES
     src/app.cpp
     src/audio/voice_manager.cpp
     src/core/board.cpp
+    src/core/save_manager.cpp
     src/net/network_manager.cpp
     src/net/steam_manager.cpp
     src/render/camera_controller.cpp

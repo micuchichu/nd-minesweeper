@@ -7,6 +7,7 @@
 #include "ui/menu.hpp"
 #include "audio/voice_manager.hpp"
 #include "render/scrap_system.hpp"
+#include "core/save_manager.hpp"
 
 namespace minesweeper {
 
@@ -47,6 +48,12 @@ private:
     void startNewGame(int dim, int size, int bombs, uint64_t seed);
     void restartCurrentGame();
 
+    core::SaveManager saveMgr;
+    int activeSaveSlot = 1;
+    std::string activeSaveName = "World 1";
+
+    void saveCurrentSlot();
+    bool loadSaveSlot(int slotIndex);
     void saveSettings();
     void loadSettings();
 };
