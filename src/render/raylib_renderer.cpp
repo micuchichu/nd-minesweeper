@@ -673,16 +673,6 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     // Bottom-Right
                     DrawLineEx({ bx + bw, by + bh }, { bx + bw - bracketLen, by + bh }, 2.0f, bracketCol);
                     DrawLineEx({ bx + bw, by + bh }, { bx + bw, by + bh - bracketLen }, 2.0f, bracketCol);
-
-                    // Expanding sonar/radar beacon ring inside the cell
-                    float maxR = cellRect.width * 0.45f;
-                    float ringProgress = std::fmod(t * 1.5f, 1.0f);
-                    float ringR = 2.0f + ringProgress * maxR;
-                    float ringAlpha = (1.0f - ringProgress) * 0.8f;
-                    DrawCircleLines(static_cast<int>(bx + bw * 0.5f), static_cast<int>(by + bh * 0.5f), ringR, Fade(safeCol, ringAlpha));
-
-                    // Pulsing glowing center core
-                    DrawCircle(static_cast<int>(bx + bw * 0.5f), static_cast<int>(by + bh * 0.5f), 3.5f + pulse * 1.5f, Fade(safeCol, 0.9f));
                 }
 
                 if (isNeighbor) {
@@ -733,43 +723,71 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
     }
 }
 
-void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const char* name, float scale, bool isSpeaking) {
+void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, float angle, Color col, const char* name, float scale, bool isSpeaking, bool isMoving) {
     int skinIdx = static_cast<int>(skin);
     bool drewTexture = false;
 
     if (skinIdx >= 0 && skinIdx < static_cast<int>(cursorSkins.size()) && cursorSkins[skinIdx].texture.id != 0) {
         const auto& tex = cursorSkins[skinIdx].texture;
         Rectangle src = { 0.0f, 0.0f, static_cast<float>(tex.width), static_cast<float>(tex.height) };
-        Rectangle dest = { pos.x, pos.y, static_cast<float>(tex.width) * scale, static_cast<float>(tex.height) * scale };
-        DrawTexturePro(tex, src, dest, { 0.0f, 0.0f }, 0.0f, WHITE);
+        float w = static_cast<float>(tex.width) * scale;
+        float h = static_cast<float>(tex.height) * scale;
+        Rectangle dest = { pos.x, pos.y, w, h };
+        Vector2 origin = { w * 0.5f, h * 0.5f };
+
+        // Animated Thruster Flames behind the ship
+        // The sprite nose points downwards (+Y), so rear is upwards (-Y from sprite nose)
+        float rad = (angle + 90.0f) * DEG2RAD;
+        Vector2 fwd = { std::cos(rad), std::sin(rad) };
+        Vector2 rear = { -fwd.x, -fwd.y };
+        Vector2 right = { -fwd.y, fwd.x };
+
+        Vector2 rearCenter = { pos.x + rear.x * (h * 0.38f), pos.y + rear.y * (h * 0.38f) };
+        float thrusterSpacing = w * 0.28f;
+        Vector2 leftThrust = { rearCenter.x - right.x * thrusterSpacing, rearCenter.y - right.y * thrusterSpacing };
+        Vector2 rightThrust = { rearCenter.x + right.x * thrusterSpacing, rearCenter.y + right.y * thrusterSpacing };
+
+        float t = static_cast<float>(GetTime());
+        if (isMoving) {
+            float flicker1 = 4.0f + 3.0f * std::sin(t * 35.0f);
+            float flicker2 = 4.0f + 3.0f * std::cos(t * 40.0f);
+
+            Vector2 leftTip = { leftThrust.x + rear.x * (flicker1 * scale), leftThrust.y + rear.y * (flicker1 * scale) };
+            Vector2 rightTip = { rightThrust.x + rear.x * (flicker2 * scale), rightThrust.y + rear.y * (flicker2 * scale) };
+
+            float flameW = 2.2f * scale;
+            DrawTriangle(leftTip, { leftThrust.x + right.x * flameW, leftThrust.y + right.y * flameW }, { leftThrust.x - right.x * flameW, leftThrust.y - right.y * flameW }, ui::Colors::Amber400);
+            DrawTriangle(rightTip, { rightThrust.x + right.x * flameW, rightThrust.y + right.y * flameW }, { rightThrust.x - right.x * flameW, rightThrust.y - right.y * flameW }, ui::Colors::Amber400);
+        } else {
+            // Subtle idle thruster glow
+            float idlePulse = 0.5f + 0.5f * std::sin(t * 6.0f);
+            DrawCircle(static_cast<int>(leftThrust.x), static_cast<int>(leftThrust.y), 1.8f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.7f));
+            DrawCircle(static_cast<int>(rightThrust.x), static_cast<int>(rightThrust.y), 1.8f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.7f));
+        }
+
+        // Draw Ship Sprite rotated around center
+        DrawTexturePro(tex, src, dest, origin, angle, WHITE);
         drewTexture = true;
     }
 
     if (!drewTexture) {
-        int px = static_cast<int>(pos.x);
-        int py = static_cast<int>(pos.y);
-        DrawRectangle(px, py, 10, 10, col);
-        DrawRectangleLines(px, py, 10, 10, WHITE);
+        int px = static_cast<int>(pos.x - 5.0f * scale);
+        int py = static_cast<int>(pos.y - 5.0f * scale);
+        DrawRectangle(px, py, static_cast<int>(10 * scale), static_cast<int>(10 * scale), col);
+        DrawRectangleLines(px, py, static_cast<int>(10 * scale), static_cast<int>(10 * scale), WHITE);
     }
 
     if (isSpeaking) {
         float t = static_cast<float>(GetTime());
         float pulse = (std::sin(t * 12.0f) + 1.0f) * 0.5f;
         Color speakCol = ui::Colors::Green500;
-        DrawCircleLines(static_cast<int>(pos.x + 6.0f * scale), static_cast<int>(pos.y + 6.0f * scale), 13.0f * scale + pulse * 5.0f, Fade(speakCol, 0.85f));
-        DrawCircleLines(static_cast<int>(pos.x + 6.0f * scale), static_cast<int>(pos.y + 6.0f * scale), 19.0f * scale + pulse * 8.0f, Fade(speakCol, 0.45f));
-
-        // Animated sound wave arcs )))
-        float wavePhase = std::fmod(t * 5.0f, 3.0f);
-        for (int i = 0; i < 3; ++i) {
-            float alpha = (wavePhase >= i) ? 0.9f : 0.2f;
-            DrawCircleSectorLines({ pos.x + 18.0f * scale, pos.y - 2.0f * scale }, (8.0f + i * 5.0f) * scale, 305.0f, 415.0f, 10, Fade(speakCol, alpha));
-        }
+        DrawCircleLines(static_cast<int>(pos.x), static_cast<int>(pos.y), 15.0f * scale + pulse * 6.0f, Fade(speakCol, 0.85f));
+        DrawCircleLines(static_cast<int>(pos.x), static_cast<int>(pos.y), 22.0f * scale + pulse * 9.0f, Fade(speakCol, 0.45f));
     }
 
     if (name && name[0] != '\0') {
         int nameW = MeasureText(name, 12);
-        Rectangle badge = { pos.x + 12.0f * scale, pos.y + 12.0f * scale, static_cast<float>(nameW + (isSpeaking ? 20 : 8)), 16.0f };
+        Rectangle badge = { pos.x - static_cast<float>(nameW + (isSpeaking ? 20 : 8)) * 0.5f, pos.y + 14.0f * scale, static_cast<float>(nameW + (isSpeaking ? 20 : 8)), 16.0f };
         DrawRectangleRec(badge, Fade(BLACK, 0.85f));
         DrawRectangleLinesEx(badge, 1.0f, isSpeaking ? ui::Colors::Green500 : col);
         if (isSpeaking) {
@@ -778,6 +796,65 @@ void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const 
         } else {
             DrawText(name, static_cast<int>(badge.x + 4), static_cast<int>(badge.y + 2), 12, WHITE);
         }
+    }
+}
+
+void RaylibRenderer::updateShip(Vector2 targetPos, float dt) {
+    if (!localShipInit) {
+        localShipPos = { targetPos.x - 50.0f, targetPos.y };
+        localShipAngle = 0.0f;
+        localShipInit = true;
+    }
+
+    Vector2 diff = { targetPos.x - localShipPos.x, targetPos.y - localShipPos.y };
+    float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+
+    const float targetDist = 50.0f; // 50px distance requested by user
+    const float speed = 100.0f;      // constant speed 100px/s requested by user
+
+    if (dist > targetDist + 0.5f) {
+        float dirX = diff.x / dist;
+        float dirY = diff.y / dist;
+
+        float step = speed * dt;
+        float excess = dist - targetDist;
+        float moveDist = std::min(step, excess);
+
+        localShipPos.x += dirX * moveDist;
+        localShipPos.y += dirY * moveDist;
+
+        // Nose faces towards cursor (sprite nose is downwards, so atan2 - 90)
+        float desiredAngle = std::atan2(dirY, dirX) * RAD2DEG - 90.0f;
+        float diffAngle = desiredAngle - localShipAngle;
+        while (diffAngle < -180.0f) diffAngle += 360.0f;
+        while (diffAngle > 180.0f) diffAngle -= 360.0f;
+        localShipAngle += diffAngle * std::min(1.0f, 10.0f * dt);
+    } else if (dist < targetDist - 5.0f && dist > 0.001f) {
+        // Gently back up if cursor gets too close
+        float dirX = diff.x / dist;
+        float dirY = diff.y / dist;
+
+        float step = speed * dt;
+        float deficit = (targetDist - dist);
+        float moveDist = std::min(step, deficit);
+
+        localShipPos.x -= dirX * moveDist;
+        localShipPos.y -= dirY * moveDist;
+
+        float desiredAngle = std::atan2(dirY, dirX) * RAD2DEG - 90.0f;
+        float diffAngle = desiredAngle - localShipAngle;
+        while (diffAngle < -180.0f) diffAngle += 360.0f;
+        while (diffAngle > 180.0f) diffAngle -= 360.0f;
+        localShipAngle += diffAngle * std::min(1.0f, 10.0f * dt);
+    } else if (dist > 0.001f) {
+        // In idle zone: smoothly face cursor
+        float dirX = diff.x / dist;
+        float dirY = diff.y / dist;
+        float desiredAngle = std::atan2(dirY, dirX) * RAD2DEG - 90.0f;
+        float diffAngle = desiredAngle - localShipAngle;
+        while (diffAngle < -180.0f) diffAngle += 360.0f;
+        while (diffAngle > 180.0f) diffAngle -= 360.0f;
+        localShipAngle += diffAngle * std::min(1.0f, 8.0f * dt);
     }
 }
 
@@ -826,33 +903,24 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
             curCol = ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f);
         }
         const char* tag = cursor.name[0] != '\0' ? cursor.name : (id == 0 ? "HOST" : TextFormat("P%u", id));
-        drawCursorSkin(cursor.skin, { cursor.x, cursor.y }, curCol, tag, 1.0f, cursor.isSpeaking);
+        drawCursorSkin(cursor.skin, { cursor.x, cursor.y }, 0.0f, curCol, tag, 1.5f, cursor.isSpeaking, false);
     }
 
-    // Draw local cursor voice transmission indicator
-    if (isLocalSpeaking) {
-        Vector2 localMouse = camera.getScreenToWorld(camera.getCRTMousePosition());
-        float t = static_cast<float>(GetTime());
-        float pulse = (std::sin(t * 12.0f) + 1.0f) * 0.5f;
-        Color speakCol = ui::Colors::Green500;
-        DrawCircleLines(static_cast<int>(localMouse.x), static_cast<int>(localMouse.y), 14.0f + pulse * 6.0f, Fade(speakCol, 0.85f));
-        DrawCircleLines(static_cast<int>(localMouse.x), static_cast<int>(localMouse.y), 21.0f + pulse * 9.0f, Fade(speakCol, 0.45f));
-    }
+    // Draw local player ship following cursor
+    Vector2 worldMouse = camera.getScreenToWorld(camera.getCRTMousePosition());
+    bool isMoving = (Vector2Distance(worldMouse, localShipPos) > 52.0f);
+    drawCursorSkin(static_cast<uint8_t>(activeCursorSkin), localShipPos, localShipAngle, ui::Colors::Green500, nullptr, 1.6f, isLocalSpeaking, isMoving);
+
+    // Subtle tactical aim crosshair at the cursor
+    float chSize = 3.5f;
+    DrawLineEx({ worldMouse.x - chSize, worldMouse.y }, { worldMouse.x + chSize, worldMouse.y }, 1.0f, Fade(WHITE, 0.45f));
+    DrawLineEx({ worldMouse.x, worldMouse.y - chSize }, { worldMouse.x, worldMouse.y + chSize }, 1.0f, Fade(WHITE, 0.45f));
 
     // Draw Safe Starting Cell Beacon & Floating Badge (World Space)
     if (board.revealedCount == 0 && !board.isGameOver && !board.isVictory && board.startingCell >= 0 && board.coord.totalCells > 0) {
         Vector2 startPos = getCellWorldPosition(static_cast<size_t>(board.startingCell), board);
         float t = static_cast<float>(GetTime());
-        float bounce = std::sin(t * 4.0f) * 3.0f;
         float pulse = 0.5f + 0.5f * std::sin(t * 6.0f);
-
-        // Expanding circular ripple waves around starting cell
-        for (int i = 0; i < 2; ++i) {
-            float phase = std::fmod(t * 1.0f + i * 0.5f, 1.0f);
-            float r = (cellSize * 0.5f) + phase * (cellSize * 0.85f);
-            float a = (1.0f - phase) * 0.55f;
-            DrawCircleLines(static_cast<int>(startPos.x), static_cast<int>(startPos.y), r, Fade(ui::Colors::Green400, a));
-        }
 
         // Floating "SAFE START" pill badge above cell
         const char* label = "SAFE START";
@@ -861,7 +929,7 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         float badgeW = static_cast<float>(textW + 18);
         float badgeH = 19.0f;
         float badgeX = startPos.x - badgeW * 0.5f;
-        float badgeY = startPos.y - (cellSize * 0.5f) - badgeH - 6.0f + bounce;
+        float badgeY = startPos.y - (cellSize * 0.5f) - badgeH - 6.0f;
 
         // Badge background & border
         Rectangle badgeRect = { badgeX, badgeY, badgeW, badgeH };

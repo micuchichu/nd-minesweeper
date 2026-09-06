@@ -178,6 +178,7 @@ void App::saveCurrentSlot() {
 
 bool App::loadSaveSlot(int slotIndex) {
     activeSaveSlot = slotIndex;
+    renderer.localShipInit = false;
     bool ok = saveMgr.loadSlot(slotIndex, board, timePlayed, scrapCount, activeSaveName);
     if (!ok) {
         activeSaveName = "World " + std::to_string(slotIndex);
@@ -211,6 +212,7 @@ bool App::loadSaveSlot(int slotIndex) {
 
 void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     renderer.clearParticles();
+    renderer.localShipInit = false;
     int leftover = scrapSystem.collectAll();
     if (leftover > 0) {
         scrapCount += leftover;
@@ -471,6 +473,7 @@ void App::update(float dt) {
     renderer.enableCRT = menu.crtEnabled;
     renderer.camera.enableCRT = menu.crtEnabled;
     renderer.activeFlagSkin = menu.flagSkin;
+    renderer.activeCursorSkin = menu.cursorSkin;
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
 
@@ -479,7 +482,9 @@ void App::update(float dt) {
     menu.micInputLevel = voiceMgr.getMicLevel();
 
     Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
-    voiceMgr.setLocalCursorPos(worldMouse.x, worldMouse.y);
+    renderer.updateShip(worldMouse, dt);
+
+    voiceMgr.setLocalCursorPos(renderer.localShipPos.x, renderer.localShipPos.y);
     voiceMgr.setPushToTalkActive(IsKeyDown(KEY_V));
     voiceMgr.update(dt);
 
@@ -502,15 +507,15 @@ void App::update(float dt) {
             }
         }
 
-        // Multiplayer Cursor Broadcast
+        // Multiplayer Cursor / Ship Broadcast
         if (net.role != net::NetRole::Offline) {
             static Vector2 lastSent = { -9999.0f, -9999.0f };
-            if (Vector2Distance(worldMouse, lastSent) > 3.0f) {
-                lastSent = worldMouse;
+            if (Vector2Distance(renderer.localShipPos, lastSent) > 2.0f) {
+                lastSent = renderer.localShipPos;
                 net::PacketCursor pc;
                 pc.playerID = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
-                pc.x = worldMouse.x;
-                pc.y = worldMouse.y;
+                pc.x = renderer.localShipPos.x;
+                pc.y = renderer.localShipPos.y;
                 pc.skin = static_cast<uint8_t>(menu.cursorSkin);
                 std::strncpy(pc.name, menu.playerName, sizeof(pc.name));
                 pc.name[sizeof(pc.name) - 1] = '\0';

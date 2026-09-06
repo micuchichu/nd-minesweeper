@@ -41,6 +41,8 @@ test_core.exe
 
 # Saved user data
 savegame.dat
+settings.dat
+saves/
 *.zip
 
 

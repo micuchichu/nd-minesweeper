@@ -417,8 +417,8 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             int count;
         };
         TabDef tabs[2] = {
-            { CustomizeTab::Cursors, "CURSORS", render::RaylibRenderer::getCursorSkinCount() },
-            { CustomizeTab::Flags,   "FLAGS",   render::RaylibRenderer::getFlagSkinCount() }
+            { CustomizeTab::Cursors, "SHIPS", render::RaylibRenderer::getCursorSkinCount() },
+            { CustomizeTab::Flags,   "FLAGS", render::RaylibRenderer::getFlagSkinCount() }
         };
 
         for (int i = 0; i < 2; ++i) {
@@ -574,7 +574,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
 
             if (activeTab == CustomizeTab::Cursors) {
                 itemName = render::RaylibRenderer::getCursorSkinName(i);
-                render::RaylibRenderer::drawCursorSkin(static_cast<uint8_t>(i), { iconCenter.x - 14.0f, iconCenter.y - 14.0f }, isEquipped ? Colors::Green500 : WHITE, nullptr, 1.25f);
+                render::RaylibRenderer::drawCursorSkin(static_cast<uint8_t>(i), iconCenter, 0.0f, isEquipped ? Colors::Green500 : WHITE, nullptr, 1.8f);
             } else {
                 itemName = render::RaylibRenderer::getFlagSkinName(i);
                 Texture2D fTex = render::RaylibRenderer::getFlagTexture(i);
@@ -616,8 +616,8 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         DrawText("SHOWCASE PREVIEW", static_cast<int>(previewBoxX + 14), static_cast<int>(previewBoxY + 8), 11, Colors::Zinc500);
 
         if (activeTab == CustomizeTab::Cursors) {
-            Vector2 pCenter = { previewBoxX + previewBoxW * 0.5f - 40.0f, previewBoxY + 16.0f };
-            render::RaylibRenderer::drawCursorSkin(static_cast<uint8_t>(cursorSkin), pCenter, Colors::Green500, playerName, 1.4f);
+            Vector2 pCenter = { previewBoxX + previewBoxW * 0.5f - 40.0f, previewBoxY + 28.0f };
+            render::RaylibRenderer::drawCursorSkin(static_cast<uint8_t>(cursorSkin), pCenter, 0.0f, Colors::Green500, playerName, 1.8f);
         } else {
             Texture2D curFlagTex = render::RaylibRenderer::getFlagTexture(flagSkin);
             if (curFlagTex.id != 0) {

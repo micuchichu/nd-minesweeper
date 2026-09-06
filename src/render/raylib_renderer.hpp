@@ -38,7 +38,13 @@ public:
     static std::vector<CursorSkinItem> cursorSkins;
     static int getCursorSkinCount();
     static const char* getCursorSkinName(int skin);
-    static void drawCursorSkin(uint8_t skin, Vector2 pos, Color col, const char* name = nullptr, float scale = 1.0f, bool isSpeaking = false);
+    static void drawCursorSkin(uint8_t skin, Vector2 pos, float angle = 0.0f, Color col = WHITE, const char* name = nullptr, float scale = 1.0f, bool isSpeaking = false, bool isMoving = false);
+
+    int activeCursorSkin = 0;
+    Vector2 localShipPos = { 0.0f, 0.0f };
+    float localShipAngle = 0.0f;
+    bool localShipInit = false;
+    void updateShip(Vector2 targetPos, float dt);
 
     bool isLocalSpeaking = false;
     float guiScale = 1.0f;
