@@ -8,7 +8,7 @@ namespace minesweeper::core {
 
 Ship::Ship()
     : mass(1.0f)
-    , range(140.0f)
+    , range(150.0f)
     , speed(600.0f)
     , texture{ 0 }
     , skinId(0)
@@ -66,7 +66,7 @@ void Ship::update(Vector2 targetPos, float dt) {
     Vector2 toTarget = { targetPos.x - position.x, targetPos.y - position.y };
     float distToTarget = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
 
-    const float targetDist = 50.0f;  // Keep 50px follow distance requested by user
+    const float targetDist = 70.0f;  // Keep 70px follow distance requested by user
     const float maxSpeed = speed;
     const float slowRadius = 140.0f;
     const float maxAccel = 2200.0f;
