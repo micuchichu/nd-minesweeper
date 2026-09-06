@@ -397,6 +397,20 @@ void RaylibRenderer::update(float dt) {
         }
     }
 
+    for (auto it = flagDropAnims.begin(); it != flagDropAnims.end(); ) {
+        it->second.timer -= dt;
+        float p = std::clamp(1.0f - (it->second.timer / it->second.duration), 0.0f, 1.0f);
+        if (p >= 0.65f && !it->second.landed) {
+            it->second.landed = true;
+            particles.emitDebris(it->second.groundPos, 4, ui::Colors::Zinc400);
+        }
+        if (it->second.timer <= 0.0f) {
+            it = flagDropAnims.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     if (IsWindowResized()) {
         int w = GetScreenWidth();
         int h = GetScreenHeight();
@@ -623,6 +637,37 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     uint8_t cellFlagSkin = board.getFlagSkin(idx, static_cast<uint8_t>(activeFlagSkin));
                     Texture2D curFlag = getFlagTexture(cellFlagSkin);
 
+                    float dropY = 0.0f;
+                    float squashX = 1.0f;
+                    float squashY = 1.0f;
+                    float shadowScale = 1.0f;
+                    float shadowAlpha = 0.40f;
+
+                    auto animIt = flagDropAnims.find(idx);
+                    if (animIt != flagDropAnims.end()) {
+                        float p = std::clamp(1.0f - (animIt->second.timer / animIt->second.duration), 0.0f, 1.0f);
+                        if (p < 0.65f) {
+                            float t = p / 0.65f;
+                            // Accelerating gravity drop from 60px above
+                            dropY = -60.0f * (1.0f - t * t);
+                            shadowScale = 0.35f + 0.65f * t;
+                            shadowAlpha = 0.12f + 0.28f * t;
+                            squashY = 1.0f + 0.15f * t;
+                            squashX = 1.0f - 0.08f * t;
+                        } else {
+                            float t = (p - 0.65f) / 0.35f;
+                            // Elastic rebound bounce
+                            dropY = -8.0f * std::sin(t * 3.14159265f) * (1.0f - t);
+                            shadowScale = 1.0f;
+                            shadowAlpha = 0.40f;
+                            if (t < 0.4f) {
+                                float sq = std::sin((t / 0.4f) * 3.14159265f);
+                                squashX = 1.0f + 0.22f * sq;
+                                squashY = 1.0f - 0.20f * sq;
+                            }
+                        }
+                    }
+
                     if (curFlag.id != 0) {
                         float time = static_cast<float>(GetTime()) + (hashTile(static_cast<int32_t>(x), static_cast<int32_t>(y), static_cast<int32_t>(sliceZ), static_cast<int32_t>(sliceW)) * 10.0f);
                         int numFrames = (curFlag.width >= curFlag.height * 2) ? (curFlag.width / curFlag.height) : 1;
@@ -635,13 +680,29 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                         float flagScale = 1.05f;
                         float flagW = cellRect.width * flagScale;
                         float flagH = cellRect.height * flagScale;
-                        Vector2 origin = { 4.0f * flagW / 16.0f, 12.0f * flagH / 16.0f };
-                        Rectangle destRect = { cellRect.x + 4.0f * cellRect.width / 16.0f, cellRect.y + 12.0f * cellRect.height / 16.0f, flagW, flagH };
+                        float baseX = cellRect.x + 4.0f * cellRect.width / 16.0f;
+                        float baseY = cellRect.y + 12.0f * cellRect.height / 16.0f;
+
+                        // Soft ground contact shadow
+                        float shadowFactor = (cellRect.width / 30.0f) * shadowScale;
+                        DrawEllipse(static_cast<int>(baseX + 1.0f), static_cast<int>(baseY + 1.0f), 5.0f * shadowFactor, 2.4f * shadowFactor, Fade(BLACK, shadowAlpha));
+
+                        // Ground silhouette shadow
+                        Rectangle shadowDest = { baseX + 2.0f * shadowScale, baseY + 1.5f * shadowScale, flagW * shadowScale, flagH * shadowScale };
+                        Vector2 shadowOrigin = { 4.0f * shadowDest.width / 16.0f, 12.0f * shadowDest.height / 16.0f };
                         float tilt = std::sin(time) * 5.0f;
+                        DrawTexturePro(curFlag, flagSrc, shadowDest, shadowOrigin, tilt, Fade(BLACK, shadowAlpha * 0.40f));
+
+                        // Flag sprite (dropping, squashing, waving)
+                        float finalFlagW = flagW * squashX;
+                        float finalFlagH = flagH * squashY;
+                        Vector2 origin = { 4.0f * finalFlagW / 16.0f, 12.0f * finalFlagH / 16.0f };
+                        Rectangle destRect = { baseX, baseY + dropY, finalFlagW, finalFlagH };
 
                         DrawTexturePro(curFlag, flagSrc, destRect, origin, tilt, WHITE);
                     } else {
-                        DrawRectangleRounded({ cellRect.x + 4, cellRect.y + 4, cellRect.width - 8, cellRect.height - 8 }, 0.2f, 4, ui::Colors::Red500);
+                        DrawRectangleRounded({ cellRect.x + 4.0f, cellRect.y + 6.0f, cellRect.width - 8.0f, cellRect.height - 8.0f }, 0.2f, 4, Fade(BLACK, shadowAlpha * 0.5f));
+                        DrawRectangleRounded({ cellRect.x + 4.0f, cellRect.y + 4.0f + dropY, cellRect.width - 8.0f, cellRect.height - 8.0f }, 0.2f, 4, ui::Colors::Red500);
                     }
                 }
                 else {
@@ -837,6 +898,23 @@ void RaylibRenderer::triggerOutOfReach(int64_t cellIndex, Vector2 cellPos) {
 void RaylibRenderer::clearOutOfReach() {
     outOfReachCell = -1;
     outOfReachTimer = 0.0f;
+}
+
+void RaylibRenderer::triggerFlagDrop(size_t cellIndex, Vector2 groundPos) {
+    FlagDropAnim anim;
+    anim.groundPos = groundPos;
+    anim.duration = 0.32f;
+    anim.timer = anim.duration;
+    anim.landed = false;
+    flagDropAnims[cellIndex] = anim;
+}
+
+void RaylibRenderer::removeFlagDrop(size_t cellIndex) {
+    flagDropAnims.erase(cellIndex);
+}
+
+void RaylibRenderer::clearFlagDrops() {
+    flagDropAnims.clear();
 }
 
 

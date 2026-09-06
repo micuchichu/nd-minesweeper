@@ -7,6 +7,7 @@
 #include "../core/ship.hpp"
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace minesweeper::render {
 
@@ -19,6 +20,13 @@ struct CursorSkinItem {
 struct FlagSkinItem {
     std::string name;
     Texture2D texture = {0};
+};
+
+struct FlagDropAnim {
+    Vector2 groundPos = { 0.0f, 0.0f };
+    float timer = 0.0f;
+    float duration = 0.32f;
+    bool landed = false;
 };
 
 struct PlayerSkinItem {
@@ -77,6 +85,11 @@ public:
     static Texture2D getFlagTexture(int skin);
     int activeFlagSkin = 0;
 
+    std::unordered_map<size_t, FlagDropAnim> flagDropAnims;
+    void triggerFlagDrop(size_t cellIndex, Vector2 groundPos);
+    void removeFlagDrop(size_t cellIndex);
+    void clearFlagDrops();
+
     static std::vector<PlayerSkinItem> playerSkins;
     static int getPlayerSkinCount();
     static const char* getPlayerSkinName(int skin);
@@ -100,7 +113,7 @@ public:
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
-    void clearParticles() { particles.clear(); localShip.exhaust.clear(); lasers.clear(); clearOutOfReach(); }
+    void clearParticles() { particles.clear(); localShip.exhaust.clear(); lasers.clear(); clearOutOfReach(); clearFlagDrops(); }
 
 private:
     Texture2D flagTexture = {0};

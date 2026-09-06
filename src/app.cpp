@@ -421,6 +421,7 @@ void App::handleNetEvents() {
                         core::CellState cs = board.getState(idx);
                         if (cs == core::CellState::Flagged) {
                             board.unflag(idx);
+                            renderer.removeFlagDrop(idx);
                             net::PacketResult pr;
                             pr.index = idx;
                             pr.state = 1; // Hidden / unflagged
@@ -429,6 +430,8 @@ void App::handleNetEvents() {
                             net.broadcast(&pr, sizeof(pr));
                         } else if (cs == core::CellState::Hidden) {
                             board.setFlag(idx, ev.peerId, ev.clickData.flagSkin);
+                            Vector2 pos = renderer.getCellWorldPosition(idx, board);
+                            renderer.triggerFlagDrop(idx, pos);
                             net::PacketResult pr;
                             pr.index = idx;
                             pr.state = 2; // Flagged
@@ -446,9 +449,13 @@ void App::handleNetEvents() {
                 if (ev.resultData.state == 0) {
                     if (board.getState(idx) == core::CellState::Flagged) {
                         board.unflag(idx);
+                        renderer.removeFlagDrop(idx);
                     }
                     std::vector<size_t> newlyRevealed;
                     core::RevealResult res = board.reveal(idx, &newlyRevealed);
+                    for (size_t revIdx : newlyRevealed) {
+                        renderer.removeFlagDrop(revIdx);
+                    }
                     Vector2 pos = renderer.getCellWorldPosition(idx, board);
                     Vector2 cellCenter = { pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f };
                     if (ev.resultData.placerId != 0 && renderer.remoteShips.count(ev.resultData.placerId)) {
@@ -469,8 +476,11 @@ void App::handleNetEvents() {
                     board.flagOwners.erase(idx);
                 } else if (ev.resultData.state == 1) { // Unflagged
                     board.unflag(idx);
+                    renderer.removeFlagDrop(idx);
                 } else if (ev.resultData.state == 2) { // Flagged
                     board.setFlag(idx, ev.resultData.placerId, ev.resultData.flagSkin);
+                    Vector2 pos = renderer.getCellWorldPosition(idx, board);
+                    renderer.triggerFlagDrop(idx, pos);
                 }
                 break;
             }
@@ -594,6 +604,9 @@ void App::update(float dt) {
                             } else {
                                 std::vector<size_t> newlyRevealed;
                                 core::RevealResult res = board.reveal(hIdx, &newlyRevealed);
+                                for (size_t revIdx : newlyRevealed) {
+                                    renderer.removeFlagDrop(revIdx);
+                                }
                                 Vector2 pos = renderer.getCellWorldPosition(hIdx, board);
                                 if (res == core::RevealResult::HitBomb) {
                                     renderer.emitExplosion(pos, ui::Colors::CellFlag);
@@ -647,6 +660,9 @@ void App::update(float dt) {
                         } else {
                             std::vector<size_t> newlyRevealed;
                             core::RevealResult res = board.reveal(pIdx, &newlyRevealed);
+                            for (size_t revIdx : newlyRevealed) {
+                                renderer.removeFlagDrop(revIdx);
+                            }
                             Vector2 pos = renderer.getCellWorldPosition(pIdx, board);
                             if (res == core::RevealResult::HitBomb) {
                                 renderer.emitExplosion(pos, ui::Colors::CellFlag);
@@ -701,6 +717,7 @@ void App::update(float dt) {
                         core::CellState cs = board.getState(hIdx);
                         if (cs == core::CellState::Flagged) {
                             board.unflag(hIdx);
+                            renderer.removeFlagDrop(hIdx);
                             if (net.role == net::NetRole::Host) {
                                 net::PacketResult pr;
                                 pr.index = hIdx;
@@ -711,6 +728,8 @@ void App::update(float dt) {
                             }
                         } else if (cs == core::CellState::Hidden) {
                             board.setFlag(hIdx, myId, static_cast<uint8_t>(menu.flagSkin));
+                            Vector2 cellPos = renderer.getCellWorldPosition(hIdx, board);
+                            renderer.triggerFlagDrop(hIdx, cellPos);
                             if (net.role == net::NetRole::Host) {
                                 net::PacketResult pr;
                                 pr.index = hIdx;
@@ -762,6 +781,7 @@ void App::update(float dt) {
                                 bool hitBomb = false;
                                 if (board.chord(hIdx, newlyRevealed, hitBomb)) {
                                     for (size_t revIdx : newlyRevealed) {
+                                        renderer.removeFlagDrop(revIdx);
                                         Vector2 pos = renderer.getCellWorldPosition(revIdx, board);
                                         if (board.isBomb(revIdx)) {
                                             renderer.emitExplosion(pos, ui::Colors::CellFlag);
