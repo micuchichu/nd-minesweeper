@@ -27,6 +27,7 @@ public:
     size_t flaggedCount = 0;
     bool isGameOver = false;
     bool isVictory = false;
+    int64_t startingCell = -1;
 
     Board() = default;
 
@@ -34,6 +35,7 @@ public:
     void reset();
     void generateBombs(uint64_t seed);
     void buildCache();
+    int64_t findStartingCell() const;
 
     RevealResult reveal(size_t index, std::vector<size_t>* outRevealedCells = nullptr);
     void toggleFlag(size_t index, uint32_t placerId = 0, uint8_t skinId = 0);

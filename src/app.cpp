@@ -192,11 +192,13 @@ bool App::loadSaveSlot(int slotIndex) {
     hud.scrapCount = scrapCount;
     menu.scrapCount = scrapCount;
 
-    // Center camera on board
+    // Center camera on board (or safe starting cell if fresh game)
     float boardWidth = board.config.size * renderer.cellSize;
     float sliceStride = boardWidth + renderer.slicePadding;
     Vector2 center = { boardWidth * 0.5f, boardWidth * 0.5f };
-    if (board.config.dim == 3) {
+    if (board.revealedCount == 0 && board.startingCell >= 0) {
+        center = renderer.getCellWorldPosition(static_cast<size_t>(board.startingCell), board);
+    } else if (board.config.dim == 3) {
         center = { boardWidth * 0.5f, (board.config.size * sliceStride) * 0.5f };
     } else if (board.config.dim >= 4) {
         center = { (board.config.size * sliceStride) * 0.5f, (board.config.size * sliceStride) * 0.5f };
@@ -223,12 +225,13 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     hud.endModalDismissed = false;
     saveCurrentSlot();
 
-    // Center camera on board
+    // Center camera on safe starting cell
     float boardWidth = size * renderer.cellSize;
     float sliceStride = boardWidth + renderer.slicePadding;
     Vector2 center = { boardWidth * 0.5f, boardWidth * 0.5f };
-
-    if (dim == 3) {
+    if (board.startingCell >= 0) {
+        center = renderer.getCellWorldPosition(static_cast<size_t>(board.startingCell), board);
+    } else if (dim == 3) {
         center = { boardWidth * 0.5f, (size * sliceStride) * 0.5f };
     } else if (dim >= 4) {
         center = { (size * sliceStride) * 0.5f, (size * sliceStride) * 0.5f };

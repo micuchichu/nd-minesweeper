@@ -38,6 +38,7 @@ void Board::reset() {
     flaggedCount = 0;
     isGameOver = false;
     isVictory = false;
+    startingCell = -1;
 }
 
 void Board::generateBombs(uint64_t seed) {
@@ -58,6 +59,72 @@ void Board::generateBombs(uint64_t seed) {
     }
 }
 
+int64_t Board::findStartingCell() const {
+    if (coord.totalCells == 0 || config.bombs >= static_cast<int>(coord.totalCells)) {
+        return -1;
+    }
+
+    size_t dim = static_cast<size_t>(config.dim);
+    float centerCoord = (static_cast<float>(config.size) - 1.0f) * 0.5f;
+
+    auto calcDistSq = [&](size_t idx) -> float {
+        float d2 = 0.0f;
+        if (dim == 2) {
+            size_t x = 0, y = 0;
+            coord.toCoord2D(idx, x, y);
+            float dx = static_cast<float>(x) - centerCoord;
+            float dy = static_cast<float>(y) - centerCoord;
+            d2 = dx * dx + dy * dy;
+        } else if (dim == 3) {
+            size_t x = 0, y = 0, z = 0;
+            coord.toCoord3D(idx, x, y, z);
+            float dx = static_cast<float>(x) - centerCoord;
+            float dy = static_cast<float>(y) - centerCoord;
+            float dz = static_cast<float>(z) - centerCoord;
+            d2 = dx * dx + dy * dy + dz * dz;
+        } else {
+            size_t x = 0, y = 0, z = 0, w = 0;
+            coord.toCoord4D(idx, x, y, z, w);
+            float dx = static_cast<float>(x) - centerCoord;
+            float dy = static_cast<float>(y) - centerCoord;
+            float dz = static_cast<float>(z) - centerCoord;
+            float dw = static_cast<float>(w) - centerCoord;
+            d2 = dx * dx + dy * dy + dz * dz + dw * dw;
+        }
+        return d2;
+    };
+
+    int64_t bestZeroIdx = -1;
+    float bestZeroDist = 1e18f;
+
+    int64_t bestFallbackIdx = -1;
+    uint8_t minFallbackCount = 255;
+    float bestFallbackDist = 1e18f;
+
+    for (size_t i = 0; i < coord.totalCells; ++i) {
+        if (bombs.getBomb(i)) continue;
+
+        uint8_t c = counts.get(i);
+        float d = calcDistSq(i);
+
+        if (c == 0) {
+            if (d < bestZeroDist) {
+                bestZeroDist = d;
+                bestZeroIdx = static_cast<int64_t>(i);
+            }
+        } else {
+            if (c < minFallbackCount || (c == minFallbackCount && d < bestFallbackDist)) {
+                minFallbackCount = c;
+                bestFallbackDist = d;
+                bestFallbackIdx = static_cast<int64_t>(i);
+            }
+        }
+    }
+
+    if (bestZeroIdx >= 0) return bestZeroIdx;
+    return bestFallbackIdx;
+}
+
 void Board::buildCache() {
     counts.clear();
 
@@ -66,6 +133,8 @@ void Board::buildCache() {
             counts.increment(neighborIndex);
         });
     });
+
+    startingCell = findStartingCell();
 }
 
 RevealResult Board::reveal(size_t startIndex, std::vector<size_t>* outRevealedCells) {

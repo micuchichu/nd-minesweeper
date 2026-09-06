@@ -640,6 +640,51 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     }
                 }
 
+                bool isStartingCell = (board.revealedCount == 0 && !board.isGameOver && !board.isVictory && board.startingCell >= 0 && static_cast<int64_t>(idx) == board.startingCell);
+                if (isStartingCell) {
+                    float t = static_cast<float>(GetTime());
+                    float pulse = 0.5f + 0.5f * std::sin(t * 6.0f);
+                    Color safeCol = ui::Colors::Green400;
+                    Color safeBg = ui::Colors::Green600;
+
+                    // Pulsing emerald highlight backdrop
+                    DrawRectangleRounded(cellRect, 0.2f, 4, Fade(safeBg, 0.35f + 0.25f * pulse));
+
+                    // Glowing border
+                    DrawRectangleLinesEx(cellRect, 2.0f, Fade(safeCol, 0.75f + 0.25f * pulse));
+
+                    // Tactical Corner Brackets (Mindustry high-tech targeting reticle)
+                    float bracketLen = std::clamp(cellRect.width * 0.3f, 4.0f, 9.0f);
+                    float bx = cellRect.x;
+                    float by = cellRect.y;
+                    float bw = cellRect.width;
+                    float bh = cellRect.height;
+                    Color bracketCol = WHITE;
+
+                    // Top-Left
+                    DrawLineEx({ bx, by }, { bx + bracketLen, by }, 2.0f, bracketCol);
+                    DrawLineEx({ bx, by }, { bx, by + bracketLen }, 2.0f, bracketCol);
+                    // Top-Right
+                    DrawLineEx({ bx + bw, by }, { bx + bw - bracketLen, by }, 2.0f, bracketCol);
+                    DrawLineEx({ bx + bw, by }, { bx + bw, by + bracketLen }, 2.0f, bracketCol);
+                    // Bottom-Left
+                    DrawLineEx({ bx, by + bh }, { bx + bracketLen, by + bh }, 2.0f, bracketCol);
+                    DrawLineEx({ bx, by + bh }, { bx, by + bh - bracketLen }, 2.0f, bracketCol);
+                    // Bottom-Right
+                    DrawLineEx({ bx + bw, by + bh }, { bx + bw - bracketLen, by + bh }, 2.0f, bracketCol);
+                    DrawLineEx({ bx + bw, by + bh }, { bx + bw, by + bh - bracketLen }, 2.0f, bracketCol);
+
+                    // Expanding sonar/radar beacon ring inside the cell
+                    float maxR = cellRect.width * 0.45f;
+                    float ringProgress = std::fmod(t * 1.5f, 1.0f);
+                    float ringR = 2.0f + ringProgress * maxR;
+                    float ringAlpha = (1.0f - ringProgress) * 0.8f;
+                    DrawCircleLines(static_cast<int>(bx + bw * 0.5f), static_cast<int>(by + bh * 0.5f), ringR, Fade(safeCol, ringAlpha));
+
+                    // Pulsing glowing center core
+                    DrawCircle(static_cast<int>(bx + bw * 0.5f), static_cast<int>(by + bh * 0.5f), 3.5f + pulse * 1.5f, Fade(safeCol, 0.9f));
+                }
+
                 if (isNeighbor) {
                     if (isHovered) {
                         DrawRectangleRec(cellRect, Fade(WHITE, 0.22f + 0.06f * blink));
@@ -666,7 +711,16 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                 }
                 else if (state == core::CellState::Flagged) lodCol = ui::Colors::Red500;
 
-                DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), lodCol);
+                bool isStartingCell = (board.revealedCount == 0 && !board.isGameOver && !board.isVictory && board.startingCell >= 0 && static_cast<int64_t>(idx) == board.startingCell);
+                if (isStartingCell) {
+                    float t = static_cast<float>(GetTime());
+                    float pulse = 0.5f + 0.5f * std::sin(t * 6.0f);
+                    lodCol = ui::Colors::Green400;
+                    DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), Fade(lodCol, 0.6f + 0.4f * pulse));
+                    DrawRectangleLinesEx({ posX + 1.0f, posY + 1.0f, cellSize - 2.0f, cellSize - 2.0f }, 1.5f, WHITE);
+                } else {
+                    DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), lodCol);
+                }
 
                 if (isHovered) {
                     Rectangle lodRect = { posX + 1.0f, posY + 1.0f, cellSize - 2.0f, cellSize - 2.0f };
@@ -785,10 +839,104 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         DrawCircleLines(static_cast<int>(localMouse.x), static_cast<int>(localMouse.y), 21.0f + pulse * 9.0f, Fade(speakCol, 0.45f));
     }
 
+    // Draw Safe Starting Cell Beacon & Floating Badge (World Space)
+    if (board.revealedCount == 0 && !board.isGameOver && !board.isVictory && board.startingCell >= 0 && board.coord.totalCells > 0) {
+        Vector2 startPos = getCellWorldPosition(static_cast<size_t>(board.startingCell), board);
+        float t = static_cast<float>(GetTime());
+        float bounce = std::sin(t * 4.0f) * 3.0f;
+        float pulse = 0.5f + 0.5f * std::sin(t * 6.0f);
+
+        // Expanding circular ripple waves around starting cell
+        for (int i = 0; i < 2; ++i) {
+            float phase = std::fmod(t * 1.0f + i * 0.5f, 1.0f);
+            float r = (cellSize * 0.5f) + phase * (cellSize * 0.85f);
+            float a = (1.0f - phase) * 0.55f;
+            DrawCircleLines(static_cast<int>(startPos.x), static_cast<int>(startPos.y), r, Fade(ui::Colors::Green400, a));
+        }
+
+        // Floating "SAFE START" pill badge above cell
+        const char* label = "SAFE START";
+        int fontSize = 11;
+        int textW = MeasureText(label, fontSize);
+        float badgeW = static_cast<float>(textW + 18);
+        float badgeH = 19.0f;
+        float badgeX = startPos.x - badgeW * 0.5f;
+        float badgeY = startPos.y - (cellSize * 0.5f) - badgeH - 6.0f + bounce;
+
+        // Badge background & border
+        Rectangle badgeRect = { badgeX, badgeY, badgeW, badgeH };
+        DrawRectangleRounded(badgeRect, 0.4f, 4, Fade(ui::Colors::Zinc950, 0.92f));
+        DrawRectangleLinesEx(badgeRect, 1.0f, Fade(ui::Colors::Green400, 0.85f + 0.15f * pulse));
+
+        // Green dot indicator
+        DrawCircle(static_cast<int>(badgeX + 8.0f), static_cast<int>(badgeY + badgeH * 0.5f), 2.5f, ui::Colors::Green400);
+
+        // Label text
+        DrawText(label, static_cast<int>(badgeX + 15.0f), static_cast<int>(badgeY + 4.0f), fontSize, ui::Colors::Green400);
+
+        // Downward pointer triangle pointing to the cell
+        Vector2 arrowP1 = { startPos.x - 4.5f, badgeY + badgeH };
+        Vector2 arrowP2 = { startPos.x + 4.5f, badgeY + badgeH };
+        Vector2 arrowP3 = { startPos.x, badgeY + badgeH + 5.0f };
+        DrawTriangle(arrowP1, arrowP3, arrowP2, ui::Colors::Green400);
+    }
+
     EndMode2D();
 
     // Draw off-screen neighbor previews on the screen edges (in screen space)
     drawNeighborPreviews(board, hoveredIndex);
+
+    // If the safe starting cell is completely off-screen, show an edge locator arrow (in screen space)
+    if (board.revealedCount == 0 && !board.isGameOver && !board.isVictory && board.startingCell >= 0 && board.coord.totalCells > 0) {
+        Vector2 startWorld = getCellWorldPosition(static_cast<size_t>(board.startingCell), board);
+        Vector2 screenPos = camera.getWorldToScreen(startWorld);
+        float screenW = static_cast<float>(GetScreenWidth());
+        float screenH = static_cast<float>(GetScreenHeight());
+
+        float marginL = 60.0f;
+        float marginR = screenW - 60.0f;
+        float marginT = 85.0f * guiScale;
+        float marginB = screenH - (95.0f * guiScale);
+
+        bool offScreen = (screenPos.x < marginL || screenPos.x > marginR || screenPos.y < marginT || screenPos.y > marginB);
+        if (offScreen) {
+            float clampedX = std::clamp(screenPos.x, marginL, marginR);
+            float clampedY = std::clamp(screenPos.y, marginT, marginB);
+
+            // Compute direction vector towards target
+            float dx = screenPos.x - clampedX;
+            float dy = screenPos.y - clampedY;
+            float len = std::sqrt(dx * dx + dy * dy);
+            if (len > 0.001f) {
+                dx /= len;
+                dy /= len;
+            } else {
+                dx = 0.0f;
+                dy = -1.0f;
+            }
+
+            float t = static_cast<float>(GetTime());
+            float pulse = 0.5f + 0.5f * std::sin(t * 6.0f);
+
+            // Locator pill
+            const char* locText = "SAFE START";
+            int fSize = 12;
+            int tWidth = MeasureText(locText, fSize);
+            float locW = static_cast<float>(tWidth + 24);
+            float locH = 24.0f;
+            Rectangle locRect = { clampedX - locW * 0.5f, clampedY - locH * 0.5f, locW, locH };
+
+            DrawRectangleRounded(locRect, 0.4f, 4, Fade(ui::Colors::Zinc950, 0.90f));
+            DrawRectangleLinesEx(locRect, 1.5f, Fade(ui::Colors::Green400, 0.8f + 0.2f * pulse));
+            DrawText(locText, static_cast<int>(locRect.x + 12.0f), static_cast<int>(locRect.y + 6.0f), fSize, ui::Colors::Green400);
+
+            // Pointer arrow at edge
+            Vector2 tip = { clampedX + dx * 16.0f, clampedY + dy * 16.0f };
+            Vector2 side1 = { clampedX - dy * 6.0f, clampedY + dx * 6.0f };
+            Vector2 side2 = { clampedX + dy * 6.0f, clampedY - dx * 6.0f };
+            DrawTriangle(tip, side1, side2, ui::Colors::Green400);
+        }
+    }
 }
 
 void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex) {
