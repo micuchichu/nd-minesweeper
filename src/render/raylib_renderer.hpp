@@ -23,10 +23,22 @@ struct FlagSkinItem {
 };
 
 struct FlagDropAnim {
+    Vector2 shipPos = { 0.0f, 0.0f };
     Vector2 groundPos = { 0.0f, 0.0f };
+    uint8_t flagSkin = 0;
     float timer = 0.0f;
-    float duration = 0.32f;
+    float duration = 0.22f;
     bool landed = false;
+};
+
+struct FlagPickupAnim {
+    Vector2 startPos = { 0.0f, 0.0f };
+    Vector2 targetPos = { 0.0f, 0.0f };
+    uint32_t pickerId = 0;
+    bool isLocal = false;
+    uint8_t flagSkin = 0;
+    float timer = 0.0f;
+    float duration = 0.20f;
 };
 
 struct PlayerSkinItem {
@@ -86,9 +98,13 @@ public:
     int activeFlagSkin = 0;
 
     std::unordered_map<size_t, FlagDropAnim> flagDropAnims;
-    void triggerFlagDrop(size_t cellIndex, Vector2 groundPos);
+    std::vector<FlagPickupAnim> flagPickupAnims;
+    Vector2 getFlagBasePosition(size_t index, const core::Board& board) const;
+    void triggerFlagDrop(size_t cellIndex, Vector2 groundPos, Vector2 shipPos, uint8_t skinId);
+    void triggerFlagPickup(Vector2 groundPos, Vector2 shipPos, uint32_t pickerId, bool isLocal, uint8_t skinId);
     void removeFlagDrop(size_t cellIndex);
     void clearFlagDrops();
+    void drawFlyingFlags(const core::Board& board);
 
     static std::vector<PlayerSkinItem> playerSkins;
     static int getPlayerSkinCount();

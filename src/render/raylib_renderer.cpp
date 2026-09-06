@@ -400,7 +400,7 @@ void RaylibRenderer::update(float dt) {
     for (auto it = flagDropAnims.begin(); it != flagDropAnims.end(); ) {
         it->second.timer -= dt;
         float p = std::clamp(1.0f - (it->second.timer / it->second.duration), 0.0f, 1.0f);
-        if (p >= 0.65f && !it->second.landed) {
+        if (p >= 0.75f && !it->second.landed) {
             it->second.landed = true;
             particles.emitDebris(it->second.groundPos, 4, ui::Colors::Zinc400);
         }
@@ -408,6 +408,23 @@ void RaylibRenderer::update(float dt) {
             it = flagDropAnims.erase(it);
         } else {
             ++it;
+        }
+    }
+
+    for (size_t i = 0; i < flagPickupAnims.size(); ) {
+        flagPickupAnims[i].timer -= dt;
+        if (flagPickupAnims[i].timer <= 0.0f) {
+            Vector2 shipPos = flagPickupAnims[i].targetPos;
+            if (flagPickupAnims[i].isLocal) {
+                shipPos = localShip.position;
+            } else if (flagPickupAnims[i].pickerId != 0 && remoteShips.count(flagPickupAnims[i].pickerId)) {
+                shipPos = remoteShips.at(flagPickupAnims[i].pickerId).position;
+            }
+            particles.emitDebris(shipPos, 3, ui::Colors::Cyan400);
+            flagPickupAnims[i] = flagPickupAnims.back();
+            flagPickupAnims.pop_back();
+        } else {
+            ++i;
         }
     }
 
@@ -634,75 +651,67 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                         DrawRectangleRounded(cellRect, 0.2f, 4, ui::Colors::CellHidden);
                     }
 
-                    uint8_t cellFlagSkin = board.getFlagSkin(idx, static_cast<uint8_t>(activeFlagSkin));
-                    Texture2D curFlag = getFlagTexture(cellFlagSkin);
-
+                    auto animIt = flagDropAnims.find(idx);
+                    bool isMidFlight = false;
                     float dropY = 0.0f;
                     float squashX = 1.0f;
                     float squashY = 1.0f;
-                    float shadowScale = 1.0f;
-                    float shadowAlpha = 0.40f;
 
-                    auto animIt = flagDropAnims.find(idx);
                     if (animIt != flagDropAnims.end()) {
                         float p = std::clamp(1.0f - (animIt->second.timer / animIt->second.duration), 0.0f, 1.0f);
-                        if (p < 0.65f) {
-                            float t = p / 0.65f;
-                            // Accelerating gravity drop from 60px above
-                            dropY = -60.0f * (1.0f - t * t);
-                            shadowScale = 0.35f + 0.65f * t;
-                            shadowAlpha = 0.12f + 0.28f * t;
-                            squashY = 1.0f + 0.15f * t;
-                            squashX = 1.0f - 0.08f * t;
+                        if (p < 0.75f) {
+                            isMidFlight = true;
                         } else {
-                            float t = (p - 0.65f) / 0.35f;
-                            // Elastic rebound bounce
-                            dropY = -8.0f * std::sin(t * 3.14159265f) * (1.0f - t);
-                            shadowScale = 1.0f;
-                            shadowAlpha = 0.40f;
-                            if (t < 0.4f) {
-                                float sq = std::sin((t / 0.4f) * 3.14159265f);
-                                squashX = 1.0f + 0.22f * sq;
-                                squashY = 1.0f - 0.20f * sq;
+                            float b = (p - 0.75f) / 0.25f;
+                            dropY = -5.0f * std::sin(b * 3.14159265f) * (1.0f - b);
+                            if (b < 0.4f) {
+                                float sq = std::sin((b / 0.4f) * 3.14159265f);
+                                squashX += 0.20f * sq;
+                                squashY -= 0.18f * sq;
                             }
                         }
                     }
 
-                    if (curFlag.id != 0) {
-                        float time = static_cast<float>(GetTime()) + (hashTile(static_cast<int32_t>(x), static_cast<int32_t>(y), static_cast<int32_t>(sliceZ), static_cast<int32_t>(sliceW)) * 10.0f);
-                        int numFrames = (curFlag.width >= curFlag.height * 2) ? (curFlag.width / curFlag.height) : 1;
-                        if (numFrames < 1) numFrames = 1;
-                        float frameW = static_cast<float>(curFlag.width) / static_cast<float>(numFrames);
-                        float frameH = static_cast<float>(curFlag.height);
-                        int frame = (numFrames > 1) ? (static_cast<int>(time) % numFrames) : 0;
-                        Rectangle flagSrc = { frame * frameW, 0.0f, frameW, frameH };
+                    if (!isMidFlight) {
+                        uint8_t cellFlagSkin = board.getFlagSkin(idx, static_cast<uint8_t>(activeFlagSkin));
+                        Texture2D curFlag = getFlagTexture(cellFlagSkin);
 
-                        float flagScale = 1.05f;
-                        float flagW = cellRect.width * flagScale;
-                        float flagH = cellRect.height * flagScale;
-                        float baseX = cellRect.x + 4.0f * cellRect.width / 16.0f;
-                        float baseY = cellRect.y + 12.0f * cellRect.height / 16.0f;
+                        if (curFlag.id != 0) {
+                            float time = static_cast<float>(GetTime()) + (hashTile(static_cast<int32_t>(x), static_cast<int32_t>(y), static_cast<int32_t>(sliceZ), static_cast<int32_t>(sliceW)) * 10.0f);
+                            int numFrames = (curFlag.width >= curFlag.height * 2) ? (curFlag.width / curFlag.height) : 1;
+                            if (numFrames < 1) numFrames = 1;
+                            float frameW = static_cast<float>(curFlag.width) / static_cast<float>(numFrames);
+                            float frameH = static_cast<float>(curFlag.height);
+                            int frame = (numFrames > 1) ? (static_cast<int>(time) % numFrames) : 0;
+                            Rectangle flagSrc = { frame * frameW, 0.0f, frameW, frameH };
 
-                        // Soft ground contact shadow
-                        float shadowFactor = (cellRect.width / 30.0f) * shadowScale;
-                        DrawEllipse(static_cast<int>(baseX + 1.0f), static_cast<int>(baseY + 1.0f), 5.0f * shadowFactor, 2.4f * shadowFactor, Fade(BLACK, shadowAlpha));
+                            float flagScale = 1.05f;
+                            float flagW = cellRect.width * flagScale;
+                            float flagH = cellRect.height * flagScale;
+                            float baseX = cellRect.x + 4.0f * cellRect.width / 16.0f;
+                            float baseY = cellRect.y + 12.0f * cellRect.height / 16.0f;
 
-                        // Ground silhouette shadow
-                        Rectangle shadowDest = { baseX + 2.0f * shadowScale, baseY + 1.5f * shadowScale, flagW * shadowScale, flagH * shadowScale };
-                        Vector2 shadowOrigin = { 4.0f * shadowDest.width / 16.0f, 12.0f * shadowDest.height / 16.0f };
-                        float tilt = std::sin(time) * 5.0f;
-                        DrawTexturePro(curFlag, flagSrc, shadowDest, shadowOrigin, tilt, Fade(BLACK, shadowAlpha * 0.40f));
+                            // Soft ground contact shadow
+                            float shadowFactor = (cellRect.width / 30.0f);
+                            DrawEllipse(static_cast<int>(baseX + 1.0f), static_cast<int>(baseY + 1.0f), 5.0f * shadowFactor, 2.4f * shadowFactor, Fade(BLACK, 0.40f));
 
-                        // Flag sprite (dropping, squashing, waving)
-                        float finalFlagW = flagW * squashX;
-                        float finalFlagH = flagH * squashY;
-                        Vector2 origin = { 4.0f * finalFlagW / 16.0f, 12.0f * finalFlagH / 16.0f };
-                        Rectangle destRect = { baseX, baseY + dropY, finalFlagW, finalFlagH };
+                            // Ground silhouette shadow
+                            Rectangle shadowDest = { baseX + 2.0f, baseY + 1.5f, flagW, flagH };
+                            Vector2 shadowOrigin = { 4.0f * shadowDest.width / 16.0f, 12.0f * shadowDest.height / 16.0f };
+                            float tilt = std::sin(time) * 5.0f;
+                            DrawTexturePro(curFlag, flagSrc, shadowDest, shadowOrigin, tilt, Fade(BLACK, 0.16f));
 
-                        DrawTexturePro(curFlag, flagSrc, destRect, origin, tilt, WHITE);
-                    } else {
-                        DrawRectangleRounded({ cellRect.x + 4.0f, cellRect.y + 6.0f, cellRect.width - 8.0f, cellRect.height - 8.0f }, 0.2f, 4, Fade(BLACK, shadowAlpha * 0.5f));
-                        DrawRectangleRounded({ cellRect.x + 4.0f, cellRect.y + 4.0f + dropY, cellRect.width - 8.0f, cellRect.height - 8.0f }, 0.2f, 4, ui::Colors::Red500);
+                            // Flag sprite (bouncing / settled waving)
+                            float finalFlagW = flagW * squashX;
+                            float finalFlagH = flagH * squashY;
+                            Vector2 origin = { 4.0f * finalFlagW / 16.0f, 12.0f * finalFlagH / 16.0f };
+                            Rectangle destRect = { baseX, baseY + dropY, finalFlagW, finalFlagH };
+
+                            DrawTexturePro(curFlag, flagSrc, destRect, origin, tilt, WHITE);
+                        } else {
+                            DrawRectangleRounded({ cellRect.x + 4.0f, cellRect.y + 6.0f, cellRect.width - 8.0f, cellRect.height - 8.0f }, 0.2f, 4, Fade(BLACK, 0.20f));
+                            DrawRectangleRounded({ cellRect.x + 4.0f, cellRect.y + 4.0f + dropY, cellRect.width - 8.0f, cellRect.height - 8.0f }, 0.2f, 4, ui::Colors::Red500);
+                        }
                     }
                 }
                 else {
@@ -900,13 +909,34 @@ void RaylibRenderer::clearOutOfReach() {
     outOfReachTimer = 0.0f;
 }
 
-void RaylibRenderer::triggerFlagDrop(size_t cellIndex, Vector2 groundPos) {
+Vector2 RaylibRenderer::getFlagBasePosition(size_t index, const core::Board& board) const {
+    Vector2 cellPos = getCellWorldPosition(index, board);
+    return { cellPos.x - cellSize * 0.5f + 4.0f * cellSize / 16.0f, cellPos.y - cellSize * 0.5f + 12.0f * cellSize / 16.0f };
+}
+
+void RaylibRenderer::triggerFlagDrop(size_t cellIndex, Vector2 groundPos, Vector2 shipPos, uint8_t skinId) {
     FlagDropAnim anim;
+    anim.shipPos = shipPos;
     anim.groundPos = groundPos;
-    anim.duration = 0.32f;
+    anim.flagSkin = skinId;
+    anim.duration = 0.22f;
     anim.timer = anim.duration;
     anim.landed = false;
     flagDropAnims[cellIndex] = anim;
+}
+
+void RaylibRenderer::triggerFlagPickup(Vector2 groundPos, Vector2 shipPos, uint32_t pickerId, bool isLocal, uint8_t skinId) {
+    FlagPickupAnim anim;
+    anim.startPos = groundPos;
+    anim.targetPos = shipPos;
+    anim.pickerId = pickerId;
+    anim.isLocal = isLocal;
+    anim.flagSkin = skinId;
+    anim.duration = 0.20f;
+    anim.timer = anim.duration;
+    flagPickupAnims.push_back(anim);
+
+    particles.emitDebris(groundPos, 3, ui::Colors::Zinc400);
 }
 
 void RaylibRenderer::removeFlagDrop(size_t cellIndex) {
@@ -915,6 +945,104 @@ void RaylibRenderer::removeFlagDrop(size_t cellIndex) {
 
 void RaylibRenderer::clearFlagDrops() {
     flagDropAnims.clear();
+    flagPickupAnims.clear();
+}
+
+void RaylibRenderer::drawFlyingFlags(const core::Board& /*board*/) {
+    float curTime = static_cast<float>(GetTime());
+
+    // 1. Flying Drops (Flight phase: p < 0.75f)
+    for (const auto& pair : flagDropAnims) {
+        const auto& anim = pair.second;
+        float p = std::clamp(1.0f - (anim.timer / anim.duration), 0.0f, 1.0f);
+        if (p >= 0.75f) continue; // Handled on cell surface by drawSlice
+
+        float t = p / 0.75f;
+        float easeT = t * (2.0f - t);
+        Vector2 curGround = { anim.shipPos.x + (anim.groundPos.x - anim.shipPos.x) * easeT,
+                              anim.shipPos.y + (anim.groundPos.y - anim.shipPos.y) * easeT };
+        float alt = 36.0f * (1.0f - t) + 20.0f * std::sin(t * 3.14159265f);
+        Vector2 flagPos = { curGround.x, curGround.y - alt };
+
+        float shadowScale = (cellSize / 30.0f) * (0.4f + 0.6f * t);
+        float shadowAlpha = 0.12f + 0.28f * t;
+        DrawEllipse(static_cast<int>(curGround.x + 1.0f), static_cast<int>(curGround.y + 1.0f), 5.0f * shadowScale, 2.4f * shadowScale, Fade(BLACK, shadowAlpha));
+
+        Texture2D curFlag = getFlagTexture(anim.flagSkin);
+        if (curFlag.id != 0) {
+            int numFrames = (curFlag.width >= curFlag.height * 2) ? (curFlag.width / curFlag.height) : 1;
+            if (numFrames < 1) numFrames = 1;
+            float frameW = static_cast<float>(curFlag.width) / static_cast<float>(numFrames);
+            float frameH = static_cast<float>(curFlag.height);
+            int frame = (numFrames > 1) ? (static_cast<int>(curTime * 10.0f) % numFrames) : 0;
+            Rectangle flagSrc = { frame * frameW, 0.0f, frameW, frameH };
+
+            float flagScale = (cellSize / 30.0f) * 1.05f;
+            float squashY = 1.0f + 0.15f * (1.0f - t);
+            float squashX = 1.0f - 0.08f * (1.0f - t);
+            float flagW = 30.0f * flagScale * squashX;
+            float flagH = 30.0f * flagScale * squashY;
+
+            Rectangle shadowDest = { curGround.x + 2.0f * shadowScale, curGround.y + 1.5f * shadowScale, flagW * (0.5f + 0.5f * t), flagH * (0.5f + 0.5f * t) };
+            Vector2 shadowOrigin = { 4.0f * shadowDest.width / 16.0f, 12.0f * shadowDest.height / 16.0f };
+            float tilt = std::sin(curTime * 8.0f) * 4.0f;
+            DrawTexturePro(curFlag, flagSrc, shadowDest, shadowOrigin, tilt, Fade(BLACK, shadowAlpha * 0.35f));
+
+            Vector2 origin = { 4.0f * flagW / 16.0f, 12.0f * flagH / 16.0f };
+            Rectangle destRect = { flagPos.x, flagPos.y, flagW, flagH };
+            DrawTexturePro(curFlag, flagSrc, destRect, origin, tilt, WHITE);
+        } else {
+            DrawRectangleRounded({ flagPos.x - 10.0f, flagPos.y - 10.0f, 20.0f, 20.0f }, 0.2f, 4, ui::Colors::Red500);
+        }
+    }
+
+    // 2. Flying Pickups (Ground -> Ship)
+    for (const auto& anim : flagPickupAnims) {
+        float p = std::clamp(1.0f - (anim.timer / anim.duration), 0.0f, 1.0f);
+        Vector2 targetShip = anim.targetPos;
+        if (anim.isLocal) {
+            targetShip = localShip.position;
+        } else if (anim.pickerId != 0 && remoteShips.count(anim.pickerId)) {
+            targetShip = remoteShips.at(anim.pickerId).position;
+        }
+
+        float t = p * p;
+        Vector2 curGround = { anim.startPos.x + (targetShip.x - anim.startPos.x) * t,
+                              anim.startPos.y + (targetShip.y - anim.startPos.y) * t };
+        float alt = 26.0f * std::sin(p * 3.14159265f);
+        Vector2 flagPos = { curGround.x, curGround.y - alt };
+
+        Color beamColor = ui::Colors::Cyan400;
+        float beamAlpha = 0.45f * (1.0f - p);
+        DrawLineEx(flagPos, targetShip, 2.2f * (1.0f - p), Fade(beamColor, beamAlpha));
+        DrawLineEx(flagPos, targetShip, 1.0f, Fade(WHITE, 0.7f * (1.0f - p)));
+        DrawCircleV(flagPos, 3.5f * (1.0f - p), Fade(beamColor, 0.6f * (1.0f - p)));
+
+        float shadowAlpha = std::max(0.0f, 0.35f * (1.0f - p) * (1.0f - std::min(1.0f, alt / 28.0f)));
+        if (shadowAlpha > 0.01f) {
+            float shadowScale = (cellSize / 30.0f) * (1.0f - 0.5f * p);
+            DrawEllipse(static_cast<int>(curGround.x + 1.0f), static_cast<int>(curGround.y + 1.0f), 5.0f * shadowScale, 2.4f * shadowScale, Fade(BLACK, shadowAlpha));
+        }
+
+        float flagScale = (cellSize / 30.0f) * 1.05f * (1.0f - 0.70f * p);
+        Texture2D curFlag = getFlagTexture(anim.flagSkin);
+        if (curFlag.id != 0) {
+            int numFrames = (curFlag.width >= curFlag.height * 2) ? (curFlag.width / curFlag.height) : 1;
+            if (numFrames < 1) numFrames = 1;
+            float frameW = static_cast<float>(curFlag.width) / static_cast<float>(numFrames);
+            float frameH = static_cast<float>(curFlag.height);
+            Rectangle flagSrc = { 0.0f, 0.0f, frameW, frameH };
+
+            float flagW = 30.0f * flagScale;
+            float flagH = 30.0f * flagScale;
+            Vector2 origin = { 4.0f * flagW / 16.0f, 12.0f * flagH / 16.0f };
+            Rectangle destRect = { flagPos.x, flagPos.y, flagW, flagH };
+            float tilt = std::sin(curTime * 14.0f) * 8.0f;
+            DrawTexturePro(curFlag, flagSrc, destRect, origin, tilt, Fade(WHITE, 1.0f - 0.2f * p));
+        } else {
+            DrawRectangleRounded({ flagPos.x - 8.0f * (1.0f - p), flagPos.y - 8.0f * (1.0f - p), 16.0f * (1.0f - p), 16.0f * (1.0f - p) }, 0.2f, 4, ui::Colors::Red500);
+        }
+    }
 }
 
 
@@ -953,6 +1081,8 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
             }
         }
     }
+
+    drawFlyingFlags(board);
 
     particles.updateAndDraw(GetFrameTime());
 

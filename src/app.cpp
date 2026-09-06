@@ -419,19 +419,22 @@ void App::handleNetEvents() {
                         }
                     } else if (ev.clickData.action == 2) { // Flag toggle
                         core::CellState cs = board.getState(idx);
+                        Vector2 groundPos = renderer.getFlagBasePosition(idx, board);
+                        Vector2 shipPos = (ev.peerId != 0 && renderer.remoteShips.count(ev.peerId)) ? renderer.remoteShips[ev.peerId].position : renderer.localShip.position;
                         if (cs == core::CellState::Flagged) {
-                            board.unflag(idx);
+                            uint8_t skinId = board.getFlagSkin(idx, ev.clickData.flagSkin);
+                            renderer.triggerFlagPickup(groundPos, shipPos, ev.peerId, false, skinId);
                             renderer.removeFlagDrop(idx);
+                            board.unflag(idx);
                             net::PacketResult pr;
                             pr.index = idx;
                             pr.state = 1; // Hidden / unflagged
                             pr.placerId = ev.peerId;
-                            pr.flagSkin = 0;
+                            pr.flagSkin = skinId;
                             net.broadcast(&pr, sizeof(pr));
                         } else if (cs == core::CellState::Hidden) {
                             board.setFlag(idx, ev.peerId, ev.clickData.flagSkin);
-                            Vector2 pos = renderer.getCellWorldPosition(idx, board);
-                            renderer.triggerFlagDrop(idx, pos);
+                            renderer.triggerFlagDrop(idx, groundPos, shipPos, ev.clickData.flagSkin);
                             net::PacketResult pr;
                             pr.index = idx;
                             pr.state = 2; // Flagged
@@ -448,8 +451,13 @@ void App::handleNetEvents() {
                 size_t idx = ev.resultData.index;
                 if (ev.resultData.state == 0) {
                     if (board.getState(idx) == core::CellState::Flagged) {
-                        board.unflag(idx);
+                        Vector2 groundPos = renderer.getFlagBasePosition(idx, board);
+                        Vector2 shipPos = (ev.resultData.placerId != 0 && renderer.remoteShips.count(ev.resultData.placerId)) ? renderer.remoteShips[ev.resultData.placerId].position : renderer.localShip.position;
+                        bool isLocal = (ev.resultData.placerId == 0 || (net.role == net::NetRole::Host && ev.resultData.placerId == net::HOST_PLAYER_ID) || (renderer.remoteShips.count(ev.resultData.placerId) == 0));
+                        uint8_t skinId = board.getFlagSkin(idx, ev.resultData.flagSkin);
+                        renderer.triggerFlagPickup(groundPos, shipPos, ev.resultData.placerId, isLocal, skinId);
                         renderer.removeFlagDrop(idx);
+                        board.unflag(idx);
                     }
                     std::vector<size_t> newlyRevealed;
                     core::RevealResult res = board.reveal(idx, &newlyRevealed);
@@ -475,12 +483,18 @@ void App::handleNetEvents() {
                     }
                     board.flagOwners.erase(idx);
                 } else if (ev.resultData.state == 1) { // Unflagged
-                    board.unflag(idx);
+                    Vector2 groundPos = renderer.getFlagBasePosition(idx, board);
+                    Vector2 shipPos = (ev.resultData.placerId != 0 && renderer.remoteShips.count(ev.resultData.placerId)) ? renderer.remoteShips[ev.resultData.placerId].position : renderer.localShip.position;
+                    bool isLocal = (ev.resultData.placerId == 0 || (net.role == net::NetRole::Host && ev.resultData.placerId == net::HOST_PLAYER_ID) || (renderer.remoteShips.count(ev.resultData.placerId) == 0));
+                    uint8_t skinId = board.getFlagSkin(idx, ev.resultData.flagSkin);
+                    renderer.triggerFlagPickup(groundPos, shipPos, ev.resultData.placerId, isLocal, skinId);
                     renderer.removeFlagDrop(idx);
+                    board.unflag(idx);
                 } else if (ev.resultData.state == 2) { // Flagged
                     board.setFlag(idx, ev.resultData.placerId, ev.resultData.flagSkin);
-                    Vector2 pos = renderer.getCellWorldPosition(idx, board);
-                    renderer.triggerFlagDrop(idx, pos);
+                    Vector2 groundPos = renderer.getFlagBasePosition(idx, board);
+                    Vector2 shipPos = (ev.resultData.placerId != 0 && renderer.remoteShips.count(ev.resultData.placerId)) ? renderer.remoteShips[ev.resultData.placerId].position : renderer.localShip.position;
+                    renderer.triggerFlagDrop(idx, groundPos, shipPos, ev.resultData.flagSkin);
                 }
                 break;
             }
@@ -715,21 +729,24 @@ void App::update(float dt) {
                     } else {
                         uint32_t myId = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
                         core::CellState cs = board.getState(hIdx);
+                        Vector2 groundPos = renderer.getFlagBasePosition(hIdx, board);
+                        Vector2 shipPos = renderer.localShip.position;
                         if (cs == core::CellState::Flagged) {
-                            board.unflag(hIdx);
+                            uint8_t skinId = board.getFlagSkin(hIdx, static_cast<uint8_t>(menu.flagSkin));
+                            renderer.triggerFlagPickup(groundPos, shipPos, myId, true, skinId);
                             renderer.removeFlagDrop(hIdx);
+                            board.unflag(hIdx);
                             if (net.role == net::NetRole::Host) {
                                 net::PacketResult pr;
                                 pr.index = hIdx;
                                 pr.state = 1; // Hidden / unflagged
                                 pr.placerId = myId;
-                                pr.flagSkin = 0;
+                                pr.flagSkin = skinId;
                                 net.broadcast(&pr, sizeof(pr));
                             }
                         } else if (cs == core::CellState::Hidden) {
                             board.setFlag(hIdx, myId, static_cast<uint8_t>(menu.flagSkin));
-                            Vector2 cellPos = renderer.getCellWorldPosition(hIdx, board);
-                            renderer.triggerFlagDrop(hIdx, cellPos);
+                            renderer.triggerFlagDrop(hIdx, groundPos, shipPos, static_cast<uint8_t>(menu.flagSkin));
                             if (net.role == net::NetRole::Host) {
                                 net::PacketResult pr;
                                 pr.index = hIdx;
