@@ -67,6 +67,7 @@ struct PacketCursor {
     float x = 0.0f;
     float y = 0.0f;
     float angle = 0.0f;
+    float mass = 1.0f;
     bool isMoving = false;
     uint8_t skin = 0;
     char name[16] = {0};
@@ -137,6 +138,7 @@ struct RemoteCursor {
     float x = 0.0f;
     float y = 0.0f;
     float angle = 0.0f;
+    float mass = 1.0f;
     bool isMoving = false;
     uint8_t skin = 0;
     char name[16] = {0};

@@ -298,6 +298,7 @@ void NetworkManager::update() {
                 rc.x = p->x;
                 rc.y = p->y;
                 rc.angle = p->angle;
+                rc.mass = p->mass;
                 rc.isMoving = p->isMoving;
                 rc.skin = p->skin;
                 std::memcpy(rc.name, p->name, sizeof(rc.name));
@@ -463,6 +464,7 @@ void NetworkManager::update() {
                         rc.x = p->x;
                         rc.y = p->y;
                         rc.angle = p->angle;
+                        rc.mass = p->mass;
                         rc.isMoving = p->isMoving;
                         rc.skin = p->skin;
                         std::memcpy(rc.name, p->name, sizeof(rc.name));

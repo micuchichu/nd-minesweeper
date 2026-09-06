@@ -178,7 +178,7 @@ void App::saveCurrentSlot() {
 
 bool App::loadSaveSlot(int slotIndex) {
     activeSaveSlot = slotIndex;
-    renderer.localShipInit = false;
+    renderer.localShip.isInitialized = false;
     bool ok = saveMgr.loadSlot(slotIndex, board, timePlayed, scrapCount, activeSaveName);
     if (!ok) {
         activeSaveName = "World " + std::to_string(slotIndex);
@@ -212,7 +212,7 @@ bool App::loadSaveSlot(int slotIndex) {
 
 void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     renderer.clearParticles();
-    renderer.localShipInit = false;
+    renderer.localShip.isInitialized = false;
     int leftover = scrapSystem.collectAll();
     if (leftover > 0) {
         scrapCount += leftover;
@@ -484,7 +484,7 @@ void App::update(float dt) {
     Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
     renderer.updateShip(worldMouse, dt);
 
-    voiceMgr.setLocalCursorPos(renderer.localShipPos.x, renderer.localShipPos.y);
+    voiceMgr.setLocalCursorPos(renderer.localShip.position.x, renderer.localShip.position.y);
     voiceMgr.setPushToTalkActive(IsKeyDown(KEY_V));
     voiceMgr.update(dt);
 
@@ -512,21 +512,21 @@ void App::update(float dt) {
             static Vector2 lastSent = { -9999.0f, -9999.0f };
             static float lastSentAngle = -9999.0f;
             static bool lastSentMoving = false;
-            float currentSpeed = std::sqrt(renderer.localShipVel.x * renderer.localShipVel.x + renderer.localShipVel.y * renderer.localShipVel.y);
-            bool isMoving = (currentSpeed > 20.0f);
+            bool isMoving = renderer.localShip.isMoving;
 
-            if (Vector2Distance(renderer.localShipPos, lastSent) > 1.5f ||
-                std::abs(renderer.localShipAngle - lastSentAngle) > 2.0f ||
+            if (Vector2Distance(renderer.localShip.position, lastSent) > 1.5f ||
+                std::abs(renderer.localShip.angle - lastSentAngle) > 2.0f ||
                 isMoving != lastSentMoving) {
-                lastSent = renderer.localShipPos;
-                lastSentAngle = renderer.localShipAngle;
+                lastSent = renderer.localShip.position;
+                lastSentAngle = renderer.localShip.angle;
                 lastSentMoving = isMoving;
 
                 net::PacketCursor pc;
                 pc.playerID = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
-                pc.x = renderer.localShipPos.x;
-                pc.y = renderer.localShipPos.y;
-                pc.angle = renderer.localShipAngle;
+                pc.x = renderer.localShip.position.x;
+                pc.y = renderer.localShip.position.y;
+                pc.angle = renderer.localShip.angle;
+                pc.mass = renderer.localShip.mass;
                 pc.isMoving = isMoving;
                 pc.skin = static_cast<uint8_t>(menu.cursorSkin);
                 std::strncpy(pc.name, menu.playerName, sizeof(pc.name));

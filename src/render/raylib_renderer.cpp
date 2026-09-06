@@ -46,6 +46,13 @@ const char* RaylibRenderer::getCursorSkinName(int skin) {
     return "DEFAULT";
 }
 
+Texture2D RaylibRenderer::getCursorSkinTexture(int skin) {
+    if (skin >= 0 && skin < static_cast<int>(cursorSkins.size())) {
+        return cursorSkins[skin].texture;
+    }
+    return Texture2D{ 0 };
+}
+
 std::vector<FlagSkinItem> RaylibRenderer::flagSkins;
 
 int RaylibRenderer::getFlagSkinCount() {
@@ -724,240 +731,59 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
 }
 
 void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, float angle, Color col, const char* name, float scale, bool isSpeaking, bool isMoving) {
-    int skinIdx = static_cast<int>(skin);
-    bool drewTexture = false;
+    core::Ship s;
+    s.position = pos;
+    s.angle = angle;
+    s.color = col;
+    s.scale = scale;
+    s.isSpeaking = isSpeaking;
+    s.isMoving = isMoving;
+    s.skinId = skin;
+    s.texture = getCursorSkinTexture(skin);
+    s.draw(name, col, isSpeaking);
+}
 
-    if (skinIdx >= 0 && skinIdx < static_cast<int>(cursorSkins.size()) && cursorSkins[skinIdx].texture.id != 0) {
-        const auto& tex = cursorSkins[skinIdx].texture;
-        Rectangle src = { 0.0f, 0.0f, static_cast<float>(tex.width), static_cast<float>(tex.height) };
-        float w = static_cast<float>(tex.width) * scale;
-        float h = static_cast<float>(tex.height) * scale;
-        Rectangle dest = { pos.x, pos.y, w, h };
-        Vector2 origin = { w * 0.5f, h * 0.5f };
-
-        // Hovering Drop Shadow
-        // Offset slightly down-right in world space to create 3D altitude above the board
-        Vector2 shadowOffset = { 2.5f * scale, 3.5f * scale };
-        Rectangle shadowOuter = { pos.x + shadowOffset.x, pos.y + shadowOffset.y, w * 1.06f, h * 1.06f };
-        Vector2 originOuter = { shadowOuter.width * 0.5f, shadowOuter.height * 0.5f };
-        DrawTexturePro(tex, src, shadowOuter, originOuter, angle, Fade(BLACK, 0.18f));
-        Rectangle shadowDest = { pos.x + shadowOffset.x, pos.y + shadowOffset.y, w, h };
-        DrawTexturePro(tex, src, shadowDest, origin, angle, Fade(BLACK, 0.38f));
-
-        float theta = angle * DEG2RAD;
-        float cosA = std::cos(theta);
-        float sinA = std::sin(theta);
-
-        // Center particles and thrusters at (4, 12) and (11, 12) relative to top-left of 16x16 sprite
-        // Relative to texture center (8.0, 8.0): pixel 4 center is -3.5, pixel 11 center is +3.5, row 12 center is +4.5
-        float lxLeft = -3.5f * scale;
-        float lxRight = 3.5f * scale;
-        float ly = 4.5f * scale;
-
-        Vector2 leftThrust = {
-            pos.x + (lxLeft * cosA - ly * sinA),
-            pos.y + (lxLeft * sinA + ly * cosA)
-        };
-        Vector2 rightThrust = {
-            pos.x + (lxRight * cosA - ly * sinA),
-            pos.y + (lxRight * sinA + ly * cosA)
-        };
-
-        // Direction out the rear of the ship (downwards in sprite coordinates)
-        Vector2 rear = { -sinA, cosA };
-        // Direction perpendicular to rear along flame base (horizontal in sprite coordinates)
-        Vector2 flameDir = { cosA, sinA };
-
-        float t = static_cast<float>(GetTime());
-        if (isMoving) {
-            float flicker1 = 4.0f + 3.0f * std::sin(t * 40.0f);
-            float flicker2 = 4.0f + 3.0f * std::cos(t * 46.0f);
-
-            Vector2 leftTip = { leftThrust.x + rear.x * (flicker1 * scale), leftThrust.y + rear.y * (flicker1 * scale) };
-            Vector2 rightTip = { rightThrust.x + rear.x * (flicker2 * scale), rightThrust.y + rear.y * (flicker2 * scale) };
-
-            float flameW = 1.6f * scale;
-            // Outer plasma plume (Orange)
-            DrawTriangle(leftTip, { leftThrust.x + flameDir.x * flameW, leftThrust.y + flameDir.y * flameW }, { leftThrust.x - flameDir.x * flameW, leftThrust.y - flameDir.y * flameW }, ui::Colors::Orange500);
-            DrawTriangle(rightTip, { rightThrust.x + flameDir.x * flameW, rightThrust.y + flameDir.y * flameW }, { rightThrust.x - flameDir.x * flameW, rightThrust.y - flameDir.y * flameW }, ui::Colors::Orange500);
-
-            // Inner hot plasma core (Amber/Yellow)
-            Vector2 leftCoreTip = { leftThrust.x + rear.x * (flicker1 * 0.55f * scale), leftThrust.y + rear.y * (flicker1 * 0.55f * scale) };
-            Vector2 rightCoreTip = { rightThrust.x + rear.x * (flicker2 * 0.55f * scale), rightThrust.y + rear.y * (flicker2 * 0.55f * scale) };
-            float coreW = 1.0f * scale;
-            DrawTriangle(leftCoreTip, { leftThrust.x + flameDir.x * coreW, leftThrust.y + flameDir.y * coreW }, { leftThrust.x - flameDir.x * coreW, leftThrust.y - flameDir.y * coreW }, ui::Colors::Amber300);
-            DrawTriangle(rightCoreTip, { rightThrust.x + flameDir.x * coreW, rightThrust.y + flameDir.y * coreW }, { rightThrust.x - flameDir.x * coreW, rightThrust.y - flameDir.y * coreW }, ui::Colors::Amber300);
+void RaylibRenderer::syncRemoteShips(const std::map<uint32_t, net::RemoteCursor>& cursors) {
+    for (const auto& [id, c] : cursors) {
+        auto& s = remoteShips[id];
+        s.position = { c.x, c.y };
+        s.angle = c.angle;
+        s.mass = c.mass;
+        s.isMoving = c.isMoving;
+        s.skinId = c.skin;
+        s.texture = getCursorSkinTexture(c.skin);
+        s.name = c.name;
+        s.isSpeaking = c.isSpeaking;
+        s.isInitialized = true;
+    }
+    for (auto it = remoteShips.begin(); it != remoteShips.end(); ) {
+        if (cursors.find(it->first) == cursors.end()) {
+            it = remoteShips.erase(it);
         } else {
-            // Subtle idle thruster glow beneath the ship
-            float idlePulse = 0.4f + 0.4f * std::sin(t * 6.0f);
-            DrawCircleV(leftThrust, 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
-            DrawCircleV(rightThrust, 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
+            ++it;
         }
-
-        // Draw Ship Sprite rotated around center
-        DrawTexturePro(tex, src, dest, origin, angle, WHITE);
-        drewTexture = true;
     }
+}
 
-    if (!drewTexture) {
-        int px = static_cast<int>(pos.x - 5.0f * scale);
-        int py = static_cast<int>(pos.y - 5.0f * scale);
-        DrawRectangle(px, py, static_cast<int>(10 * scale), static_cast<int>(10 * scale), col);
-        DrawRectangleLines(px, py, static_cast<int>(10 * scale), static_cast<int>(10 * scale), WHITE);
+void RaylibRenderer::resolveShipCollisions() {
+    for (auto& [id, rShip] : remoteShips) {
+        core::Ship::resolveCollision(localShip, rShip);
     }
-
-    if (isSpeaking) {
-        float t = static_cast<float>(GetTime());
-        float pulse = (std::sin(t * 12.0f) + 1.0f) * 0.5f;
-        Color speakCol = ui::Colors::Green500;
-        DrawCircleLines(static_cast<int>(pos.x), static_cast<int>(pos.y), 15.0f * scale + pulse * 6.0f, Fade(speakCol, 0.85f));
-        DrawCircleLines(static_cast<int>(pos.x), static_cast<int>(pos.y), 22.0f * scale + pulse * 9.0f, Fade(speakCol, 0.45f));
-    }
-
-    if (name && name[0] != '\0') {
-        int nameW = MeasureText(name, 12);
-        Rectangle badge = { pos.x - static_cast<float>(nameW + (isSpeaking ? 20 : 8)) * 0.5f, pos.y + 16.0f * scale, static_cast<float>(nameW + (isSpeaking ? 20 : 8)), 16.0f };
-        DrawRectangleRec(badge, Fade(BLACK, 0.85f));
-        DrawRectangleLinesEx(badge, 1.0f, isSpeaking ? ui::Colors::Green500 : col);
-        if (isSpeaking) {
-            DrawCircle(static_cast<int>(badge.x + 6), static_cast<int>(badge.y + 8), 3.0f, ui::Colors::Green500);
-            DrawText(name, static_cast<int>(badge.x + 14), static_cast<int>(badge.y + 2), 12, WHITE);
-        } else {
-            DrawText(name, static_cast<int>(badge.x + 4), static_cast<int>(badge.y + 2), 12, WHITE);
+    for (auto it1 = remoteShips.begin(); it1 != remoteShips.end(); ++it1) {
+        auto it2 = it1;
+        ++it2;
+        for (; it2 != remoteShips.end(); ++it2) {
+            core::Ship::resolveCollision(it1->second, it2->second);
         }
     }
 }
 
 void RaylibRenderer::updateShip(Vector2 targetPos, float dt) {
-    if (!localShipInit) {
-        localShipPos = { targetPos.x - 50.0f, targetPos.y };
-        localShipVel = { 0.0f, 0.0f };
-        localShipAngle = 0.0f;
-        localShipInit = true;
-        shipExhaust.clear();
-    }
-
-    // 1. Calculate direction to cursor
-    Vector2 toMouse = { targetPos.x - localShipPos.x, targetPos.y - localShipPos.y };
-    float distToMouse = std::sqrt(toMouse.x * toMouse.x + toMouse.y * toMouse.y);
-
-    const float targetDist = 50.0f;  // Keep 50px distance requested by user
-    const float maxSpeed = 600.0f;   // 6x faster (at least 5 times faster requested by user)
-    const float slowRadius = 140.0f; // Deceleration braking radius to prevent abrupt stopping
-    const float maxAccel = 2200.0f;  // Responsive acceleration force
-
-    // Desired resting position maintains 50px distance from cursor
-    Vector2 idealPos;
-    if (distToMouse > 0.001f) {
-        Vector2 dirFromMouse = { -toMouse.x / distToMouse, -toMouse.y / distToMouse };
-        idealPos = { targetPos.x + dirFromMouse.x * targetDist, targetPos.y + dirFromMouse.y * targetDist };
-    } else {
-        idealPos = { targetPos.x - targetDist, targetPos.y };
-    }
-
-    Vector2 toIdeal = { idealPos.x - localShipPos.x, idealPos.y - localShipPos.y };
-    float distToIdeal = std::sqrt(toIdeal.x * toIdeal.x + toIdeal.y * toIdeal.y);
-
-    // Smooth arrival deceleration curve
-    float desiredSpeed = 0.0f;
-    if (distToIdeal > slowRadius) {
-        desiredSpeed = maxSpeed;
-    } else if (distToIdeal > 0.5f) {
-        float t = distToIdeal / slowRadius;
-        desiredSpeed = maxSpeed * (t * (2.0f - t)); // Smooth quadratic ease-out brake
-    }
-
-    Vector2 desiredVel = { 0.0f, 0.0f };
-    if (distToIdeal > 0.001f && desiredSpeed > 0.0f) {
-        desiredVel = { (toIdeal.x / distToIdeal) * desiredSpeed, (toIdeal.y / distToIdeal) * desiredSpeed };
-    }
-
-    // Acceleration-driven physics
-    Vector2 accel = { (desiredVel.x - localShipVel.x) * 10.0f, (desiredVel.y - localShipVel.y) * 10.0f };
-    float accelMag = std::sqrt(accel.x * accel.x + accel.y * accel.y);
-    if (accelMag > maxAccel) {
-        accel.x = (accel.x / accelMag) * maxAccel;
-        accel.y = (accel.y / accelMag) * maxAccel;
-    }
-
-    localShipVel.x += accel.x * dt;
-    localShipVel.y += accel.y * dt;
-
-    // Settle smoothly when very close to rest position
-    float curSpeed = std::sqrt(localShipVel.x * localShipVel.x + localShipVel.y * localShipVel.y);
-    if (distToIdeal < 1.0f && curSpeed < 8.0f) {
-        localShipVel = { 0.0f, 0.0f };
-        localShipPos = idealPos;
-    } else {
-        localShipPos.x += localShipVel.x * dt;
-        localShipPos.y += localShipVel.y * dt;
-    }
-
-    // 2. Rotate so eyes (two yellow lines at top of sprite) face the cursor
-    if (distToMouse > 0.001f) {
-        float dirX = toMouse.x / distToMouse;
-        float dirY = toMouse.y / distToMouse;
-        float desiredAngle = std::atan2(dirY, dirX) * RAD2DEG + 90.0f;
-        float diffAngle = desiredAngle - localShipAngle;
-        while (diffAngle < -180.0f) diffAngle += 360.0f;
-        while (diffAngle > 180.0f) diffAngle -= 360.0f;
-        localShipAngle += diffAngle * std::min(1.0f, 18.0f * dt);
-    }
-
-    // 3. Update & spawn trailing exhaust particles beneath the ship
-    float theta = localShipAngle * DEG2RAD;
-    float cosA = std::cos(theta);
-    float sinA = std::sin(theta);
-
-    // Center particles and thrusters at (4, 12) and (11, 12) relative to top-left of 16x16 sprite
-    // Relative to texture center (8.0, 8.0): pixel 4 center is -3.5, pixel 11 center is +3.5, row 12 center is +4.5
-    float scale = 1.6f;
-    float lxLeft = -3.5f * scale;
-    float lxRight = 3.5f * scale;
-    float ly = 4.5f * scale;
-
-    Vector2 leftThrust = {
-        localShipPos.x + (lxLeft * cosA - ly * sinA),
-        localShipPos.y + (lxLeft * sinA + ly * cosA)
-    };
-    Vector2 rightThrust = {
-        localShipPos.x + (lxRight * cosA - ly * sinA),
-        localShipPos.y + (lxRight * sinA + ly * cosA)
-    };
-    Vector2 rear = { -sinA, cosA };
-    Vector2 right = { cosA, sinA };
-
-    if (curSpeed > 25.0f) {
-        static float emitAccum = 0.0f;
-        emitAccum += dt * (curSpeed / maxSpeed);
-        while (emitAccum >= 0.02f) {
-            emitAccum -= 0.02f;
-            if (shipExhaust.size() < 128) {
-                float pSpeed = 40.0f + static_cast<float>(rand() % 40);
-                float spread = ((rand() % 100) - 50) * 0.004f;
-                Vector2 pVel = { (rear.x + right.x * spread) * pSpeed, (rear.y + right.y * spread) * pSpeed };
-                Color c1 = (rand() % 2 == 0) ? ui::Colors::Amber400 : ui::Colors::Orange500;
-                Color c2 = (rand() % 2 == 0) ? ui::Colors::Yellow400 : ui::Colors::Amber400;
-                shipExhaust.push_back({ leftThrust, pVel, 0.28f, 0.28f, 2.4f, c1 });
-                shipExhaust.push_back({ rightThrust, pVel, 0.28f, 0.28f, 2.4f, c2 });
-            }
-        }
-    }
-
-    for (size_t i = 0; i < shipExhaust.size(); ) {
-        shipExhaust[i].life -= dt;
-        if (shipExhaust[i].life <= 0.0f) {
-            shipExhaust[i] = shipExhaust.back();
-            shipExhaust.pop_back();
-        } else {
-            shipExhaust[i].pos.x += shipExhaust[i].vel.x * dt;
-            shipExhaust[i].pos.y += shipExhaust[i].vel.y * dt;
-            shipExhaust[i].vel.x *= 0.94f;
-            shipExhaust[i].vel.y *= 0.94f;
-            ++i;
-        }
-    }
+    localShip.skinId = activeCursorSkin;
+    localShip.texture = getCursorSkinTexture(activeCursorSkin);
+    localShip.update(targetPos, dt);
 }
+
 
 void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, const net::NetworkManager& net) {
     BeginMode2D(camera.camera);
@@ -997,32 +823,31 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
 
     particles.updateAndDraw(GetFrameTime());
 
-    // Draw remote multiplayer cursors with custom skins and speaking effects
-    for (const auto& [id, cursor] : net.remoteCursors) {
+    // Sync remote players and resolve collisions
+    syncRemoteShips(net.remoteCursors);
+    resolveShipCollisions();
+
+    // 1. Draw exhaust particles beneath all ships
+    for (const auto& [id, rShip] : remoteShips) {
+        rShip.drawExhaust();
+    }
+    localShip.drawExhaust();
+
+    // 2. Draw remote ships
+    for (const auto& [id, rShip] : remoteShips) {
         Color curCol = ui::Colors::Red500;
         if (id != 0) {
             curCol = ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f);
         }
-        const char* tag = cursor.name[0] != '\0' ? cursor.name : (id == 0 ? "HOST" : TextFormat("P%u", id));
-        drawCursorSkin(cursor.skin, { cursor.x, cursor.y }, cursor.angle, curCol, tag, 1.8f, cursor.isSpeaking, cursor.isMoving);
+        const char* tag = !rShip.name.empty() ? rShip.name.c_str() : (id == 0 ? "HOST" : TextFormat("P%u", id));
+        rShip.draw(tag, curCol, rShip.isSpeaking);
     }
 
-    // Draw trailing ship exhaust particles beneath the ship
-    for (const auto& p : shipExhaust) {
-        float alpha = p.life / p.maxLife;
-        Color c = p.color;
-        c.a = static_cast<unsigned char>(alpha * 200.0f);
-        float sz = p.size * (0.4f + 0.6f * alpha);
-        DrawRectanglePro({ p.pos.x, p.pos.y, sz, sz }, { sz * 0.5f, sz * 0.5f }, 45.0f, c);
-    }
-
-    // Draw local player ship following cursor
-    Vector2 worldMouse = camera.getScreenToWorld(camera.getCRTMousePosition());
-    float currentSpeed = std::sqrt(localShipVel.x * localShipVel.x + localShipVel.y * localShipVel.y);
-    bool isMoving = (currentSpeed > 20.0f);
-    drawCursorSkin(static_cast<uint8_t>(activeCursorSkin), localShipPos, localShipAngle, ui::Colors::Green500, nullptr, 1.8f, isLocalSpeaking, isMoving);
+    // 3. Draw local player ship
+    localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
 
     // Subtle tactical aim crosshair at the cursor
+    Vector2 worldMouse = camera.getScreenToWorld(camera.getCRTMousePosition());
     float chSize = 3.5f;
     DrawLineEx({ worldMouse.x - chSize, worldMouse.y }, { worldMouse.x + chSize, worldMouse.y }, 1.0f, Fade(WHITE, 0.45f));
     DrawLineEx({ worldMouse.x, worldMouse.y - chSize }, { worldMouse.x, worldMouse.y + chSize }, 1.0f, Fade(WHITE, 0.45f));

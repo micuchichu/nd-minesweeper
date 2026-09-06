@@ -4,6 +4,7 @@
 #include "camera_controller.hpp"
 #include "particles.hpp"
 #include "../ui/theme.hpp"
+#include "../core/ship.hpp"
 #include <string>
 #include <vector>
 
@@ -38,24 +39,15 @@ public:
     static std::vector<CursorSkinItem> cursorSkins;
     static int getCursorSkinCount();
     static const char* getCursorSkinName(int skin);
+    static Texture2D getCursorSkinTexture(int skin);
     static void drawCursorSkin(uint8_t skin, Vector2 pos, float angle = 0.0f, Color col = WHITE, const char* name = nullptr, float scale = 1.0f, bool isSpeaking = false, bool isMoving = false);
 
     int activeCursorSkin = 0;
-    Vector2 localShipPos = { 0.0f, 0.0f };
-    Vector2 localShipVel = { 0.0f, 0.0f };
-    float localShipAngle = 0.0f;
-    bool localShipInit = false;
+    core::Ship localShip;
+    std::map<uint32_t, core::Ship> remoteShips;
 
-    struct ShipExhaustParticle {
-        Vector2 pos;
-        Vector2 vel;
-        float life;
-        float maxLife;
-        float size;
-        Color color;
-    };
-    std::vector<ShipExhaustParticle> shipExhaust;
-
+    void syncRemoteShips(const std::map<uint32_t, net::RemoteCursor>& cursors);
+    void resolveShipCollisions();
     void updateShip(Vector2 targetPos, float dt);
 
     bool isLocalSpeaking = false;
@@ -90,7 +82,7 @@ public:
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
-    void clearParticles() { particles.clear(); shipExhaust.clear(); }
+    void clearParticles() { particles.clear(); localShip.exhaust.clear(); }
 
 private:
     Texture2D flagTexture = {0};
