@@ -735,44 +735,54 @@ void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, float angle, Colo
         Rectangle dest = { pos.x, pos.y, w, h };
         Vector2 origin = { w * 0.5f, h * 0.5f };
 
-        // The sprite eyes (two yellow lines) are at the top of the sprite (-Y).
-        // At angle = 0, the ship's eyes face UP (0, -1).
-        // Forward vector in world coordinates:
-        float rad = (angle - 90.0f) * DEG2RAD;
-        Vector2 fwd = { std::cos(rad), std::sin(rad) };
-        Vector2 rear = { -fwd.x, -fwd.y }; // Beneath the ship
-        Vector2 right = { -fwd.y, fwd.x };
+        float theta = angle * DEG2RAD;
+        float cosA = std::cos(theta);
+        float sinA = std::sin(theta);
 
-        // Position engine exhausts a bit beneath the ship's bottom hull
-        Vector2 rearCenter = { pos.x + rear.x * (h * 0.48f), pos.y + rear.y * (h * 0.48f) };
-        float thrusterSpacing = w * 0.25f;
-        Vector2 leftThrust = { rearCenter.x - right.x * thrusterSpacing, rearCenter.y - right.y * thrusterSpacing };
-        Vector2 rightThrust = { rearCenter.x + right.x * thrusterSpacing, rearCenter.y + right.y * thrusterSpacing };
+        // Center particles and thrusters at (4, 12) and (11, 12) relative to top-left of 16x16 sprite
+        // Relative to texture center (8.0, 8.0): pixel 4 center is -3.5, pixel 11 center is +3.5, row 12 center is +4.5
+        float lxLeft = -3.5f * scale;
+        float lxRight = 3.5f * scale;
+        float ly = 4.5f * scale;
+
+        Vector2 leftThrust = {
+            pos.x + (lxLeft * cosA - ly * sinA),
+            pos.y + (lxLeft * sinA + ly * cosA)
+        };
+        Vector2 rightThrust = {
+            pos.x + (lxRight * cosA - ly * sinA),
+            pos.y + (lxRight * sinA + ly * cosA)
+        };
+
+        // Direction out the rear of the ship (downwards in sprite coordinates)
+        Vector2 rear = { -sinA, cosA };
+        // Direction perpendicular to rear along flame base (horizontal in sprite coordinates)
+        Vector2 flameDir = { cosA, sinA };
 
         float t = static_cast<float>(GetTime());
         if (isMoving) {
-            float flicker1 = 4.5f + 3.5f * std::sin(t * 40.0f);
-            float flicker2 = 4.5f + 3.5f * std::cos(t * 46.0f);
+            float flicker1 = 4.0f + 3.0f * std::sin(t * 40.0f);
+            float flicker2 = 4.0f + 3.0f * std::cos(t * 46.0f);
 
             Vector2 leftTip = { leftThrust.x + rear.x * (flicker1 * scale), leftThrust.y + rear.y * (flicker1 * scale) };
             Vector2 rightTip = { rightThrust.x + rear.x * (flicker2 * scale), rightThrust.y + rear.y * (flicker2 * scale) };
 
-            float flameW = 2.2f * scale;
+            float flameW = 1.6f * scale;
             // Outer plasma plume (Orange)
-            DrawTriangle(leftTip, { leftThrust.x + right.x * flameW, leftThrust.y + right.y * flameW }, { leftThrust.x - right.x * flameW, leftThrust.y - right.y * flameW }, ui::Colors::Orange500);
-            DrawTriangle(rightTip, { rightThrust.x + right.x * flameW, rightThrust.y + right.y * flameW }, { rightThrust.x - right.x * flameW, rightThrust.y - right.y * flameW }, ui::Colors::Orange500);
+            DrawTriangle(leftTip, { leftThrust.x + flameDir.x * flameW, leftThrust.y + flameDir.y * flameW }, { leftThrust.x - flameDir.x * flameW, leftThrust.y - flameDir.y * flameW }, ui::Colors::Orange500);
+            DrawTriangle(rightTip, { rightThrust.x + flameDir.x * flameW, rightThrust.y + flameDir.y * flameW }, { rightThrust.x - flameDir.x * flameW, rightThrust.y - flameDir.y * flameW }, ui::Colors::Orange500);
 
             // Inner hot plasma core (Amber/Yellow)
             Vector2 leftCoreTip = { leftThrust.x + rear.x * (flicker1 * 0.55f * scale), leftThrust.y + rear.y * (flicker1 * 0.55f * scale) };
             Vector2 rightCoreTip = { rightThrust.x + rear.x * (flicker2 * 0.55f * scale), rightThrust.y + rear.y * (flicker2 * 0.55f * scale) };
-            float coreW = 1.2f * scale;
-            DrawTriangle(leftCoreTip, { leftThrust.x + right.x * coreW, leftThrust.y + right.y * coreW }, { leftThrust.x - right.x * coreW, leftThrust.y - right.y * coreW }, ui::Colors::Amber300);
-            DrawTriangle(rightCoreTip, { rightThrust.x + right.x * coreW, rightThrust.y + right.y * coreW }, { rightThrust.x - right.x * coreW, rightThrust.y - right.y * coreW }, ui::Colors::Amber300);
+            float coreW = 1.0f * scale;
+            DrawTriangle(leftCoreTip, { leftThrust.x + flameDir.x * coreW, leftThrust.y + flameDir.y * coreW }, { leftThrust.x - flameDir.x * coreW, leftThrust.y - flameDir.y * coreW }, ui::Colors::Amber300);
+            DrawTriangle(rightCoreTip, { rightThrust.x + flameDir.x * coreW, rightThrust.y + flameDir.y * coreW }, { rightThrust.x - flameDir.x * coreW, rightThrust.y - flameDir.y * coreW }, ui::Colors::Amber300);
         } else {
             // Subtle idle thruster glow beneath the ship
-            float idlePulse = 0.5f + 0.5f * std::sin(t * 6.0f);
-            DrawCircle(static_cast<int>(leftThrust.x), static_cast<int>(leftThrust.y), 1.6f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
-            DrawCircle(static_cast<int>(rightThrust.x), static_cast<int>(rightThrust.y), 1.6f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
+            float idlePulse = 0.4f + 0.4f * std::sin(t * 6.0f);
+            DrawCircle(static_cast<int>(leftThrust.x), static_cast<int>(leftThrust.y), 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
+            DrawCircle(static_cast<int>(rightThrust.x), static_cast<int>(rightThrust.y), 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
         }
 
         // Draw Ship Sprite rotated around center
@@ -886,18 +896,27 @@ void RaylibRenderer::updateShip(Vector2 targetPos, float dt) {
     }
 
     // 3. Update & spawn trailing exhaust particles beneath the ship
-    float rad = (localShipAngle - 90.0f) * DEG2RAD;
-    Vector2 fwd = { std::cos(rad), std::sin(rad) };
-    Vector2 rear = { -fwd.x, -fwd.y };
-    Vector2 right = { -fwd.y, fwd.x };
+    float theta = localShipAngle * DEG2RAD;
+    float cosA = std::cos(theta);
+    float sinA = std::sin(theta);
 
+    // Center particles and thrusters at (4, 12) and (11, 12) relative to top-left of 16x16 sprite
+    // Relative to texture center (8.0, 8.0): pixel 4 center is -3.5, pixel 11 center is +3.5, row 12 center is +4.5
     float scale = 1.6f;
-    float w = 16.0f * scale;
-    float h = 16.0f * scale;
-    Vector2 rearCenter = { localShipPos.x + rear.x * (h * 0.48f), localShipPos.y + rear.y * (h * 0.48f) };
-    float thrusterSpacing = w * 0.25f;
-    Vector2 leftThrust = { rearCenter.x - right.x * thrusterSpacing, rearCenter.y - right.y * thrusterSpacing };
-    Vector2 rightThrust = { rearCenter.x + right.x * thrusterSpacing, rearCenter.y + right.y * thrusterSpacing };
+    float lxLeft = -3.5f * scale;
+    float lxRight = 3.5f * scale;
+    float ly = 4.5f * scale;
+
+    Vector2 leftThrust = {
+        localShipPos.x + (lxLeft * cosA - ly * sinA),
+        localShipPos.y + (lxLeft * sinA + ly * cosA)
+    };
+    Vector2 rightThrust = {
+        localShipPos.x + (lxRight * cosA - ly * sinA),
+        localShipPos.y + (lxRight * sinA + ly * cosA)
+    };
+    Vector2 rear = { -sinA, cosA };
+    Vector2 right = { cosA, sinA };
 
     if (curSpeed > 25.0f) {
         static float emitAccum = 0.0f;
