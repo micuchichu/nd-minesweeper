@@ -390,7 +390,13 @@ void RaylibRenderer::unloadAssets() {
 }
 
 void RaylibRenderer::update(float dt) {
-    (void)dt;
+    if (outOfReachTimer > 0.0f) {
+        outOfReachTimer -= dt;
+        if (outOfReachTimer <= 0.0f) {
+            outOfReachCell = -1;
+        }
+    }
+
     if (IsWindowResized()) {
         int w = GetScreenWidth();
         int h = GetScreenHeight();
@@ -647,6 +653,15 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     }
                 }
 
+                bool isOutOfReach = (outOfReachTimer > 0.0f && outOfReachCell >= 0 && static_cast<int64_t>(idx) == outOfReachCell);
+                if (isOutOfReach) {
+                    float reachAlpha = std::min(1.0f, outOfReachTimer * 2.5f);
+                    float t = static_cast<float>(GetTime());
+                    float pulse = 0.5f + 0.5f * std::sin(t * 14.0f);
+                    DrawRectangleRounded(cellRect, 0.2f, 4, Fade(ui::Colors::Red600, (0.6f + 0.35f * pulse) * reachAlpha));
+                    DrawRectangleLinesEx(cellRect, 2.0f, Fade(ui::Colors::Red400, (0.85f + 0.15f * pulse) * reachAlpha));
+                }
+
                 bool isStartingCell = (board.revealedCount == 0 && !board.isGameOver && !board.isVictory && board.startingCell >= 0 && static_cast<int64_t>(idx) == board.startingCell);
                 if (isStartingCell) {
                     float t = static_cast<float>(GetTime());
@@ -719,6 +734,15 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), lodCol);
                 }
 
+                bool isOutOfReach = (outOfReachTimer > 0.0f && outOfReachCell >= 0 && static_cast<int64_t>(idx) == outOfReachCell);
+                if (isOutOfReach) {
+                    float reachAlpha = std::min(1.0f, outOfReachTimer * 2.5f);
+                    float t = static_cast<float>(GetTime());
+                    float pulse = 0.5f + 0.5f * std::sin(t * 14.0f);
+                    DrawRectangle(static_cast<int>(posX + 1), static_cast<int>(posY + 1), static_cast<int>(cellSize - 2), static_cast<int>(cellSize - 2), Fade(ui::Colors::Red600, (0.7f + 0.3f * pulse) * reachAlpha));
+                    DrawRectangleLinesEx({ posX + 1.0f, posY + 1.0f, cellSize - 2.0f, cellSize - 2.0f }, 2.0f, Fade(ui::Colors::Red400, reachAlpha));
+                }
+
                 if (isHovered) {
                     Rectangle lodRect = { posX + 1.0f, posY + 1.0f, cellSize - 2.0f, cellSize - 2.0f };
                     DrawRectangleLinesEx(lodRect, 1.5f, WHITE);
@@ -784,6 +808,37 @@ void RaylibRenderer::updateShip(Vector2 targetPos, float dt) {
     localShip.update(targetPos, dt);
 }
 
+void RaylibRenderer::fireLaser(Vector2 from, Vector2 to, Color color) {
+    lasers.push_back({ from, to, 0.18f, 0.18f, color });
+    particles.emitDebris(to, 6, color);
+}
+
+Color RaylibRenderer::getLaserColorForSkin(int skinId) {
+    switch (skinId) {
+        case 0: return Color{ 0, 229, 255, 255 };   // Cyan / Blue
+        case 1: return Color{ 255, 170, 0, 255 };   // Amber / Brown
+        case 2: return Color{ 0, 255, 210, 255 };   // Bright Cyan
+        case 3: return Color{ 34, 197, 94, 255 };   // Emerald Green
+        case 4: return Color{ 255, 120, 0, 255 };   // Plasma Orange
+        case 5: return Color{ 255, 105, 180, 255 }; // Hot Pink
+        case 6: return Color{ 190, 80, 255, 255 };  // Violet / Purple
+        case 7: return Color{ 255, 50, 70, 255 };   // Ruby Red
+        case 8: return Color{ 240, 255, 255, 255 }; // Pure White / Plasma
+        default: return Color{ 0, 229, 255, 255 };
+    }
+}
+
+void RaylibRenderer::triggerOutOfReach(int64_t cellIndex, Vector2 cellPos) {
+    outOfReachCell = cellIndex;
+    outOfReachPos = cellPos;
+    outOfReachTimer = 1.3f;
+}
+
+void RaylibRenderer::clearOutOfReach() {
+    outOfReachCell = -1;
+    outOfReachTimer = 0.0f;
+}
+
 
 void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, const net::NetworkManager& net) {
     BeginMode2D(camera.camera);
@@ -822,6 +877,29 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     }
 
     particles.updateAndDraw(GetFrameTime());
+
+    // Draw active laser beams
+    float frameDt = GetFrameTime();
+    for (size_t i = 0; i < lasers.size(); ) {
+        lasers[i].life -= frameDt;
+        if (lasers[i].life <= 0.0f) {
+            lasers[i] = lasers.back();
+            lasers.pop_back();
+        } else {
+            float alpha = lasers[i].life / lasers[i].maxLife;
+            // Outer glowing plasma beam
+            DrawLineEx(lasers[i].from, lasers[i].to, 4.0f, Fade(lasers[i].color, 0.55f * alpha));
+            // Inner core laser beam
+            DrawLineEx(lasers[i].from, lasers[i].to, 1.5f, Fade(WHITE, 0.95f * alpha));
+            // Muzzle flash at ship's nose
+            DrawCircleV(lasers[i].from, 3.8f, Fade(lasers[i].color, 0.8f * alpha));
+            DrawCircleV(lasers[i].from, 1.8f, Fade(WHITE, alpha));
+            // Impact flare at target cell
+            DrawCircleV(lasers[i].to, 5.5f, Fade(lasers[i].color, 0.85f * alpha));
+            DrawCircleV(lasers[i].to, 2.5f, Fade(WHITE, alpha));
+            ++i;
+        }
+    }
 
     // Sync remote players and resolve collisions
     syncRemoteShips(net.remoteCursors);
@@ -883,6 +961,40 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         Vector2 arrowP2 = { startPos.x + 4.5f, badgeY + badgeH };
         Vector2 arrowP3 = { startPos.x, badgeY + badgeH + 5.0f };
         DrawTriangle(arrowP1, arrowP3, arrowP2, ui::Colors::Green400);
+    }
+
+    // Draw Out of Reach Warning Beacon & Floating Badge (World Space)
+    if (outOfReachTimer > 0.0f && outOfReachCell >= 0) {
+        float alpha = std::min(1.0f, outOfReachTimer * 2.5f);
+        float t = static_cast<float>(GetTime());
+        float pulse = 0.5f + 0.5f * std::sin(t * 12.0f);
+
+        const char* label = "Cell out of reach, js wait a bit";
+        int fontSize = 11;
+        int textW = MeasureText(label, fontSize);
+        float badgeW = static_cast<float>(textW + 20);
+        float badgeH = 20.0f;
+        float badgeX = outOfReachPos.x + (cellSize * 0.5f) - badgeW * 0.5f;
+        float badgeY = outOfReachPos.y - badgeH - 8.0f;
+
+        // Badge shadow & background
+        Rectangle shadowRect = { badgeX + 1.5f, badgeY + 2.0f, badgeW, badgeH };
+        DrawRectangleRounded(shadowRect, 0.4f, 4, Fade(BLACK, 0.45f * alpha));
+        Rectangle badgeRect = { badgeX, badgeY, badgeW, badgeH };
+        DrawRectangleRounded(badgeRect, 0.4f, 4, Fade(ui::Colors::Zinc950, 0.95f * alpha));
+        DrawRectangleLinesEx(badgeRect, 1.0f, Fade(ui::Colors::Red500, (0.8f + 0.2f * pulse) * alpha));
+
+        // Red warning dot indicator
+        DrawCircle(static_cast<int>(badgeX + 8.0f), static_cast<int>(badgeY + badgeH * 0.5f), 2.5f, Fade(ui::Colors::Red500, alpha));
+
+        // Label text in clear warning red
+        DrawText(label, static_cast<int>(badgeX + 16.0f), static_cast<int>(badgeY + 4.0f), fontSize, Fade(ui::Colors::Red300, alpha));
+
+        // Downward pointer triangle pointing to the cell
+        Vector2 arrowP1 = { outOfReachPos.x + (cellSize * 0.5f) - 4.5f, badgeY + badgeH };
+        Vector2 arrowP2 = { outOfReachPos.x + (cellSize * 0.5f) + 4.5f, badgeY + badgeH };
+        Vector2 arrowP3 = { outOfReachPos.x + (cellSize * 0.5f), badgeY + badgeH + 5.0f };
+        DrawTriangle(arrowP1, arrowP3, arrowP2, Fade(ui::Colors::Red500, alpha));
     }
 
     EndMode2D();

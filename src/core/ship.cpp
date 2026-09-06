@@ -8,7 +8,7 @@ namespace minesweeper::core {
 
 Ship::Ship()
     : mass(1.0f)
-    , range(50.0f)
+    , range(140.0f)
     , speed(600.0f)
     , texture{ 0 }
     , skinId(0)
@@ -55,7 +55,7 @@ void Ship::reset(Vector2 newPos, float newAngle) {
 
 void Ship::update(Vector2 targetPos, float dt) {
     if (!isInitialized) {
-        position = { targetPos.x - range, targetPos.y };
+        position = { targetPos.x - 50.0f, targetPos.y };
         velocity = { 0.0f, 0.0f };
         angle = 0.0f;
         isInitialized = true;
@@ -353,6 +353,16 @@ void Ship::drawExhaust() const {
         float sz = p.size * (0.4f + 0.6f * alpha);
         DrawRectanglePro({ p.pos.x, p.pos.y, sz, sz }, { sz * 0.5f, sz * 0.5f }, 45.0f, c);
     }
+}
+
+Vector2 Ship::getNosePosition() const {
+    float theta = angle * DEG2RAD;
+    float sinA = std::sin(theta);
+    float cosA = std::cos(theta);
+    return {
+        position.x + sinA * (8.0f * scale),
+        position.y - cosA * (8.0f * scale)
+    };
 }
 
 } // namespace minesweeper::core

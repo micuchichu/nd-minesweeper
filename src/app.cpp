@@ -179,6 +179,8 @@ void App::saveCurrentSlot() {
 bool App::loadSaveSlot(int slotIndex) {
     activeSaveSlot = slotIndex;
     renderer.localShip.isInitialized = false;
+    pendingUncoverCell = -1;
+    renderer.clearOutOfReach();
     bool ok = saveMgr.loadSlot(slotIndex, board, timePlayed, scrapCount, activeSaveName);
     if (!ok) {
         activeSaveName = "World " + std::to_string(slotIndex);
@@ -213,6 +215,8 @@ bool App::loadSaveSlot(int slotIndex) {
 void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     renderer.clearParticles();
     renderer.localShip.isInitialized = false;
+    pendingUncoverCell = -1;
+    renderer.clearOutOfReach();
     int leftover = scrapSystem.collectAll();
     if (leftover > 0) {
         scrapCount += leftover;
@@ -360,9 +364,15 @@ void App::handleNetEvents() {
 
                     if (ev.clickData.action == 0) { // Reveal
                         if (board.getState(idx) == core::CellState::Hidden) {
+                            Vector2 pos = renderer.getCellWorldPosition(idx, board);
+                            Vector2 cellCenter = { pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f };
+                            if (ev.peerId != 0 && renderer.remoteShips.count(ev.peerId)) {
+                                const auto& rShip = renderer.remoteShips[ev.peerId];
+                                renderer.fireLaser(rShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(rShip.skinId));
+                            }
+
                             std::vector<size_t> newlyRevealed;
                             core::RevealResult res = board.reveal(idx, &newlyRevealed);
-                            Vector2 pos = renderer.getCellWorldPosition(idx, board);
                             if (res == core::RevealResult::HitBomb) {
                                 renderer.emitExplosion(pos, ui::Colors::CellFlag);
                             } else {
@@ -440,6 +450,11 @@ void App::handleNetEvents() {
                     std::vector<size_t> newlyRevealed;
                     core::RevealResult res = board.reveal(idx, &newlyRevealed);
                     Vector2 pos = renderer.getCellWorldPosition(idx, board);
+                    Vector2 cellCenter = { pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f };
+                    if (ev.resultData.placerId != 0 && renderer.remoteShips.count(ev.resultData.placerId)) {
+                        const auto& rShip = renderer.remoteShips[ev.resultData.placerId];
+                        renderer.fireLaser(rShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(rShip.skinId));
+                    }
                     if (res == core::RevealResult::HitBomb) {
                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
                     } else {
@@ -547,46 +562,113 @@ void App::update(float dt) {
             // Left Mouse Button: Reveal
             if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && hovered >= 0) {
                 size_t hIdx = static_cast<size_t>(hovered);
-                if (net.role == net::NetRole::Client) {
-                    net::PacketClick pc;
-                    pc.index = hIdx;
-                    pc.action = 0;
-                    pc.flagSkin = 0;
-                    net.sendToServer(&pc, sizeof(pc));
-                } else {
-                    if (board.getState(hIdx) == core::CellState::Hidden) {
-                        std::vector<size_t> newlyRevealed;
-                        core::RevealResult res = board.reveal(hIdx, &newlyRevealed);
-                        Vector2 pos = renderer.getCellWorldPosition(hIdx, board);
-                        if (res == core::RevealResult::HitBomb) {
-                            renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                if (board.getState(hIdx) == core::CellState::Hidden) {
+                    Vector2 cellPos = renderer.getCellWorldPosition(hIdx, board);
+                    Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
+                    float dist = Vector2Distance(renderer.localShip.position, cellCenter);
+
+                    if (dist > renderer.localShip.range) {
+                        renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellPos);
+                        pendingUncoverCell = static_cast<int64_t>(hIdx);
+                    } else {
+                        renderer.clearOutOfReach();
+                        pendingUncoverCell = -1;
+                        renderer.fireLaser(renderer.localShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(menu.cursorSkin));
+
+                        if (net.role == net::NetRole::Client) {
+                            net::PacketClick pc;
+                            pc.index = hIdx;
+                            pc.action = 0;
+                            pc.flagSkin = 0;
+                            net.sendToServer(&pc, sizeof(pc));
                         } else {
-                            renderer.emitDebris(pos, ui::Colors::Zinc400);
-                            for (size_t cIdx : newlyRevealed) {
-                                if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
-                                    Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                    scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                            std::vector<size_t> newlyRevealed;
+                            core::RevealResult res = board.reveal(hIdx, &newlyRevealed);
+                            Vector2 pos = renderer.getCellWorldPosition(hIdx, board);
+                            if (res == core::RevealResult::HitBomb) {
+                                renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                            } else {
+                                renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                for (size_t cIdx : newlyRevealed) {
+                                    if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
+                                        Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
+                                        scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                    }
                                 }
                             }
-                        }
 
-                        if (net.role == net::NetRole::Host) {
-                            for (size_t revIdx : newlyRevealed) {
-                                net::PacketResult pr;
-                                pr.index = revIdx;
-                                pr.state = 0;
-                                pr.placerId = 0;
-                                pr.flagSkin = 0;
-                                net.broadcast(&pr, sizeof(pr));
+                            if (net.role == net::NetRole::Host) {
+                                for (size_t revIdx : newlyRevealed) {
+                                    net::PacketResult pr;
+                                    pr.index = revIdx;
+                                    pr.state = 0;
+                                    pr.placerId = 0;
+                                    pr.flagSkin = 0;
+                                    net.broadcast(&pr, sizeof(pr));
+                                }
                             }
+                            saveCurrentSlot();
                         }
-                        saveCurrentSlot();
+                    }
+                }
+            }
+
+            // Pending uncover when ship arrives within reach
+            if (pendingUncoverCell >= 0) {
+                size_t pIdx = static_cast<size_t>(pendingUncoverCell);
+                if (board.isGameOver || board.isVictory || pIdx >= board.totalCells() || board.getState(pIdx) != core::CellState::Hidden || IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) || IsKeyPressed(KEY_ESCAPE)) {
+                    pendingUncoverCell = -1;
+                } else {
+                    Vector2 cellPos = renderer.getCellWorldPosition(pIdx, board);
+                    Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
+                    float dist = Vector2Distance(renderer.localShip.position, cellCenter);
+                    if (dist <= renderer.localShip.range) {
+                        pendingUncoverCell = -1;
+                        renderer.clearOutOfReach();
+                        renderer.fireLaser(renderer.localShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(menu.cursorSkin));
+
+                        if (net.role == net::NetRole::Client) {
+                            net::PacketClick pc;
+                            pc.index = pIdx;
+                            pc.action = 0;
+                            pc.flagSkin = 0;
+                            net.sendToServer(&pc, sizeof(pc));
+                        } else {
+                            std::vector<size_t> newlyRevealed;
+                            core::RevealResult res = board.reveal(pIdx, &newlyRevealed);
+                            Vector2 pos = renderer.getCellWorldPosition(pIdx, board);
+                            if (res == core::RevealResult::HitBomb) {
+                                renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                            } else {
+                                renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                for (size_t cIdx : newlyRevealed) {
+                                    if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
+                                        Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
+                                        scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                    }
+                                }
+                            }
+
+                            if (net.role == net::NetRole::Host) {
+                                for (size_t revIdx : newlyRevealed) {
+                                    net::PacketResult pr;
+                                    pr.index = revIdx;
+                                    pr.state = 0;
+                                    pr.placerId = 0;
+                                    pr.flagSkin = 0;
+                                    net.broadcast(&pr, sizeof(pr));
+                                }
+                            }
+                            saveCurrentSlot();
+                        }
                     }
                 }
             }
 
             // Right Mouse Button: Flag / Unflag
             if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && hovered >= 0) {
+                pendingUncoverCell = -1;
+                renderer.clearOutOfReach();
                 size_t hIdx = static_cast<size_t>(hovered);
                 if (net.role == net::NetRole::Client) {
                     net::PacketClick pc;
@@ -631,39 +713,51 @@ void App::update(float dt) {
             if (triggerChord && hovered >= 0) {
                 size_t hIdx = static_cast<size_t>(hovered);
                 if (board.getState(hIdx) == core::CellState::Revealed) {
-                    if (net.role == net::NetRole::Client) {
-                        net::PacketClick pc;
-                        pc.index = hIdx;
-                        pc.action = 1; // Chord
-                        pc.flagSkin = 0;
-                        net.sendToServer(&pc, sizeof(pc));
+                    Vector2 cellPos = renderer.getCellWorldPosition(hIdx, board);
+                    Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
+                    float dist = Vector2Distance(renderer.localShip.position, cellCenter);
+
+                    if (dist > renderer.localShip.range) {
+                        renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellPos);
                     } else {
-                        std::vector<size_t> newlyRevealed;
-                        bool hitBomb = false;
-                        if (board.chord(hIdx, newlyRevealed, hitBomb)) {
-                            for (size_t revIdx : newlyRevealed) {
-                                Vector2 pos = renderer.getCellWorldPosition(revIdx, board);
-                                if (board.isBomb(revIdx)) {
-                                    renderer.emitExplosion(pos, ui::Colors::CellFlag);
-                                } else {
-                                    renderer.emitDebris(pos, ui::Colors::Zinc400);
-                                    if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
-                                        scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
+                        renderer.clearOutOfReach();
+                        pendingUncoverCell = -1;
+                        renderer.fireLaser(renderer.localShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(menu.cursorSkin));
+                        if (net.role == net::NetRole::Client) {
+                            net::PacketClick pc;
+                            pc.index = hIdx;
+                            pc.action = 1; // Chord
+                            pc.flagSkin = 0;
+                            net.sendToServer(&pc, sizeof(pc));
+                        } else {
+                            std::vector<size_t> newlyRevealed;
+                            bool hitBomb = false;
+                            if (board.chord(hIdx, newlyRevealed, hitBomb)) {
+                                for (size_t revIdx : newlyRevealed) {
+                                    Vector2 pos = renderer.getCellWorldPosition(revIdx, board);
+                                    if (board.isBomb(revIdx)) {
+                                        renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                                    } else {
+                                        renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                        if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
+                                            scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
+                                        }
+                                    }
+
+                                    if (net.role == net::NetRole::Host) {
+                                        net::PacketResult pr;
+                                        pr.index = revIdx;
+                                        pr.state = 0;
+                                        net.broadcast(&pr, sizeof(pr));
                                     }
                                 }
-
-                                if (net.role == net::NetRole::Host) {
-                                    net::PacketResult pr;
-                                    pr.index = revIdx;
-                                    pr.state = 0;
-                                    net.broadcast(&pr, sizeof(pr));
-                                }
+                                saveCurrentSlot();
                             }
-                            saveCurrentSlot();
                         }
                     }
                 }
             }
+
         }
 
         // Periodic Handshake retry if Client is waiting for initial board synchronization

@@ -19,7 +19,7 @@ class Ship {
 public:
     // Core ship attributes requested:
     float mass = 1.0f;           // Mass determines collision inertia & pushback resistance
-    float range = 50.0f;         // Follow / arrival distance (default 50px)
+    float range = 140.0f;        // Laser reach / interaction distance threshold (default 140px)
     float speed = 600.0f;        // Maximum travel speed (px/s)
     Texture2D texture = { 0 };   // Ship hull texture
     int skinId = 0;              // Skin palette index
@@ -49,13 +49,16 @@ public:
     void update(Vector2 targetPos, float dt);
 
     // Resolves pairwise circular collision between two ships with mass-proportional separation & impulse
-    static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.55f);
+    static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.15f);
 
     // Visual rendering (shadow, thruster flames, hull texture, idle glow, label, voice ring)
     void draw(const char* label = nullptr, Color tint = WHITE, bool speaking = false) const;
 
     // Draw trailing exhaust particle embers in world space
     void drawExhaust() const;
+
+    // Get position of ship front nose / blaster cannon in world space
+    Vector2 getNosePosition() const;
 
     // Reset position and clear velocity/exhaust
     void reset(Vector2 newPos, float newAngle = 0.0f);

@@ -26,6 +26,14 @@ struct PlayerSkinItem {
     Texture2D texture = {0};
 };
 
+struct LaserBeam {
+    Vector2 from;
+    Vector2 to;
+    float life = 0.0f;
+    float maxLife = 0.18f;
+    Color color = { 0, 229, 255, 255 };
+};
+
 class RaylibRenderer : public IRenderer {
 public:
     CameraController camera;
@@ -45,6 +53,16 @@ public:
     int activeCursorSkin = 0;
     core::Ship localShip;
     std::map<uint32_t, core::Ship> remoteShips;
+
+    std::vector<LaserBeam> lasers;
+    void fireLaser(Vector2 from, Vector2 to, Color color = { 0, 229, 255, 255 });
+    static Color getLaserColorForSkin(int skinId);
+
+    int64_t outOfReachCell = -1;
+    Vector2 outOfReachPos = { 0.0f, 0.0f };
+    float outOfReachTimer = 0.0f;
+    void triggerOutOfReach(int64_t cellIndex, Vector2 cellPos);
+    void clearOutOfReach();
 
     void syncRemoteShips(const std::map<uint32_t, net::RemoteCursor>& cursors);
     void resolveShipCollisions();
@@ -82,7 +100,7 @@ public:
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
-    void clearParticles() { particles.clear(); localShip.exhaust.clear(); }
+    void clearParticles() { particles.clear(); localShip.exhaust.clear(); lasers.clear(); clearOutOfReach(); }
 
 private:
     Texture2D flagTexture = {0};

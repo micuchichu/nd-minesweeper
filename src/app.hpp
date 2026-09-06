@@ -30,6 +30,7 @@ private:
     bool shouldQuit = false;
     float timePlayed = 0.0f;
     uint64_t scrapCount = 0;
+    int64_t pendingUncoverCell = -1;
 
     core::Board board;
     render::RaylibRenderer renderer;
