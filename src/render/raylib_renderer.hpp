@@ -27,7 +27,7 @@ struct FlagDropAnim {
     Vector2 groundPos = { 0.0f, 0.0f };
     uint8_t flagSkin = 0;
     float timer = 0.0f;
-    float duration = 0.22f;
+    float duration = 0.11f;
     bool landed = false;
 };
 
@@ -38,7 +38,7 @@ struct FlagPickupAnim {
     bool isLocal = false;
     uint8_t flagSkin = 0;
     float timer = 0.0f;
-    float duration = 0.20f;
+    float duration = 0.10f;
 };
 
 struct PlayerSkinItem {

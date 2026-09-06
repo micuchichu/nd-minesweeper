@@ -919,7 +919,7 @@ void RaylibRenderer::triggerFlagDrop(size_t cellIndex, Vector2 groundPos, Vector
     anim.shipPos = shipPos;
     anim.groundPos = groundPos;
     anim.flagSkin = skinId;
-    anim.duration = 0.22f;
+    anim.duration = 0.11f;
     anim.timer = anim.duration;
     anim.landed = false;
     flagDropAnims[cellIndex] = anim;
@@ -932,7 +932,7 @@ void RaylibRenderer::triggerFlagPickup(Vector2 groundPos, Vector2 shipPos, uint3
     anim.pickerId = pickerId;
     anim.isLocal = isLocal;
     anim.flagSkin = skinId;
-    anim.duration = 0.20f;
+    anim.duration = 0.10f;
     anim.timer = anim.duration;
     flagPickupAnims.push_back(anim);
 
