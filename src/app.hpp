@@ -6,6 +6,7 @@
 #include "ui/hud.hpp"
 #include "ui/menu.hpp"
 #include "audio/voice_manager.hpp"
+#include "render/scrap_system.hpp"
 
 namespace minesweeper {
 
@@ -27,9 +28,11 @@ private:
     AppState state = AppState::Menu;
     bool shouldQuit = false;
     float timePlayed = 0.0f;
+    uint64_t scrapCount = 0;
 
     core::Board board;
     render::RaylibRenderer renderer;
+    render::ScrapSystem scrapSystem;
     net::NetworkManager net;
     ui::GameHUD hud;
     ui::MainMenu menu;

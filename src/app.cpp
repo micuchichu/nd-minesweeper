@@ -31,6 +31,7 @@ struct SaveData {
     bool showFPS = false;
     float fpsLimit = 144.0f;
     float guiScale = 1.0f;
+    uint64_t scrapCount = 0;
 };
 
 App::App() = default;
@@ -119,10 +120,17 @@ void App::init() {
     net.onVoiceReceived = [this](const net::PacketVoice& pkt) {
         voiceMgr.receiveVoicePacket(pkt);
     };
+
+    scrapSystem.init();
+    hud.scrapTexture = scrapSystem.texture;
+    menu.scrapTexture = scrapSystem.texture;
+    hud.scrapCount = scrapCount;
+    menu.scrapCount = scrapCount;
 }
 
 void App::cleanup() {
     saveSettings();
+    scrapSystem.cleanup();
     voiceMgr.cleanup();
     renderer.cleanup();
     net.cleanup();
@@ -165,11 +173,16 @@ void App::loadSettings() {
                 menu.voiceSettings.voiceVolume = data.voiceVolume;
                 menu.voiceSettings.micGain = data.micGain;
             }
-            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData) - sizeof(uint64_t))) {
                 menu.vsyncEnabled = data.vsyncEnabled;
                 menu.showFPS = data.showFPS;
                 menu.fpsLimit = data.fpsLimit;
                 menu.guiScale = std::clamp(data.guiScale, 0.75f, 1.50f);
+            }
+            if (bytesRead >= static_cast<std::streamsize>(sizeof(SaveData))) {
+                scrapCount = data.scrapCount;
+                menu.scrapCount = scrapCount;
+                hud.scrapCount = scrapCount;
             }
         }
         file.close();
@@ -201,6 +214,7 @@ void App::saveSettings() {
         data.showFPS = menu.showFPS;
         data.fpsLimit = menu.fpsLimit;
         data.guiScale = menu.guiScale;
+        data.scrapCount = scrapCount;
 
         file.write(reinterpret_cast<const char*>(&data), sizeof(SaveData));
         file.close();
@@ -209,6 +223,13 @@ void App::saveSettings() {
 
 void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     renderer.clearParticles();
+    int leftover = scrapSystem.collectAll();
+    if (leftover > 0) {
+        scrapCount += leftover;
+        hud.scrapCount = scrapCount;
+        menu.scrapCount = scrapCount;
+        saveSettings();
+    }
     board.init(dim, size, bombs, seed);
     hud.nextSeed = seed;
     std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", seed);
@@ -347,12 +368,19 @@ void App::handleNetEvents() {
 
                     if (ev.clickData.action == 0) { // Reveal
                         if (board.getState(idx) == core::CellState::Hidden) {
-                            core::RevealResult res = board.reveal(idx);
+                            std::vector<size_t> newlyRevealed;
+                            core::RevealResult res = board.reveal(idx, &newlyRevealed);
                             Vector2 pos = renderer.getCellWorldPosition(idx, board);
                             if (res == core::RevealResult::HitBomb) {
                                 renderer.emitExplosion(pos, ui::Colors::CellFlag);
                             } else {
                                 renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                for (size_t cIdx : newlyRevealed) {
+                                    if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx)) {
+                                        Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
+                                        scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                    }
+                                }
                             }
 
                             net::PacketResult pr;
@@ -373,6 +401,9 @@ void App::handleNetEvents() {
                                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                     } else {
                                         renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                        if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx)) {
+                                            scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
+                                        }
                                     }
 
                                     net::PacketResult pr;
@@ -413,12 +444,19 @@ void App::handleNetEvents() {
                     if (board.getState(idx) == core::CellState::Flagged) {
                         board.unflag(idx);
                     }
-                    core::RevealResult res = board.reveal(idx);
+                    std::vector<size_t> newlyRevealed;
+                    core::RevealResult res = board.reveal(idx, &newlyRevealed);
                     Vector2 pos = renderer.getCellWorldPosition(idx, board);
                     if (res == core::RevealResult::HitBomb) {
                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
                     } else {
                         renderer.emitDebris(pos, ui::Colors::Zinc400);
+                        for (size_t cIdx : newlyRevealed) {
+                            if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx)) {
+                                Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
+                                scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                            }
+                        }
                     }
                     board.flagOwners.erase(idx);
                 } else if (ev.resultData.state == 1) { // Unflagged
@@ -509,21 +547,30 @@ void App::update(float dt) {
                     net.sendToServer(&pc, sizeof(pc));
                 } else {
                     if (board.getState(hIdx) == core::CellState::Hidden) {
-                        core::RevealResult res = board.reveal(hIdx);
+                        std::vector<size_t> newlyRevealed;
+                        core::RevealResult res = board.reveal(hIdx, &newlyRevealed);
                         Vector2 pos = renderer.getCellWorldPosition(hIdx, board);
                         if (res == core::RevealResult::HitBomb) {
                             renderer.emitExplosion(pos, ui::Colors::CellFlag);
                         } else {
                             renderer.emitDebris(pos, ui::Colors::Zinc400);
+                            for (size_t cIdx : newlyRevealed) {
+                                if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx)) {
+                                    Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
+                                    scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                }
+                            }
                         }
 
                         if (net.role == net::NetRole::Host) {
-                            net::PacketResult pr;
-                            pr.index = hIdx;
-                            pr.state = 0;
-                            pr.placerId = 0;
-                            pr.flagSkin = 0;
-                            net.broadcast(&pr, sizeof(pr));
+                            for (size_t revIdx : newlyRevealed) {
+                                net::PacketResult pr;
+                                pr.index = revIdx;
+                                pr.state = 0;
+                                pr.placerId = 0;
+                                pr.flagSkin = 0;
+                                net.broadcast(&pr, sizeof(pr));
+                            }
                         }
                     }
                 }
@@ -590,6 +637,9 @@ void App::update(float dt) {
                                     renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                 } else {
                                     renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                    if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx)) {
+                                        scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
+                                    }
                                 }
 
                                 if (net.role == net::NetRole::Host) {
@@ -640,6 +690,20 @@ void App::update(float dt) {
             if (net.role != net::NetRole::Client) {
                 restartCurrentGame();
             }
+        }
+
+        // Update Scrap System
+        Vector2 hudScrapPos = hud.getScrapBadgeScreenPos();
+        bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+        scrapSystem.update(dt, hudScrapPos, renderer.camera.camera, worldMouse, mouseClicked);
+
+        int collected = scrapSystem.collectPending();
+        if (collected > 0) {
+            scrapCount += collected;
+            hud.scrapCount = scrapCount;
+            menu.scrapCount = scrapCount;
+            hud.triggerScrapPulse();
+            saveSettings();
         }
     }
 }
@@ -736,11 +800,23 @@ void App::draw() {
             int64_t hovered = renderer.getHoveredCellIndex(board);
             renderer.render(board, hovered, net);
 
+            BeginMode2D(renderer.camera.camera);
+            scrapSystem.drawWorld(renderer.camera.camera);
+            EndMode2D();
+
             BeginMode2D(uiCam);
             ui::HUDActions hudAct = hud.drawAndProcess(uiW, uiH, board, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
+            scrapSystem.drawScreen(scale);
             EndMode2D();
 
             if (hudAct.returnToMenu) {
+                int leftover = scrapSystem.collectAll();
+                if (leftover > 0) {
+                    scrapCount += leftover;
+                    hud.scrapCount = scrapCount;
+                    menu.scrapCount = scrapCount;
+                    saveSettings();
+                }
                 net.disconnect();
                 state = AppState::Menu;
             }

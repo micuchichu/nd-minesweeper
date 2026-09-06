@@ -23,6 +23,39 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     float centerY = screenH * 0.5f;
     float centerX = screenW * 0.5f;
 
+    // Scrap Currency Badge in Menu (Top-Right)
+    const char* scrapStr = TextFormat("%llu", scrapCount);
+    int scrapTextW = MeasureText(scrapStr, 15);
+    float scrapBadgeW = static_cast<float>(32 + scrapTextW + 14);
+    float scrapBadgeH = 32.0f;
+    float scrapBadgeX = screenW - scrapBadgeW - 24.0f;
+    float scrapBadgeY = 20.0f;
+
+    Rectangle scrapRect = { scrapBadgeX, scrapBadgeY, scrapBadgeW, scrapBadgeH };
+    DrawRectangleRec(scrapRect, Colors::Zinc900);
+    DrawRectangleLinesEx(scrapRect, 1.0f, Colors::Zinc700);
+
+    float iconSize = 20.0f;
+    float iconCenterX = scrapBadgeX + 16.0f;
+    float iconCenterY = scrapBadgeY + scrapBadgeH * 0.5f;
+    if (scrapTexture.id != 0) {
+        Rectangle sSrc = { 0.0f, 0.0f, static_cast<float>(scrapTexture.width), static_cast<float>(scrapTexture.height) };
+        Rectangle sDst = { iconCenterX, iconCenterY, iconSize, iconSize };
+        Vector2 sOrigin = { iconSize * 0.5f, iconSize * 0.5f };
+        DrawTexturePro(scrapTexture, sSrc, sDst, sOrigin, 0.0f, WHITE);
+    }
+    DrawText(scrapStr, static_cast<int>(scrapBadgeX + 32), static_cast<int>(scrapBadgeY + (scrapBadgeH - 15) * 0.5f), 15, Colors::Amber400);
+
+    // Hover tooltip
+    Vector2 mPos = GetMousePosition();
+    if (CheckCollisionPointRec(mPos, scrapRect)) {
+        const char* tip = TextFormat("TOTAL SCRAP: %llu", scrapCount);
+        int tipW = MeasureText(tip, 12);
+        DrawRectangle(static_cast<int>(scrapBadgeX - tipW + scrapBadgeW - 12), static_cast<int>(scrapBadgeY + scrapBadgeH + 4), tipW + 12, 20, Colors::Zinc950);
+        DrawRectangleLines(static_cast<int>(scrapBadgeX - tipW + scrapBadgeW - 12), static_cast<int>(scrapBadgeY + scrapBadgeH + 4), tipW + 12, 20, Colors::Zinc700);
+        DrawText(tip, static_cast<int>(scrapBadgeX - tipW + scrapBadgeW - 6), static_cast<int>(scrapBadgeY + scrapBadgeH + 7), 12, Colors::Zinc300);
+    }
+
     if (currentScreen == MenuScreen::Main) {
         DrawText(title1, static_cast<int>(centerX - t1W * 0.5f + 4), static_cast<int>(centerY - 216), 70, Fade(BLACK, 0.85f));
         DrawText(title1, static_cast<int>(centerX - t1W * 0.5f), static_cast<int>(centerY - 220), 70, Colors::Zinc200);

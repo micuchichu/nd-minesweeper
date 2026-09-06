@@ -1,5 +1,6 @@
 #pragma once
 
+#include <raylib.h>
 #include "../core/board.hpp"
 #include "../net/network_manager.hpp"
 #include <cstdint>
@@ -27,6 +28,14 @@ public:
 
     bool showLargeGridWarning = false;
     bool endModalDismissed = false;
+
+    uint64_t scrapCount = 0;
+    float scrapPulseTimer = 0.0f;
+    Vector2 scrapBadgeScreenPos = { 150.0f, 35.0f };
+    Texture2D scrapTexture = {0};
+
+    Vector2 getScrapBadgeScreenPos() const { return scrapBadgeScreenPos; }
+    void triggerScrapPulse() { scrapPulseTimer = 0.35f; }
 
     static uint64_t parseSeed(const char* str);
 

@@ -59,6 +59,9 @@ public:
     int flagSkin = 0;
     int playerSkin = 0;
 
+    uint64_t scrapCount = 0;
+    Texture2D scrapTexture = {0};
+
     audio::VoiceSettings voiceSettings;
     float micInputLevel = 0.0f;
 

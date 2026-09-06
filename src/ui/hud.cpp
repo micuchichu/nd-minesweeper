@@ -60,14 +60,61 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
         actions.returnToMenu = true;
     }
 
-    const char* dimTag = (board.config.dim == 2) ? "2D STANDARD" : ((board.config.dim == 3) ? "3D SLICES" : "4D HYPERCUBE");
-    DrawText(dimTag, 130, static_cast<int>(topBarY + (topBarH - 20) * 0.5f), 19, Colors::Zinc300);
+    // Scrap Currency Display Pill
+    if (scrapPulseTimer > 0.0f) {
+        scrapPulseTimer -= GetFrameTime();
+    }
+
+    float scrapBadgeH = 28.0f;
+    float scrapBadgeY = topBarY + (topBarH - scrapBadgeH) * 0.5f;
+    float scrapBadgeX = 126.0f;
+
+    const char* scrapStr = TextFormat("%llu", scrapCount);
+    int scrapTextW = MeasureText(scrapStr, 14);
+    float scrapBadgeW = static_cast<float>(28 + scrapTextW + 12);
+    Rectangle scrapRect = { scrapBadgeX, scrapBadgeY, scrapBadgeW, scrapBadgeH };
+    scrapBadgeScreenPos = { scrapBadgeX + 14.0f, scrapBadgeY + scrapBadgeH * 0.5f };
+
+    Color scrapBorder = (scrapPulseTimer > 0.0f) ? Colors::Amber400 : Colors::Zinc700;
+    Color scrapBg = (scrapPulseTimer > 0.0f) ? Fade(Colors::Amber500, 0.25f) : Colors::Zinc900;
+    DrawRectangleRec(scrapRect, scrapBg);
+    DrawRectangleLinesEx(scrapRect, 1.0f, scrapBorder);
+
+    // Draw scrap icon (with bounce/pulse if collected)
+    float iconScale = 1.0f;
+    if (scrapPulseTimer > 0.0f) {
+        float p = scrapPulseTimer / 0.35f;
+        iconScale = 1.0f + 0.35f * std::sin(p * 3.14159f);
+    }
+    float iconSize = 18.0f * iconScale;
+    float iconCenterX = scrapBadgeX + 14.0f;
+    float iconCenterY = scrapBadgeY + scrapBadgeH * 0.5f;
+    if (scrapTexture.id != 0) {
+        Rectangle sSrc = { 0.0f, 0.0f, static_cast<float>(scrapTexture.width), static_cast<float>(scrapTexture.height) };
+        Rectangle sDst = { iconCenterX, iconCenterY, iconSize, iconSize };
+        Vector2 sOrigin = { iconSize * 0.5f, iconSize * 0.5f };
+        DrawTexturePro(scrapTexture, sSrc, sDst, sOrigin, 0.0f, WHITE);
+    }
+
+    DrawText(scrapStr, static_cast<int>(scrapBadgeX + 28), static_cast<int>(scrapBadgeY + (scrapBadgeH - 14) * 0.5f), 14, Colors::Amber400);
+
+    // Hover tooltip
+    Vector2 mPos = GetMousePosition();
+    if (CheckCollisionPointRec(mPos, scrapRect)) {
+        const char* tip = TextFormat("SCRAP: %llu (5%% chance from safe cells)", scrapCount);
+        int tipW = MeasureText(tip, 12);
+        DrawRectangle(static_cast<int>(scrapBadgeX), static_cast<int>(scrapBadgeY + scrapBadgeH + 4), tipW + 12, 20, Colors::Zinc950);
+        DrawRectangleLines(static_cast<int>(scrapBadgeX), static_cast<int>(scrapBadgeY + scrapBadgeH + 4), tipW + 12, 20, Colors::Zinc700);
+        DrawText(tip, static_cast<int>(scrapBadgeX + 6), static_cast<int>(scrapBadgeY + scrapBadgeH + 7), 12, Colors::Zinc300);
+    }
+
+    float curLeftX = scrapBadgeX + scrapBadgeW + 12.0f;
 
     // Voice Chat HUD Indicator Pill
     if (voiceEnabled) {
         float micH = 28.0f;
         float micY = topBarY + (topBarH - micH) * 0.5f;
-        float micX = 265.0f;
+        float micX = curLeftX;
 
         const char* micText = isTransmitting ? "MIC: LIVE" : (isPushToTalk ? "PTT: [V]" : "MIC: ON");
         Color micBg = isTransmitting ? Fade(Colors::Green600, 0.4f) : Colors::Zinc900;
@@ -90,6 +137,13 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
         } else {
             DrawText(micText, static_cast<int>(micX + 8), static_cast<int>(micY + (micH - 13) * 0.5f), 13, micTextCol);
         }
+
+        curLeftX += micW + 12.0f;
+    }
+
+    const char* dimTag = (board.config.dim == 2) ? "2D STANDARD" : ((board.config.dim == 3) ? "3D SLICES" : "4D HYPERCUBE");
+    if (curLeftX + 90.0f < screenW * 0.5f - 130.0f) {
+        DrawText(dimTag, static_cast<int>(curLeftX), static_cast<int>(topBarY + (topBarH - 16) * 0.5f), 16, Colors::Zinc400);
     }
 
     // Mines Remaining Counter
