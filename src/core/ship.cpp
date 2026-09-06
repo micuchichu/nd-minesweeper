@@ -66,7 +66,7 @@ void Ship::update(Vector2 targetPos, float dt) {
     Vector2 toTarget = { targetPos.x - position.x, targetPos.y - position.y };
     float distToTarget = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
 
-    const float targetDist = range;
+    const float targetDist = 50.0f;  // Keep 50px follow distance requested by user
     const float maxSpeed = speed;
     const float slowRadius = 140.0f;
     const float maxAccel = 2200.0f;
