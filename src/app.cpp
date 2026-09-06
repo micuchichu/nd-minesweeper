@@ -317,7 +317,8 @@ void App::handleNetEvents() {
                 break;
             }
             case net::NetEventType::ClientDisconnected: {
-                board.removeFlagsByPlacer(ev.peerId);
+                // Keep flags placed by disconnected players on the board
+                saveCurrentSlot();
                 break;
             }
             case net::NetEventType::SyncBoard: {
