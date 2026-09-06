@@ -510,12 +510,24 @@ void App::update(float dt) {
         // Multiplayer Cursor / Ship Broadcast
         if (net.role != net::NetRole::Offline) {
             static Vector2 lastSent = { -9999.0f, -9999.0f };
-            if (Vector2Distance(renderer.localShipPos, lastSent) > 2.0f) {
+            static float lastSentAngle = -9999.0f;
+            static bool lastSentMoving = false;
+            float currentSpeed = std::sqrt(renderer.localShipVel.x * renderer.localShipVel.x + renderer.localShipVel.y * renderer.localShipVel.y);
+            bool isMoving = (currentSpeed > 20.0f);
+
+            if (Vector2Distance(renderer.localShipPos, lastSent) > 1.5f ||
+                std::abs(renderer.localShipAngle - lastSentAngle) > 2.0f ||
+                isMoving != lastSentMoving) {
                 lastSent = renderer.localShipPos;
+                lastSentAngle = renderer.localShipAngle;
+                lastSentMoving = isMoving;
+
                 net::PacketCursor pc;
                 pc.playerID = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
                 pc.x = renderer.localShipPos.x;
                 pc.y = renderer.localShipPos.y;
+                pc.angle = renderer.localShipAngle;
+                pc.isMoving = isMoving;
                 pc.skin = static_cast<uint8_t>(menu.cursorSkin);
                 std::strncpy(pc.name, menu.playerName, sizeof(pc.name));
                 pc.name[sizeof(pc.name) - 1] = '\0';

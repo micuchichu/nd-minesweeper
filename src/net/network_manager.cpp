@@ -297,9 +297,16 @@ void NetworkManager::update() {
                 RemoteCursor rc;
                 rc.x = p->x;
                 rc.y = p->y;
+                rc.angle = p->angle;
+                rc.isMoving = p->isMoving;
                 rc.skin = p->skin;
                 std::memcpy(rc.name, p->name, sizeof(rc.name));
                 rc.name[sizeof(rc.name) - 1] = '\0';
+                auto it = remoteCursors.find(senderId);
+                if (it != remoteCursors.end()) {
+                    rc.isSpeaking = it->second.isSpeaking;
+                    rc.speakingTimer = it->second.speakingTimer;
+                }
                 remoteCursors[senderId] = rc;
 
                 if (role == NetRole::Host) {
@@ -455,9 +462,16 @@ void NetworkManager::update() {
                         RemoteCursor rc;
                         rc.x = p->x;
                         rc.y = p->y;
+                        rc.angle = p->angle;
+                        rc.isMoving = p->isMoving;
                         rc.skin = p->skin;
                         std::memcpy(rc.name, p->name, sizeof(rc.name));
                         rc.name[sizeof(rc.name) - 1] = '\0';
+                        auto it = remoteCursors.find(senderId);
+                        if (it != remoteCursors.end()) {
+                            rc.isSpeaking = it->second.isSpeaking;
+                            rc.speakingTimer = it->second.speakingTimer;
+                        }
                         remoteCursors[senderId] = rc;
 
                         if (role == NetRole::Host) {

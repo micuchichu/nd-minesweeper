@@ -735,6 +735,15 @@ void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, float angle, Colo
         Rectangle dest = { pos.x, pos.y, w, h };
         Vector2 origin = { w * 0.5f, h * 0.5f };
 
+        // Hovering Drop Shadow
+        // Offset slightly down-right in world space to create 3D altitude above the board
+        Vector2 shadowOffset = { 2.5f * scale, 3.5f * scale };
+        Rectangle shadowOuter = { pos.x + shadowOffset.x, pos.y + shadowOffset.y, w * 1.06f, h * 1.06f };
+        Vector2 originOuter = { shadowOuter.width * 0.5f, shadowOuter.height * 0.5f };
+        DrawTexturePro(tex, src, shadowOuter, originOuter, angle, Fade(BLACK, 0.18f));
+        Rectangle shadowDest = { pos.x + shadowOffset.x, pos.y + shadowOffset.y, w, h };
+        DrawTexturePro(tex, src, shadowDest, origin, angle, Fade(BLACK, 0.38f));
+
         float theta = angle * DEG2RAD;
         float cosA = std::cos(theta);
         float sinA = std::sin(theta);
@@ -781,8 +790,8 @@ void RaylibRenderer::drawCursorSkin(uint8_t skin, Vector2 pos, float angle, Colo
         } else {
             // Subtle idle thruster glow beneath the ship
             float idlePulse = 0.4f + 0.4f * std::sin(t * 6.0f);
-            DrawCircle(static_cast<int>(leftThrust.x), static_cast<int>(leftThrust.y), 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
-            DrawCircle(static_cast<int>(rightThrust.x), static_cast<int>(rightThrust.y), 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
+            DrawCircleV(leftThrust, 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
+            DrawCircleV(rightThrust, 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
         }
 
         // Draw Ship Sprite rotated around center
@@ -995,7 +1004,7 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
             curCol = ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f);
         }
         const char* tag = cursor.name[0] != '\0' ? cursor.name : (id == 0 ? "HOST" : TextFormat("P%u", id));
-        drawCursorSkin(cursor.skin, { cursor.x, cursor.y }, 0.0f, curCol, tag, 1.5f, cursor.isSpeaking, false);
+        drawCursorSkin(cursor.skin, { cursor.x, cursor.y }, cursor.angle, curCol, tag, 1.8f, cursor.isSpeaking, cursor.isMoving);
     }
 
     // Draw trailing ship exhaust particles beneath the ship
@@ -1011,7 +1020,7 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     Vector2 worldMouse = camera.getScreenToWorld(camera.getCRTMousePosition());
     float currentSpeed = std::sqrt(localShipVel.x * localShipVel.x + localShipVel.y * localShipVel.y);
     bool isMoving = (currentSpeed > 20.0f);
-    drawCursorSkin(static_cast<uint8_t>(activeCursorSkin), localShipPos, localShipAngle, ui::Colors::Green500, nullptr, 1.6f, isLocalSpeaking, isMoving);
+    drawCursorSkin(static_cast<uint8_t>(activeCursorSkin), localShipPos, localShipAngle, ui::Colors::Green500, nullptr, 1.8f, isLocalSpeaking, isMoving);
 
     // Subtle tactical aim crosshair at the cursor
     float chSize = 3.5f;
