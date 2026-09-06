@@ -964,8 +964,11 @@ void RaylibRenderer::drawFlyingFlags(const core::Board& /*board*/) {
         float alt = 36.0f * (1.0f - t) + 20.0f * std::sin(t * 3.14159265f);
         Vector2 flagPos = { curGround.x, curGround.y - alt };
 
-        float shadowScale = (cellSize / 30.0f) * (0.4f + 0.6f * t);
-        float shadowAlpha = 0.12f + 0.28f * t;
+        // Scale up from small (0.25x emerging from ship) to full size (1.0x landing on cell)
+        float growScale = 0.25f + 0.75f * std::sin(t * (3.14159265f * 0.5f));
+
+        float shadowScale = (cellSize / 30.0f) * (0.25f + 0.75f * t);
+        float shadowAlpha = 0.10f + 0.30f * t;
         DrawEllipse(static_cast<int>(curGround.x + 1.0f), static_cast<int>(curGround.y + 1.0f), 5.0f * shadowScale, 2.4f * shadowScale, Fade(BLACK, shadowAlpha));
 
         Texture2D curFlag = getFlagTexture(anim.flagSkin);
@@ -977,13 +980,13 @@ void RaylibRenderer::drawFlyingFlags(const core::Board& /*board*/) {
             int frame = (numFrames > 1) ? (static_cast<int>(curTime * 10.0f) % numFrames) : 0;
             Rectangle flagSrc = { frame * frameW, 0.0f, frameW, frameH };
 
-            float flagScale = (cellSize / 30.0f) * 1.05f;
+            float flagScale = (cellSize / 30.0f) * 1.05f * growScale;
             float squashY = 1.0f + 0.15f * (1.0f - t);
             float squashX = 1.0f - 0.08f * (1.0f - t);
             float flagW = 30.0f * flagScale * squashX;
             float flagH = 30.0f * flagScale * squashY;
 
-            Rectangle shadowDest = { curGround.x + 2.0f * shadowScale, curGround.y + 1.5f * shadowScale, flagW * (0.5f + 0.5f * t), flagH * (0.5f + 0.5f * t) };
+            Rectangle shadowDest = { curGround.x + 2.0f * shadowScale, curGround.y + 1.5f * shadowScale, flagW, flagH };
             Vector2 shadowOrigin = { 4.0f * shadowDest.width / 16.0f, 12.0f * shadowDest.height / 16.0f };
             float tilt = std::sin(curTime * 8.0f) * 4.0f;
             DrawTexturePro(curFlag, flagSrc, shadowDest, shadowOrigin, tilt, Fade(BLACK, shadowAlpha * 0.35f));
@@ -992,7 +995,8 @@ void RaylibRenderer::drawFlyingFlags(const core::Board& /*board*/) {
             Rectangle destRect = { flagPos.x, flagPos.y, flagW, flagH };
             DrawTexturePro(curFlag, flagSrc, destRect, origin, tilt, WHITE);
         } else {
-            DrawRectangleRounded({ flagPos.x - 10.0f, flagPos.y - 10.0f, 20.0f, 20.0f }, 0.2f, 4, ui::Colors::Red500);
+            float boxSize = 20.0f * growScale;
+            DrawRectangleRounded({ flagPos.x - boxSize * 0.5f, flagPos.y - boxSize * 0.5f, boxSize, boxSize }, 0.2f, 4, ui::Colors::Red500);
         }
     }
 
