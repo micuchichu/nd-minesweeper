@@ -21,6 +21,7 @@ Ship::Ship()
     , velocity{ 0.0f, 0.0f }
     , angle(0.0f)
     , collisionRadius(14.0f)
+    , capsuleLength(0.0f)
     , scale(1.8f)
     , isMoving(false)
     , isInitialized(false)
@@ -40,6 +41,7 @@ Ship::Ship(float m, float r, float s, Texture2D tex, int skin)
     , velocity{ 0.0f, 0.0f }
     , angle(0.0f)
     , collisionRadius(14.0f)
+    , capsuleLength(0.0f)
     , scale(1.8f)
     , isMoving(false)
     , isInitialized(false)
@@ -71,6 +73,9 @@ void Ship::applyConfig(const ShipConfig& cfg) {
     }
     if (cfg.collisionRadius > 0.0f) {
         collisionRadius = cfg.collisionRadius;
+    }
+    if (cfg.capsuleLength >= 0.0f) {
+        capsuleLength = cfg.capsuleLength;
     }
     thrusterColor = cfg.thrusterColor;
     bumpable = cfg.bumpable;
@@ -265,25 +270,107 @@ void Ship::drawExhaust() const {
     }
 }
 
+void Ship::getCapsuleSegment(Vector2& outA, Vector2& outB) const {
+    if (capsuleLength <= 0.001f) {
+        outA = position;
+        outB = position;
+        return;
+    }
+    float theta = angle * DEG2RAD;
+    float cosA = std::cos(theta);
+    float sinA = std::sin(theta);
+    float halfL = capsuleLength * 0.5f;
+    outA = { position.x - cosA * halfL, position.y - sinA * halfL };
+    outB = { position.x + cosA * halfL, position.y + sinA * halfL };
+}
+
+float Ship::segmentToSegmentDist(Vector2 p1, Vector2 q1, Vector2 p2, Vector2 q2, Vector2& outC1, Vector2& outC2) {
+    Vector2 d1 = { q1.x - p1.x, q1.y - p1.y };
+    Vector2 d2 = { q2.x - p2.x, q2.y - p2.y };
+    Vector2 r  = { p1.x - p2.x, p1.y - p2.y };
+
+    float a = d1.x * d1.x + d1.y * d1.y; // Squared length of segment S1
+    float e = d2.x * d2.x + d2.y * d2.y; // Squared length of segment S2
+    float f = d2.x * r.x + d2.y * r.y;
+
+    float s = 0.0f;
+    float t = 0.0f;
+
+    const float eps = 1e-5f;
+
+    if (a <= eps && e <= eps) {
+        // Both segments degenerate into points
+        s = 0.0f;
+        t = 0.0f;
+    } else if (a <= eps) {
+        // S1 is a point
+        s = 0.0f;
+        t = std::clamp(f / e, 0.0f, 1.0f);
+    } else {
+        float c = d1.x * r.x + d1.y * r.y;
+        if (e <= eps) {
+            // S2 is a point
+            t = 0.0f;
+            s = std::clamp(-c / a, 0.0f, 1.0f);
+        } else {
+            // General case: both non-degenerate segments
+            float b = d1.x * d2.x + d1.y * d2.y;
+            float denom = a * e - b * b;
+
+            if (denom > eps) {
+                s = std::clamp((b * f - c * e) / denom, 0.0f, 1.0f);
+            } else {
+                s = 0.0f; // Parallel segments
+            }
+
+            t = (b * s + f) / e;
+
+            if (t < 0.0f) {
+                t = 0.0f;
+                s = std::clamp(-c / a, 0.0f, 1.0f);
+            } else if (t > 1.0f) {
+                t = 1.0f;
+                s = std::clamp((b - c) / a, 0.0f, 1.0f);
+            }
+        }
+    }
+
+    outC1 = { p1.x + d1.x * s, p1.y + d1.y * s };
+    outC2 = { p2.x + d2.x * t, p2.y + d2.y * t };
+
+    Vector2 diff = { outC2.x - outC1.x, outC2.y - outC1.y };
+    return std::sqrt(diff.x * diff.x + diff.y * diff.y);
+}
+
 bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
     if (!a.isInitialized || !b.isInitialized) {
         return false;
     }
 
-    Vector2 delta = { b.position.x - a.position.x, b.position.y - a.position.y };
-    float distSq = delta.x * delta.x + delta.y * delta.y;
+    Vector2 segA1, segA2;
+    Vector2 segB1, segB2;
+    a.getCapsuleSegment(segA1, segA2);
+    b.getCapsuleSegment(segB1, segB2);
+
+    Vector2 cA, cB;
+    float dist = segmentToSegmentDist(segA1, segA2, segB1, segB2, cA, cB);
     float minDist = a.collisionRadius + b.collisionRadius;
 
-    if (distSq >= minDist * minDist || minDist <= 0.0001f) {
+    if (dist >= minDist || minDist <= 0.0001f) {
         return false;
     }
 
-    float dist = std::sqrt(distSq);
     Vector2 normal;
     if (dist > 0.0001f) {
-        normal = { delta.x / dist, delta.y / dist };
+        normal = { (cB.x - cA.x) / dist, (cB.y - cA.y) / dist };
     } else {
-        normal = { 1.0f, 0.0f };
+        Vector2 posDelta = { b.position.x - a.position.x, b.position.y - a.position.y };
+        float pDist = std::sqrt(posDelta.x * posDelta.x + posDelta.y * posDelta.y);
+        if (pDist > 0.0001f) {
+            normal = { posDelta.x / pDist, posDelta.y / pDist };
+        } else {
+            normal = { 1.0f, 0.0f };
+        }
         dist = 0.0001f;
     }
 

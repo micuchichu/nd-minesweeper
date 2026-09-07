@@ -330,6 +330,7 @@ struct ShipConfig {
     float speed = 140.0f;
     float range = 160.0f;
     float collisionRadius = 26.0f;
+    float capsuleLength = 0.0f; // Length of focal line segment for capsule collisions (0 for circular ships)
     Color thrusterColor = { 255, 179, 0, 255 }; // Unified thruster color
     bool bumpable = false; // Pushable, but not bumpable for shop freighters
     std::vector<ShipThruster> thrusters;
@@ -346,6 +347,7 @@ struct ShipConfig {
             cfg.speed = 140.0f;
             cfg.range = 160.0f;
             cfg.collisionRadius = 26.0f;
+            cfg.capsuleLength = 0.0f;
             cfg.thrusters.push_back({ { -25.0f, -11.0f }, { -1.0f, 0.0f }, 3.6f, 6.0f, cfg.thrusterColor, cfg.thrusterColor });
             cfg.thrusters.push_back({ { -27.0f,   0.0f }, { -1.0f, 0.0f }, 4.4f, 8.0f, cfg.thrusterColor, cfg.thrusterColor });
             cfg.thrusters.push_back({ { -25.0f,  11.0f }, { -1.0f, 0.0f }, 3.6f, 6.0f, cfg.thrusterColor, cfg.thrusterColor });
@@ -353,7 +355,8 @@ struct ShipConfig {
             cfg.mass = 12.0f;
             cfg.speed = 130.0f;
             cfg.range = 160.0f;
-            cfg.collisionRadius = 34.0f;
+            cfg.collisionRadius = 28.0f;
+            cfg.capsuleLength = 130.0f;
             cfg.thrusters.push_back({ { -48.0f, -14.0f }, { -1.0f, 0.0f }, 4.8f, 7.0f, cfg.thrusterColor, cfg.thrusterColor });
             cfg.thrusters.push_back({ { -50.0f,   0.0f }, { -1.0f, 0.0f }, 6.4f, 10.0f, cfg.thrusterColor, cfg.thrusterColor });
             cfg.thrusters.push_back({ { -48.0f,  14.0f }, { -1.0f, 0.0f }, 4.8f, 7.0f, cfg.thrusterColor, cfg.thrusterColor });
@@ -366,6 +369,7 @@ struct ShipConfig {
             cfg.speed = 140.0f;
             cfg.range = 160.0f;
             cfg.collisionRadius = std::max(20.0f, std::min(halfW, halfH) * 1.3f);
+            cfg.capsuleLength = (w > h * 1.8f) ? std::max(0.0f, (w - h) * cfg.scale) : 0.0f;
             cfg.thrusters.push_back({ { -halfW * 0.82f, -halfH * 0.60f }, { -1.0f, 0.0f }, 3.6f, 6.0f, cfg.thrusterColor, cfg.thrusterColor });
             cfg.thrusters.push_back({ { -halfW * 0.86f,   0.0f         }, { -1.0f, 0.0f }, 4.8f, 8.0f, cfg.thrusterColor, cfg.thrusterColor });
             cfg.thrusters.push_back({ { -halfW * 0.82f,  halfH * 0.60f }, { -1.0f, 0.0f }, 3.6f, 6.0f, cfg.thrusterColor, cfg.thrusterColor });
@@ -374,6 +378,7 @@ struct ShipConfig {
             cfg.speed = 140.0f;
             cfg.range = 160.0f;
             cfg.collisionRadius = 26.0f;
+            cfg.capsuleLength = 0.0f;
             cfg.thrusters.push_back({ { -25.0f, 0.0f }, { -1.0f, 0.0f }, 3.0f, 6.0f, cfg.thrusterColor, cfg.thrusterColor });
         }
 
@@ -408,6 +413,10 @@ struct ShipConfig {
         if (root.contains("collisionRadius")) outConfig.collisionRadius = root["collisionRadius"].asFloat(outConfig.collisionRadius);
         else if (root.contains("collision_radius")) outConfig.collisionRadius = root["collision_radius"].asFloat(outConfig.collisionRadius);
         else if (root.contains("radius")) outConfig.collisionRadius = root["radius"].asFloat(outConfig.collisionRadius);
+
+        if (root.contains("capsuleLength")) outConfig.capsuleLength = root["capsuleLength"].asFloat(outConfig.capsuleLength);
+        else if (root.contains("capsule_length")) outConfig.capsuleLength = root["capsule_length"].asFloat(outConfig.capsuleLength);
+        else if (root.contains("capsule")) outConfig.capsuleLength = root["capsule"].asFloat(outConfig.capsuleLength);
 
         if (root.contains("thrusterColor")) {
             outConfig.thrusterColor = parseColorValue(root["thrusterColor"], outConfig.thrusterColor);

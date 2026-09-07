@@ -45,7 +45,8 @@ public:
     Vector2 position = { 0.0f, 0.0f };
     Vector2 velocity = { 0.0f, 0.0f };
     float angle = 0.0f;
-    float collisionRadius = 14.0f; // Bounding circle radius for collision detection
+    float collisionRadius = 14.0f; // Bounding circle / capsule cap radius for collision detection
+    float capsuleLength = 0.0f;    // Length of central focal segment for 2D capsule collision (0 for circular ships)
     float scale = 1.8f;
     bool isMoving = false;
     bool isInitialized = false;
@@ -88,7 +89,13 @@ public:
     float bumpTimer = 0.0f;
     bool bumpable = true; // True for player ships (bumper-cars), false for shop freighters (pushable without bumper kick)
 
-    // Resolves pairwise circular collision between two ships with controlled bumper dynamics & mass-proportional impulse
+    // Calculate world-space segment endpoints for capsule collision
+    void getCapsuleSegment(Vector2& outA, Vector2& outB) const;
+
+    // Minimum distance and closest points between two line segments S1:[p1, q1] and S2:[p2, q2]
+    static float segmentToSegmentDist(Vector2 p1, Vector2 q1, Vector2 p2, Vector2 q2, Vector2& outC1, Vector2& outC2);
+
+    // Resolves pairwise collision (capsule/circle) between two ships with controlled bumper dynamics & mass-proportional impulse
     static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.60f);
 
 protected:

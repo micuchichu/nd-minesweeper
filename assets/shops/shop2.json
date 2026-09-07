@@ -4,7 +4,8 @@
   "mass": 40.0,
   "speed": 130.0,
   "range": 160.0,
-  "collisionRadius": 34.0,
+  "collisionRadius": 28.0,
+  "capsuleLength": 130.0,
   "bumpable": false,
   "thrusterColor": [255, 179, 0, 255],
   "thrusters": [
