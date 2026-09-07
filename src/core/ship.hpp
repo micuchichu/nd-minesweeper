@@ -86,7 +86,7 @@ public:
 
     // Bump / collision recoil timer
     float bumpTimer = 0.0f;
-    bool enableBumping = true;
+    bool isStatic = false;
 
     // Resolves pairwise circular collision between two ships with controlled bumper dynamics & mass-proportional impulse
     static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.60f);

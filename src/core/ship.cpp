@@ -73,7 +73,7 @@ void Ship::applyConfig(const ShipConfig& cfg) {
         collisionRadius = cfg.collisionRadius;
     }
     thrusterColor = cfg.thrusterColor;
-    enableBumping = cfg.enableBumping;
+    isStatic = cfg.isStatic;
 
     if (!cfg.thrusters.empty()) {
         thrusters = cfg.thrusters;
@@ -266,7 +266,10 @@ void Ship::drawExhaust() const {
 }
 
 bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
-    if (!a.isInitialized || !b.isInitialized || !a.enableBumping || !b.enableBumping) {
+    if (!a.isInitialized || !b.isInitialized) {
+        return false;
+    }
+    if (a.isStatic && b.isStatic) {
         return false;
     }
 
@@ -290,8 +293,9 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
     float overlap = minDist - dist;
 
     // 1. Positional Separation with Baumgarte stabilization & slop threshold
-    float invMassA = (a.mass > 0.0001f) ? (1.0f / a.mass) : 0.0f;
-    float invMassB = (b.mass > 0.0001f) ? (1.0f / b.mass) : 0.0f;
+    // Static obstacles have 0 inverse mass and never move or get displaced
+    float invMassA = (!a.isStatic && a.mass > 0.0001f) ? (1.0f / a.mass) : 0.0f;
+    float invMassB = (!b.isStatic && b.mass > 0.0001f) ? (1.0f / b.mass) : 0.0f;
     float invMassSum = invMassA + invMassB;
     if (invMassSum <= 0.0001f) return false;
 
@@ -300,10 +304,14 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
     float penetration = std::max(0.0f, overlap - slop);
     float sep = penetration * percent;
 
-    a.position.x -= normal.x * sep * (invMassA / invMassSum);
-    a.position.y -= normal.y * sep * (invMassA / invMassSum);
-    b.position.x += normal.x * sep * (invMassB / invMassSum);
-    b.position.y += normal.y * sep * (invMassB / invMassSum);
+    if (!a.isStatic) {
+        a.position.x -= normal.x * sep * (invMassA / invMassSum);
+        a.position.y -= normal.y * sep * (invMassA / invMassSum);
+    }
+    if (!b.isStatic) {
+        b.position.x += normal.x * sep * (invMassB / invMassSum);
+        b.position.y += normal.y * sep * (invMassB / invMassSum);
+    }
 
     // 2. Velocity Impulse Exchange with Controlled Bumper Dynamics
     Vector2 relVel = { b.velocity.x - a.velocity.x, b.velocity.y - a.velocity.y };
@@ -317,44 +325,54 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
         float impulseScalar = (-velAlongNormal + desiredSepSpeed) / invMassSum;
 
         Vector2 impulse = { normal.x * impulseScalar, normal.y * impulseScalar };
-        a.velocity.x -= impulse.x * invMassA;
-        a.velocity.y -= impulse.y * invMassA;
-        b.velocity.x += impulse.x * invMassB;
-        b.velocity.y += impulse.y * invMassB;
+        if (!a.isStatic) {
+            a.velocity.x -= impulse.x * invMassA;
+            a.velocity.y -= impulse.y * invMassA;
+        }
+        if (!b.isStatic) {
+            b.velocity.x += impulse.x * invMassB;
+            b.velocity.y += impulse.y * invMassB;
+        }
     } else if (overlap > 1.5f && velAlongNormal < 25.0f) {
         // Soft separation nudge for persistent overlaps, strictly bounded
         float nudgeSpeed = std::min(40.0f, overlap * 25.0f);
         float nudgeImpulse = nudgeSpeed / invMassSum;
         Vector2 impulse = { normal.x * nudgeImpulse, normal.y * nudgeImpulse };
-        a.velocity.x -= impulse.x * invMassA;
-        a.velocity.y -= impulse.y * invMassA;
-        b.velocity.x += impulse.x * invMassB;
-        b.velocity.y += impulse.y * invMassB;
+        if (!a.isStatic) {
+            a.velocity.x -= impulse.x * invMassA;
+            a.velocity.y -= impulse.y * invMassA;
+        }
+        if (!b.isStatic) {
+            b.velocity.x += impulse.x * invMassB;
+            b.velocity.y += impulse.y * invMassB;
+        }
     }
 
-    // 3. Clamp maximum post-collision velocity so ships NEVER blast off to deep space
+    // 3. Clamp maximum post-collision velocity and apply angular twitch / bump timers
     const float maxAllowedPlayerSpeed = 650.0f;
-    float spdA = std::sqrt(a.velocity.x * a.velocity.x + a.velocity.y * a.velocity.y);
-    float ceilA = std::max(a.speed, maxAllowedPlayerSpeed);
-    if (spdA > ceilA) {
-        a.velocity.x = (a.velocity.x / spdA) * ceilA;
-        a.velocity.y = (a.velocity.y / spdA) * ceilA;
-    }
-    float spdB = std::sqrt(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y);
-    float ceilB = std::max(b.speed, maxAllowedPlayerSpeed);
-    if (spdB > ceilB) {
-        b.velocity.x = (b.velocity.x / spdB) * ceilB;
-        b.velocity.y = (b.velocity.y / spdB) * ceilB;
+    if (!a.isStatic) {
+        float spdA = std::sqrt(a.velocity.x * a.velocity.x + a.velocity.y * a.velocity.y);
+        float ceilA = std::max(a.speed, maxAllowedPlayerSpeed);
+        if (spdA > ceilA) {
+            a.velocity.x = (a.velocity.x / spdA) * ceilA;
+            a.velocity.y = (a.velocity.y / spdA) * ceilA;
+        }
+        a.bumpTimer = 0.35f;
+        float torqueA = (-normal.y * relVel.x + normal.x * relVel.y) * 0.08f;
+        a.angle += std::clamp(torqueA, -12.0f, 12.0f);
     }
 
-    // 4. Mark bump recoil timers and give satisfying angular impact twitch
-    a.bumpTimer = 0.35f;
-    b.bumpTimer = 0.35f;
-
-    float torqueA = (-normal.y * relVel.x + normal.x * relVel.y) * 0.08f;
-    a.angle += std::clamp(torqueA, -12.0f, 12.0f);
-    float torqueB = (normal.y * relVel.x - normal.x * relVel.y) * 0.08f;
-    b.angle += std::clamp(torqueB, -12.0f, 12.0f);
+    if (!b.isStatic) {
+        float spdB = std::sqrt(b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y);
+        float ceilB = std::max(b.speed, maxAllowedPlayerSpeed);
+        if (spdB > ceilB) {
+            b.velocity.x = (b.velocity.x / spdB) * ceilB;
+            b.velocity.y = (b.velocity.y / spdB) * ceilB;
+        }
+        b.bumpTimer = 0.35f;
+        float torqueB = (normal.y * relVel.x - normal.x * relVel.y) * 0.08f;
+        b.angle += std::clamp(torqueB, -12.0f, 12.0f);
+    }
 
     return true;
 }
@@ -588,7 +606,7 @@ MerchantShip::MerchantShip()
 {
     scale = 1.8f;
     collisionRadius = 26.0f;
-    enableBumping = false;
+    isStatic = true;
 }
 
 MerchantShip::MerchantShip(float m, float r, float s, Texture2D tex, int skin)
@@ -596,7 +614,7 @@ MerchantShip::MerchantShip(float m, float r, float s, Texture2D tex, int skin)
 {
     scale = 1.8f;
     collisionRadius = 26.0f;
-    enableBumping = false;
+    isStatic = true;
 }
 
 void MerchantShip::setAnchor(Vector2 anchor, float anchorAngle) {
