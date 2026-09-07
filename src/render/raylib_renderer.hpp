@@ -71,11 +71,11 @@ public:
     static void drawCursorSkin(uint8_t skin, Vector2 pos, float angle = 0.0f, Color col = WHITE, const char* name = nullptr, float scale = 1.0f, bool isSpeaking = false, bool isMoving = false);
 
     int activeCursorSkin = 0;
-    core::Ship localShip;
-    std::map<uint32_t, core::Ship> remoteShips;
+    core::ScoutShip localShip;
+    std::map<uint32_t, core::ScoutShip> remoteShips;
 
     Texture2D shopTexture = { 0 };
-    core::Ship shopShip;
+    core::ShopShip shopShip;
     Vector2 shopAnchorPos = { -95.0f, 150.0f };
     void updateShopAnchor(const core::Board& board);
 

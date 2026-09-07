@@ -15,11 +15,14 @@ struct ShipExhaustParticle {
     Color color;
 };
 
+// ============================================================================
+// Base Ship Class
+// ============================================================================
 class Ship {
 public:
-    // Core ship attributes requested:
+    // Core ship attributes:
     float mass = 1.0f;           // Mass determines collision inertia & pushback resistance
-    float range = 140.0f;        // Laser reach / interaction distance threshold (default 140px)
+    float range = 150.0f;        // Laser reach / interaction distance threshold (default 150px)
     float speed = 600.0f;        // Maximum travel speed (px/s)
     Texture2D texture = { 0 };   // Ship hull texture
     int skinId = 0;              // Skin palette index
@@ -42,34 +45,84 @@ public:
     Color color = WHITE;
     bool isSpeaking = false;
 
-    // Merchant & anchoring properties:
-    bool isMerchant = false;
-    Vector2 anchorPosition = { 0.0f, 0.0f };
-    float restAngle = 0.0f;
-
     Ship();
-    Ship(float mass, float range, float speed, Texture2D texture = {0}, int skinId = 0);
+    Ship(float mass, float range, float speed, Texture2D texture = { 0 }, int skinId = 0);
+    virtual ~Ship() = default;
 
-    // Physics & steering towards a target position with arrival deceleration (player / remote ships)
-    void update(Vector2 targetPos, float dt);
-
-    // Physics & steering for merchant ship returning to anchor position with damped deceleration
-    void updateMerchant(float dt);
-
-    // Resolves pairwise circular collision between two ships with mass-proportional separation & impulse
-    static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.15f);
+    // Physics & simulation step
+    virtual void update(float dt);
 
     // Visual rendering (shadow, thruster flames, hull texture, idle glow, label, voice ring)
-    void draw(const char* label = nullptr, Color tint = WHITE, bool speaking = false) const;
+    virtual void draw(const char* label = nullptr, Color tint = WHITE, bool speaking = false) const;
+
+    // Position of ship front nose / blaster cannon in world space
+    virtual Vector2 getNosePosition() const;
 
     // Draw trailing exhaust particle embers in world space
     void drawExhaust() const;
 
-    // Get position of ship front nose / blaster cannon in world space
-    Vector2 getNosePosition() const;
-
     // Reset position and clear velocity/exhaust
     void reset(Vector2 newPos, float newAngle = 0.0f);
+
+    // Resolves pairwise circular collision between two ships with mass-proportional separation & impulse
+    static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.15f);
+};
+
+// ============================================================================
+// Scout / Player Ship Class
+// ============================================================================
+class ScoutShip : public Ship {
+public:
+    Vector2 targetPosition = { 0.0f, 0.0f };
+    float targetFollowDistance = 70.0f;  // Keep 70px follow distance requested by user
+    float slowRadius = 140.0f;
+    float maxAccel = 2200.0f;
+
+    ScoutShip();
+    ScoutShip(float mass, float range, float speed, Texture2D texture = { 0 }, int skinId = 0);
+
+    // Physics & steering towards a target position with arrival deceleration (player / remote ships)
+    void update(Vector2 targetPos, float dt);
+    void update(float dt) override;
+
+    void draw(const char* label = nullptr, Color tint = WHITE, bool speaking = false) const override;
+    Vector2 getNosePosition() const override;
+};
+
+// Alias for PlayerShip
+using PlayerShip = ScoutShip;
+
+// ============================================================================
+// Merchant Base Ship Class
+// ============================================================================
+class MerchantShip : public Ship {
+public:
+    Vector2 anchorPosition = { 0.0f, 0.0f };
+    float restAngle = 0.0f;
+    float returnAccel = 1200.0f;
+    float slowRadius = 90.0f;
+
+    MerchantShip();
+    MerchantShip(float mass, float range, float speed, Texture2D texture = { 0 }, int skinId = 0);
+
+    void setAnchor(Vector2 anchor, float anchorAngle = 0.0f);
+
+    // Physics & steering for returning to anchor station with damped deceleration
+    void update(float dt) override;
+    void updateMerchant(float dt) { update(dt); }
+};
+
+// ============================================================================
+// Shop Freighter Ship Class (Docked Merchant)
+// ============================================================================
+class ShopShip : public MerchantShip {
+public:
+    ShopShip();
+    ShopShip(Texture2D texture, Vector2 anchor);
+
+    void update(float dt) override;
+    void draw(const char* label = nullptr, Color tint = WHITE, bool speaking = false) const override;
+    Vector2 getNosePosition() const override;
 };
 
 } // namespace minesweeper::core

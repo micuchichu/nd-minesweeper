@@ -329,17 +329,7 @@ void RaylibRenderer::init() {
         } catch (...) {}
     }
 
-    shopShip = core::Ship(8.0f, 160.0f, 140.0f, shopTexture, 0);
-    shopShip.scale = 1.25f;
-    shopShip.collisionRadius = 26.0f;
-    shopShip.isMerchant = true;
-    shopShip.anchorPosition = shopAnchorPos;
-    shopShip.position = shopAnchorPos;
-    shopShip.angle = 0.0f;
-    shopShip.restAngle = 0.0f;
-    shopShip.name = "SHOP";
-    shopShip.color = ui::Colors::Amber400;
-    shopShip.isInitialized = true;
+    shopShip = core::ShopShip(shopTexture, shopAnchorPos);
 }
 
 void RaylibRenderer::initShaders() {
@@ -439,7 +429,7 @@ void RaylibRenderer::unloadAssets() {
 }
 
 void RaylibRenderer::update(float dt) {
-    shopShip.updateMerchant(dt);
+    shopShip.update(dt);
 
     if (outOfReachTimer > 0.0f) {
         outOfReachTimer -= dt;
