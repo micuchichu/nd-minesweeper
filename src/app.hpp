@@ -47,6 +47,7 @@ private:
     void cleanup();
 
     void handleNetEvents();
+    void broadcastLaser(Vector2 from, Vector2 to, uint8_t laserType = 0);
     void startNewGame(int dim, int size, int bombs, uint64_t seed);
     void restartCurrentGame();
 

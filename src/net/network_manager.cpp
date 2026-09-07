@@ -357,6 +357,33 @@ void NetworkManager::update() {
                     }
                 }
             }
+            else if (header->type == PacketType::Laser && p2p.data.size() >= sizeof(PacketLaser)) {
+                auto* p = reinterpret_cast<PacketLaser*>(p2p.data.data());
+                uint32_t senderId = (role == NetRole::Host) ? peerId : p->playerID;
+
+                PacketLaser laserPkt = *p;
+                laserPkt.playerID = senderId;
+
+                NetEvent ne{};
+                ne.type = NetEventType::LaserFired;
+                ne.peerId = senderId;
+                ne.laserData = laserPkt;
+                pimpl->eventQueue.push_back(ne);
+
+                if (role == NetRole::Host) {
+                    for (uint64_t otherSteamId : SteamManager::instance().getConnectedPeers()) {
+                        if (otherSteamId != p2p.senderSteamID) {
+                            SteamManager::instance().sendP2PPacket(otherSteamId, &laserPkt, sizeof(laserPkt), false);
+                        }
+                    }
+                    if (pimpl->host) {
+                        for (ENetPeer* client : pimpl->connectedClients) {
+                            ENetPacket* fwd = enet_packet_create(&laserPkt, sizeof(PacketLaser), 0);
+                            enet_peer_send(client, 1, fwd);
+                        }
+                    }
+                }
+            }
             else if (header->type == PacketType::Disconnect && p2p.data.size() >= sizeof(PacketDisconnect)) {
                 auto* p = reinterpret_cast<PacketDisconnect*>(p2p.data.data());
                 remoteCursors.erase(p->playerID);
@@ -516,6 +543,31 @@ void NetworkManager::update() {
                             }
                             for (uint64_t steamId : SteamManager::instance().getConnectedPeers()) {
                                 SteamManager::instance().sendP2PPacket(steamId, &voicePkt, sizeof(voicePkt), false);
+                            }
+                        }
+                    }
+                    else if (header->type == PacketType::Laser && event.packet->dataLength >= sizeof(PacketLaser)) {
+                        auto* p = reinterpret_cast<PacketLaser*>(event.packet->data);
+                        uint32_t senderId = (role == NetRole::Host && event.peer) ? event.peer->incomingPeerID : p->playerID;
+
+                        PacketLaser laserPkt = *p;
+                        laserPkt.playerID = senderId;
+
+                        NetEvent ne{};
+                        ne.type = NetEventType::LaserFired;
+                        ne.peerId = senderId;
+                        ne.laserData = laserPkt;
+                        pimpl->eventQueue.push_back(ne);
+
+                        if (role == NetRole::Host) {
+                            for (ENetPeer* client : pimpl->connectedClients) {
+                                if (client != event.peer) {
+                                    ENetPacket* fwd = enet_packet_create(&laserPkt, sizeof(PacketLaser), 0);
+                                    enet_peer_send(client, 1, fwd);
+                                }
+                            }
+                            for (uint64_t steamId : SteamManager::instance().getConnectedPeers()) {
+                                SteamManager::instance().sendP2PPacket(steamId, &laserPkt, sizeof(laserPkt), false);
                             }
                         }
                     }

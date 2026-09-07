@@ -20,7 +20,8 @@ enum class PacketType : uint8_t {
     Disconnect = 4,
     Sync = 5,
     Handshake = 6,
-    Voice = 7
+    Voice = 7,
+    Laser = 8
 };
 
 constexpr uint32_t HOST_PLAYER_ID = 0xFFFFFFFF;
@@ -88,6 +89,17 @@ struct PacketDisconnect {
     uint32_t playerID = 0;
 };
 
+struct PacketLaser {
+    PacketType type = PacketType::Laser;
+    uint32_t playerID = 0;
+    float fromX = 0.0f;
+    float fromY = 0.0f;
+    float toX = 0.0f;
+    float toY = 0.0f;
+    uint8_t skinId = 0;
+    uint8_t laserType = 0; // 0 = skin laser, 1 = red flag laser
+};
+
 struct PacketFlagSync {
     uint64_t index = 0;
     uint32_t placerId = 0;
@@ -121,7 +133,8 @@ enum class NetEventType : uint8_t {
     InitBoard,
     PlayerClick,
     BoardResult,
-    SyncBoard
+    SyncBoard,
+    LaserFired
 };
 
 struct NetEvent {
@@ -132,6 +145,7 @@ struct NetEvent {
     PacketClick clickData{};
     PacketResult resultData{};
     PacketSyncData syncData{};
+    PacketLaser laserData{};
 };
 
 struct RemoteCursor {

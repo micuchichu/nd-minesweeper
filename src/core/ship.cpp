@@ -124,6 +124,10 @@ void Ship::update(float dt) {
         emitThrusterParticles(dt, curSpeed / speed);
     }
 
+    updateExhaust(dt);
+}
+
+void Ship::updateExhaust(float dt) {
     for (size_t i = 0; i < exhaust.size(); ) {
         exhaust[i].life -= dt;
         if (exhaust[i].life <= 0.0f) {
@@ -672,19 +676,7 @@ void ScoutShip::update(Vector2 targetPos, float dt) {
         emitThrusterParticles(dt, curSpeed / baseMaxSpeed);
     }
 
-    for (size_t i = 0; i < exhaust.size(); ) {
-        exhaust[i].life -= dt;
-        if (exhaust[i].life <= 0.0f) {
-            exhaust[i] = exhaust.back();
-            exhaust.pop_back();
-        } else {
-            exhaust[i].pos.x += exhaust[i].vel.x * dt;
-            exhaust[i].pos.y += exhaust[i].vel.y * dt;
-            exhaust[i].vel.x *= 0.94f;
-            exhaust[i].vel.y *= 0.94f;
-            ++i;
-        }
-    }
+    updateExhaust(dt);
 }
 
 void ScoutShip::draw(const char* label, Color tint, bool speaking) const {

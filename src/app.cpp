@@ -368,12 +368,6 @@ void App::handleNetEvents() {
                     if (ev.clickData.action == 0) { // Reveal
                         if (board.getState(idx) == core::CellState::Hidden) {
                             Vector2 pos = renderer.getCellWorldPosition(idx, board);
-                            Vector2 cellCenter = { pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f };
-                            if (ev.peerId != 0 && renderer.remoteShips.count(ev.peerId)) {
-                                const auto& rShip = renderer.remoteShips[ev.peerId];
-                                renderer.fireLaser(rShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(rShip.skinId));
-                            }
-
                             std::vector<size_t> newlyRevealed;
                             core::RevealResult res = board.reveal(idx, &newlyRevealed);
                             if (res == core::RevealResult::HitBomb) {
@@ -468,11 +462,6 @@ void App::handleNetEvents() {
                         renderer.removeFlagDrop(revIdx);
                     }
                     Vector2 pos = renderer.getCellWorldPosition(idx, board);
-                    Vector2 cellCenter = { pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f };
-                    if (ev.resultData.placerId != 0 && renderer.remoteShips.count(ev.resultData.placerId)) {
-                        const auto& rShip = renderer.remoteShips[ev.resultData.placerId];
-                        renderer.fireLaser(rShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(rShip.skinId));
-                    }
                     if (res == core::RevealResult::HitBomb) {
                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
                     } else {
@@ -501,8 +490,53 @@ void App::handleNetEvents() {
                 }
                 break;
             }
+            case net::NetEventType::LaserFired: {
+                uint32_t senderId = ev.laserData.playerID;
+                Vector2 from = { ev.laserData.fromX, ev.laserData.fromY };
+                Vector2 to = { ev.laserData.toX, ev.laserData.toY };
+
+                if (senderId == 0 || (net.role == net::NetRole::Client && senderId == net::HOST_PLAYER_ID)) {
+                    if (renderer.remoteShips.count(0)) {
+                        from = renderer.remoteShips[0].getNosePosition();
+                    } else if (renderer.remoteShips.count(net::HOST_PLAYER_ID)) {
+                        from = renderer.remoteShips[net::HOST_PLAYER_ID].getNosePosition();
+                    }
+                } else if (renderer.remoteShips.count(senderId)) {
+                    from = renderer.remoteShips[senderId].getNosePosition();
+                }
+
+                Color laserCol = (ev.laserData.laserType == 1)
+                    ? ui::Colors::Red500
+                    : renderer.getLaserColorForSkin(ev.laserData.skinId);
+
+                renderer.fireLaser(from, to, laserCol);
+                break;
+            }
             default:
                 break;
+        }
+    }
+}
+
+void App::broadcastLaser(Vector2 from, Vector2 to, uint8_t laserType) {
+    Color col = (laserType == 1) ? ui::Colors::Red500 : renderer.getLaserColorForSkin(menu.cursorSkin);
+    renderer.fireLaser(from, to, col);
+
+    if (net.role != net::NetRole::Offline) {
+        net::PacketLaser pkt;
+        pkt.type = net::PacketType::Laser;
+        pkt.playerID = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
+        pkt.fromX = from.x;
+        pkt.fromY = from.y;
+        pkt.toX = to.x;
+        pkt.toY = to.y;
+        pkt.skinId = static_cast<uint8_t>(menu.cursorSkin);
+        pkt.laserType = laserType;
+
+        if (net.role == net::NetRole::Client) {
+            net.sendToServer(&pkt, sizeof(pkt), false);
+        } else if (net.role == net::NetRole::Host) {
+            net.broadcast(&pkt, sizeof(pkt), false);
         }
     }
 }
@@ -623,7 +657,7 @@ void App::update(float dt) {
                 }
 
                 // Fire laser directly towards the mouse!
-                renderer.fireLaser(renderer.localShip.getNosePosition(), worldMouse, renderer.getLaserColorForSkin(menu.cursorSkin));
+                broadcastLaser(renderer.localShip.getNosePosition(), worldMouse, 0);
 
                 if (hovered >= 0) {
                     size_t hIdx = static_cast<size_t>(hovered);
@@ -693,7 +727,7 @@ void App::update(float dt) {
                     if (dist <= renderer.localShip.range) {
                         pendingUncoverCell = -1;
                         renderer.clearOutOfReach();
-                        renderer.fireLaser(renderer.localShip.getNosePosition(), cellCenter, renderer.getLaserColorForSkin(menu.cursorSkin));
+                        broadcastLaser(renderer.localShip.getNosePosition(), cellCenter, 0);
 
                         if (net.role == net::NetRole::Client) {
                             net::PacketClick pc;
@@ -743,7 +777,7 @@ void App::update(float dt) {
                 if (distToMouse > 0.001f) {
                     renderer.localShip.angle = std::atan2(toMouse.y, toMouse.x) * RAD2DEG + 90.0f;
                 }
-                renderer.fireLaser(renderer.localShip.getNosePosition(), worldMouse, ui::Colors::Red500);
+                broadcastLaser(renderer.localShip.getNosePosition(), worldMouse, 1);
 
                 pendingUncoverCell = -1;
                 renderer.clearOutOfReach();
@@ -803,7 +837,7 @@ void App::update(float dt) {
                 if (distToMouse > 0.001f) {
                     renderer.localShip.angle = std::atan2(toMouse.y, toMouse.x) * RAD2DEG + 90.0f;
                 }
-                renderer.fireLaser(renderer.localShip.getNosePosition(), worldMouse, renderer.getLaserColorForSkin(menu.cursorSkin));
+                broadcastLaser(renderer.localShip.getNosePosition(), worldMouse, 0);
 
                 if (hovered >= 0) {
                     size_t hIdx = static_cast<size_t>(hovered);

@@ -95,13 +95,16 @@ public:
     // Minimum distance and closest points between two line segments S1:[p1, q1] and S2:[p2, q2]
     static float segmentToSegmentDist(Vector2 p1, Vector2 q1, Vector2 p2, Vector2 q2, Vector2& outC1, Vector2& outC2);
 
+    // Update exhaust particle physics and lifetimes
+    void updateExhaust(float dt);
+    void emitThrusterParticles(float dt, float speedRatio);
+
     // Resolves pairwise collision (capsule/circle) between two ships with controlled bumper dynamics & mass-proportional impulse
     static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.60f);
 
 protected:
     // Helper to draw thrusters for any ship configuration
     void drawThrusters(Vector2 drawPos, float baseAngle) const;
-    void emitThrusterParticles(float dt, float speedRatio);
 };
 
 // ============================================================================

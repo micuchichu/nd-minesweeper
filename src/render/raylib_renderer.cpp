@@ -444,6 +444,13 @@ void RaylibRenderer::update(float dt) {
         }
     }
 
+    for (auto& [id, rShip] : remoteShips) {
+        if (rShip.isMoving) {
+            rShip.emitThrusterParticles(dt, 1.0f);
+        }
+        rShip.updateExhaust(dt);
+    }
+
     if (IsWindowResized()) {
         int w = GetScreenWidth();
         int h = GetScreenHeight();
@@ -916,11 +923,13 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
 void RaylibRenderer::resolveShipCollisions() {
     for (auto& [id, rShip] : remoteShips) {
         if (core::Ship::resolveCollision(localShip, rShip)) {
-            Vector2 contact = {
-                (localShip.position.x + rShip.position.x) * 0.5f,
-                (localShip.position.y + rShip.position.y) * 0.5f
-            };
-            particles.emitDebris(contact, 4, ui::Colors::Amber400);
+            if (localShip.bumpTimer >= 0.34f) {
+                Vector2 contact = {
+                    (localShip.position.x + rShip.position.x) * 0.5f,
+                    (localShip.position.y + rShip.position.y) * 0.5f
+                };
+                particles.emitDebris(contact, 1, ui::Colors::Amber400);
+            }
         }
     }
     for (auto it1 = remoteShips.begin(); it1 != remoteShips.end(); ++it1) {
@@ -928,11 +937,13 @@ void RaylibRenderer::resolveShipCollisions() {
         ++it2;
         for (; it2 != remoteShips.end(); ++it2) {
             if (core::Ship::resolveCollision(it1->second, it2->second)) {
-                Vector2 contact = {
-                    (it1->second.position.x + it2->second.position.x) * 0.5f,
-                    (it1->second.position.y + it2->second.position.y) * 0.5f
-                };
-                particles.emitDebris(contact, 3, ui::Colors::Cyan400);
+                if (it1->second.bumpTimer >= 0.34f) {
+                    Vector2 contact = {
+                        (it1->second.position.x + it2->second.position.x) * 0.5f,
+                        (it1->second.position.y + it2->second.position.y) * 0.5f
+                    };
+                    particles.emitDebris(contact, 1, ui::Colors::Cyan400);
+                }
             }
         }
     }
