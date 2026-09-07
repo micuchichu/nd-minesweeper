@@ -73,6 +73,7 @@ void Ship::applyConfig(const ShipConfig& cfg) {
         collisionRadius = cfg.collisionRadius;
     }
     thrusterColor = cfg.thrusterColor;
+    enableBumping = cfg.enableBumping;
 
     if (!cfg.thrusters.empty()) {
         thrusters = cfg.thrusters;
@@ -265,6 +266,10 @@ void Ship::drawExhaust() const {
 }
 
 bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
+    if (!a.isInitialized || !b.isInitialized || !a.enableBumping || !b.enableBumping) {
+        return false;
+    }
+
     Vector2 delta = { b.position.x - a.position.x, b.position.y - a.position.y };
     float distSq = delta.x * delta.x + delta.y * delta.y;
     float minDist = a.collisionRadius + b.collisionRadius;
@@ -583,6 +588,7 @@ MerchantShip::MerchantShip()
 {
     scale = 1.8f;
     collisionRadius = 26.0f;
+    enableBumping = false;
 }
 
 MerchantShip::MerchantShip(float m, float r, float s, Texture2D tex, int skin)
@@ -590,6 +596,7 @@ MerchantShip::MerchantShip(float m, float r, float s, Texture2D tex, int skin)
 {
     scale = 1.8f;
     collisionRadius = 26.0f;
+    enableBumping = false;
 }
 
 void MerchantShip::setAnchor(Vector2 anchor, float anchorAngle) {

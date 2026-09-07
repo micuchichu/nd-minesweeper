@@ -5,6 +5,7 @@
   "speed": 140.0,
   "range": 160.0,
   "collisionRadius": 26.0,
+  "enableBumping": false,
   "thrusterColor": [255, 179, 0, 255],
   "thrusters": [
     { "x": -25.0, "y": -11.0, "size": 3.6 },

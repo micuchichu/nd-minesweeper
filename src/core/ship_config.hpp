@@ -331,6 +331,7 @@ struct ShipConfig {
     float range = 160.0f;
     float collisionRadius = 26.0f;
     Color thrusterColor = { 255, 179, 0, 255 }; // Unified thruster color
+    bool enableBumping = false; // Disabled by default for shop freighters
     std::vector<ShipThruster> thrusters;
 
     static ShipConfig createDefault(int texW, int texH, const std::string& defaultName = "SHOP") {
@@ -338,6 +339,7 @@ struct ShipConfig {
         cfg.name = defaultName;
         cfg.scale = 1.8f;
         cfg.thrusterColor = { 255, 179, 0, 255 };
+        cfg.enableBumping = false;
 
         if (texW == 64 && texH == 32) {
             cfg.mass = 8.0f;
@@ -413,6 +415,14 @@ struct ShipConfig {
             outConfig.thrusterColor = parseColorValue(root["thruster_color"], outConfig.thrusterColor);
         } else if (root.contains("color")) {
             outConfig.thrusterColor = parseColorValue(root["color"], outConfig.thrusterColor);
+        }
+
+        if (root.contains("enableBumping")) {
+            outConfig.enableBumping = root["enableBumping"].asBool(outConfig.enableBumping);
+        } else if (root.contains("bumping")) {
+            outConfig.enableBumping = root["bumping"].asBool(outConfig.enableBumping);
+        } else if (root.contains("enable_bumping")) {
+            outConfig.enableBumping = root["enable_bumping"].asBool(outConfig.enableBumping);
         }
 
         if (root.contains("thrusters") && root["thrusters"].isArray()) {

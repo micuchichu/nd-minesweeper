@@ -937,7 +937,7 @@ void RaylibRenderer::resolveShipCollisions() {
         }
     }
     for (auto& s : shopShips) {
-        if (!s.isInitialized) continue;
+        if (!s.isInitialized || !s.enableBumping) continue;
         if (core::Ship::resolveCollision(localShip, s)) {
             Vector2 contact = {
                 (localShip.position.x + s.position.x) * 0.5f,
@@ -956,7 +956,9 @@ void RaylibRenderer::resolveShipCollisions() {
         }
     }
     for (size_t i = 0; i < shopShips.size(); ++i) {
+        if (!shopShips[i].enableBumping) continue;
         for (size_t j = i + 1; j < shopShips.size(); ++j) {
+            if (!shopShips[j].enableBumping) continue;
             if (core::Ship::resolveCollision(shopShips[i], shopShips[j])) {
                 Vector2 contact = {
                     (shopShips[i].position.x + shopShips[j].position.x) * 0.5f,
