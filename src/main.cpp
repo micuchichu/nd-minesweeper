@@ -4,7 +4,10 @@
 int main(int argc, char* argv[]) {
     minesweeper::App app;
     for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "+connect_lobby" && i + 1 < argc) {
+        if (std::string(argv[i]) == "--test-shop") {
+            app.testShopMode = true;
+        }
+        else if (std::string(argv[i]) == "+connect_lobby" && i + 1 < argc) {
             try {
                 app.initialLobbyId = std::stoull(argv[i + 1]);
             } catch (...) {}

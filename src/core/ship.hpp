@@ -42,11 +42,19 @@ public:
     Color color = WHITE;
     bool isSpeaking = false;
 
+    // Merchant & anchoring properties:
+    bool isMerchant = false;
+    Vector2 anchorPosition = { 0.0f, 0.0f };
+    float restAngle = 0.0f;
+
     Ship();
     Ship(float mass, float range, float speed, Texture2D texture = {0}, int skinId = 0);
 
-    // Physics & steering towards a target position with arrival deceleration
+    // Physics & steering towards a target position with arrival deceleration (player / remote ships)
     void update(Vector2 targetPos, float dt);
+
+    // Physics & steering for merchant ship returning to anchor position with damped deceleration
+    void updateMerchant(float dt);
 
     // Resolves pairwise circular collision between two ships with mass-proportional separation & impulse
     static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.15f);

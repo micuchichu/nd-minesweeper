@@ -296,6 +296,50 @@ void RaylibRenderer::init() {
         UnloadImage(img);
         playerSkins.push_back({ "DEFAULT", defTex });
     }
+
+    // Load shop ship texture from assets/shops/
+    shopTexture = { 0 };
+    std::vector<std::string> shopSearchDirs = {
+        "assets/shops",
+        std::string(GetApplicationDirectory()) + "assets/shops",
+        std::string(GetApplicationDirectory()) + "../assets/shops",
+        std::string(GetApplicationDirectory()) + "../../assets/shops"
+    };
+    for (const auto& sDir : shopSearchDirs) {
+        if (!DirectoryExists(sDir.c_str())) continue;
+        try {
+            for (const auto& entry : fs::directory_iterator(sDir)) {
+                if (entry.is_regular_file()) {
+                    auto path = entry.path();
+                    std::string ext = path.extension().string();
+                    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+                    if (ext == ".png") {
+                        Texture2D tex = LoadTexture(path.string().c_str());
+                        if (tex.id != 0) {
+                            SetTextureFilter(tex, TEXTURE_FILTER_POINT);
+                            shopTexture = tex;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (shopTexture.id != 0) break;
+        } catch (...) {}
+    }
+
+    shopShip = core::Ship(8.0f, 160.0f, 140.0f, shopTexture, 0);
+    shopShip.scale = 1.25f;
+    shopShip.collisionRadius = 26.0f;
+    shopShip.isMerchant = true;
+    shopShip.anchorPosition = shopAnchorPos;
+    shopShip.position = shopAnchorPos;
+    shopShip.angle = 0.0f;
+    shopShip.restAngle = 0.0f;
+    shopShip.name = "SHOP";
+    shopShip.color = ui::Colors::Amber400;
+    shopShip.isInitialized = true;
 }
 
 void RaylibRenderer::initShaders() {
@@ -387,9 +431,16 @@ void RaylibRenderer::unloadAssets() {
         }
     }
     playerSkins.clear();
+
+    if (shopTexture.id != 0) {
+        UnloadTexture(shopTexture);
+        shopTexture = { 0 };
+    }
 }
 
 void RaylibRenderer::update(float dt) {
+    shopShip.updateMerchant(dt);
+
     if (outOfReachTimer > 0.0f) {
         outOfReachTimer -= dt;
         if (outOfReachTimer <= 0.0f) {
@@ -859,6 +910,30 @@ void RaylibRenderer::syncRemoteShips(const std::map<uint32_t, net::RemoteCursor>
     }
 }
 
+void RaylibRenderer::updateShopAnchor(const core::Board& board) {
+    if (board.config.size <= 0) return;
+    float boardWidth = static_cast<float>(board.config.size) * cellSize;
+    float sliceStride = boardWidth + slicePadding;
+    float totalH = boardWidth;
+    if (board.config.dim == 3) {
+        totalH = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
+    } else if (board.config.dim >= 4) {
+        totalH = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
+    }
+    Vector2 newAnchor = { -95.0f, totalH * 0.5f };
+    if (!shopShip.isInitialized) {
+        shopAnchorPos = newAnchor;
+        shopShip.anchorPosition = newAnchor;
+        shopShip.position = newAnchor;
+        shopShip.isInitialized = true;
+    } else if (std::abs(shopAnchorPos.x - newAnchor.x) > 1.0f || std::abs(shopAnchorPos.y - newAnchor.y) > 1.0f) {
+        Vector2 diff = { shopShip.position.x - shopAnchorPos.x, shopShip.position.y - shopAnchorPos.y };
+        shopAnchorPos = newAnchor;
+        shopShip.anchorPosition = newAnchor;
+        shopShip.position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+    }
+}
+
 void RaylibRenderer::resolveShipCollisions() {
     for (auto& [id, rShip] : remoteShips) {
         core::Ship::resolveCollision(localShip, rShip);
@@ -868,6 +943,24 @@ void RaylibRenderer::resolveShipCollisions() {
         ++it2;
         for (; it2 != remoteShips.end(); ++it2) {
             core::Ship::resolveCollision(it1->second, it2->second);
+        }
+    }
+    if (shopShip.isInitialized) {
+        if (core::Ship::resolveCollision(localShip, shopShip)) {
+            Vector2 contact = {
+                (localShip.position.x + shopShip.position.x) * 0.5f,
+                (localShip.position.y + shopShip.position.y) * 0.5f
+            };
+            particles.emitDebris(contact, 2, ui::Colors::Amber400);
+        }
+        for (auto& [id, rShip] : remoteShips) {
+            if (core::Ship::resolveCollision(rShip, shopShip)) {
+                Vector2 contact = {
+                    (rShip.position.x + shopShip.position.x) * 0.5f,
+                    (rShip.position.y + shopShip.position.y) * 0.5f
+                };
+                particles.emitDebris(contact, 2, ui::Colors::Amber400);
+            }
         }
     }
 }
@@ -1113,6 +1206,9 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         }
     }
 
+    // Ensure shop anchor is aligned with board dimensions
+    updateShopAnchor(board);
+
     // Sync remote players and resolve collisions
     syncRemoteShips(net.remoteCursors);
     resolveShipCollisions();
@@ -1121,9 +1217,15 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     for (const auto& [id, rShip] : remoteShips) {
         rShip.drawExhaust();
     }
+    shopShip.drawExhaust();
     localShip.drawExhaust();
 
-    // 2. Draw remote ships
+    // 2. Draw shop ship on the side of the board
+    if (shopShip.isInitialized) {
+        shopShip.draw("SHOP", ui::Colors::Amber400);
+    }
+
+    // 3. Draw remote ships
     for (const auto& [id, rShip] : remoteShips) {
         Color curCol = ui::Colors::Red500;
         if (id != 0) {
@@ -1133,7 +1235,7 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         rShip.draw(tag, curCol, rShip.isSpeaking);
     }
 
-    // 3. Draw local player ship
+    // 4. Draw local player ship
     localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
 
     // Subtle tactical aim crosshair at the cursor

@@ -19,6 +19,7 @@ enum class AppState {
 class App {
 public:
     uint64_t initialLobbyId = 0;
+    bool testShopMode = false;
 
     App();
     ~App();

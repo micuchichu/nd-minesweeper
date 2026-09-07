@@ -39,9 +39,13 @@ namespace Colors {
 
     constexpr Color Orange500 = { 249, 115, 22, 255 };
     constexpr Color Yellow400 = { 250, 204, 21, 255 };
-
+    constexpr Color Cyan300 = { 103, 232, 249, 255 };
     constexpr Color Cyan400 = { 56, 189, 248, 255 };
     constexpr Color Cyan500 = { 6, 182, 212, 255 };
+
+    constexpr Color Purple300 = { 216, 180, 254, 255 };
+    constexpr Color Purple400 = { 192, 132, 252, 255 };
+    constexpr Color Purple500 = { 168, 85, 247, 255 };
 
     constexpr Color PanelBg = { 16, 16, 20, 248 };
     constexpr Color PanelBorder = { 48, 48, 58, 255 };

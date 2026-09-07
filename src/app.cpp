@@ -209,6 +209,7 @@ bool App::loadSaveSlot(int slotIndex) {
     float initialZoom = 1.0f;
     if (board.config.size > 30) initialZoom = 30.0f / static_cast<float>(board.config.size);
     renderer.camera.reset(center, initialZoom);
+    renderer.updateShopAnchor(board);
     return ok;
 }
 
@@ -225,6 +226,7 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
         saveSettings();
     }
     board.init(dim, size, bombs, seed);
+    renderer.updateShopAnchor(board);
     hud.nextSeed = seed;
     std::snprintf(hud.seedBuf, sizeof(hud.seedBuf), "%llu", seed);
     timePlayed = 0.0f;
@@ -508,6 +510,27 @@ void App::handleNetEvents() {
 void App::update(float dt) {
     if (IsKeyPressed(KEY_F11)) {
         ToggleFullscreen();
+    }
+
+    if (IsKeyPressed(KEY_F12)) {
+        TakeScreenshot("screenshot.png");
+    }
+
+    if (testShopMode && state == AppState::InGame) {
+        static int testUpdateFrame = 0;
+        ++testUpdateFrame;
+        if (testUpdateFrame == 18) {
+            renderer.localShip.position = { renderer.shopShip.position.x + 25.0f, renderer.shopShip.position.y };
+            renderer.localShip.velocity = { -600.0f, 0.0f };
+            renderer.localShip.isInitialized = true;
+            renderer.resolveShipCollisions();
+            std::cout << "[TEST] Rammed shop ship, shop pos (" 
+                      << renderer.shopShip.position.x << ", " << renderer.shopShip.position.y 
+                      << "), shop vel (" << renderer.shopShip.velocity.x << ", " << renderer.shopShip.velocity.y << ")" << std::endl;
+        } else if (testUpdateFrame >= 22) {
+            renderer.localShip.position = { 150.0f, 150.0f };
+            renderer.localShip.velocity = { 0.0f, 0.0f };
+        }
     }
 
     renderer.enableCRT = menu.crtEnabled;
@@ -1073,10 +1096,36 @@ void App::draw() {
     ClearBackground(BLACK);
     renderer.drawOffscreenToScreen();
     EndDrawing();
+
+    if (testShopMode && state == AppState::InGame) {
+        static int drawFrame = 0;
+        ++drawFrame;
+        if (drawFrame == 10) {
+            TakeScreenshot("screenshot_docked.png");
+            std::cout << "[TEST] Frame 10: Saved screenshot_docked.png at shop pos (" 
+                      << renderer.shopShip.position.x << ", " << renderer.shopShip.position.y << ")" << std::endl;
+        } else if (drawFrame == 19) {
+            TakeScreenshot("screenshot_collide.png");
+            std::cout << "[TEST] Frame 19: Saved screenshot_collide.png" << std::endl;
+        } else if (drawFrame == 120) {
+            TakeScreenshot("screenshot_restored.png");
+            float distToAnchor = std::sqrt(
+                (renderer.shopShip.position.x - renderer.shopShip.anchorPosition.x) * (renderer.shopShip.position.x - renderer.shopShip.anchorPosition.x) +
+                (renderer.shopShip.position.y - renderer.shopShip.anchorPosition.y) * (renderer.shopShip.position.y - renderer.shopShip.anchorPosition.y));
+            std::cout << "[TEST] Frame 120: Saved screenshot_restored.png, dist to anchor: " << distToAnchor << std::endl;
+            shouldQuit = true;
+        }
+    }
 }
 
 void App::run() {
     init();
+
+    if (testShopMode) {
+        startNewGame(2, 10, 10, 12345);
+        state = AppState::InGame;
+        renderer.camera.reset({ -150.0f, -50.0f }, 1.3f);
+    }
 
     while (!WindowShouldClose() && !shouldQuit) {
         handleNetEvents();

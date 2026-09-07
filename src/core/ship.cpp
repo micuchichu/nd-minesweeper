@@ -22,6 +22,9 @@ Ship::Ship()
     , emitTimer(0.0f)
     , color(WHITE)
     , isSpeaking(false)
+    , isMerchant(false)
+    , anchorPosition{ 0.0f, 0.0f }
+    , restAngle(0.0f)
 {
 }
 
@@ -41,6 +44,9 @@ Ship::Ship(float m, float r, float s, Texture2D tex, int skin)
     , emitTimer(0.0f)
     , color(WHITE)
     , isSpeaking(false)
+    , isMerchant(false)
+    , anchorPosition{ 0.0f, 0.0f }
+    , restAngle(0.0f)
 {
 }
 
@@ -181,6 +187,128 @@ void Ship::update(Vector2 targetPos, float dt) {
     }
 }
 
+void Ship::updateMerchant(float dt) {
+    if (!isInitialized) {
+        position = anchorPosition;
+        velocity = { 0.0f, 0.0f };
+        angle = restAngle;
+        isInitialized = true;
+        exhaust.clear();
+    }
+
+    Vector2 toAnchor = { anchorPosition.x - position.x, anchorPosition.y - position.y };
+    float dist = std::sqrt(toAnchor.x * toAnchor.x + toAnchor.y * toAnchor.y);
+
+    const float maxSpeed = speed;
+    const float slowRadius = 90.0f;
+    const float maxAccel = 1200.0f;
+
+    if (dist > 0.5f) {
+        float desiredSpeed = 0.0f;
+        if (dist > slowRadius) {
+            desiredSpeed = maxSpeed;
+        } else {
+            float t = dist / slowRadius;
+            desiredSpeed = maxSpeed * (t * (2.0f - t));
+        }
+
+        Vector2 desiredVel = { (toAnchor.x / dist) * desiredSpeed, (toAnchor.y / dist) * desiredSpeed };
+        Vector2 accel = { (desiredVel.x - velocity.x) * 7.0f, (desiredVel.y - velocity.y) * 7.0f };
+        float accelMag = std::sqrt(accel.x * accel.x + accel.y * accel.y);
+        if (accelMag > maxAccel) {
+            accel.x = (accel.x / accelMag) * maxAccel;
+            accel.y = (accel.y / accelMag) * maxAccel;
+        }
+
+        velocity.x += accel.x * dt;
+        velocity.y += accel.y * dt;
+
+        float curSpeed = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+        if (dist < 0.8f && curSpeed < 6.0f) {
+            velocity = { 0.0f, 0.0f };
+            position = anchorPosition;
+        } else {
+            position.x += velocity.x * dt;
+            position.y += velocity.y * dt;
+        }
+
+        isMoving = (curSpeed > 15.0f);
+
+        float targetAngle = restAngle;
+        if (dist > 3.0f) {
+            float tilt = std::clamp(velocity.y * 0.08f, -15.0f, 15.0f);
+            targetAngle = restAngle + tilt;
+        }
+        float diffAngle = targetAngle - angle;
+        while (diffAngle < -180.0f) diffAngle += 360.0f;
+        while (diffAngle > 180.0f) diffAngle -= 360.0f;
+        angle += diffAngle * std::min(1.0f, 8.0f * dt);
+    } else {
+        velocity = { 0.0f, 0.0f };
+        position = anchorPosition;
+        float diffAngle = restAngle - angle;
+        while (diffAngle < -180.0f) diffAngle += 360.0f;
+        while (diffAngle > 180.0f) diffAngle -= 360.0f;
+        angle += diffAngle * std::min(1.0f, 8.0f * dt);
+        isMoving = false;
+    }
+
+    float theta = angle * DEG2RAD;
+    float cosA = std::cos(theta);
+    float sinA = std::sin(theta);
+
+    Vector2 rear = { -cosA, -sinA };
+    Vector2 perp = { -sinA, cosA };
+
+    float lxTop = -25.0f * scale;
+    float lyTop = -11.0f * scale;
+    float lxMid = -27.0f * scale;
+    float lyMid = 0.0f;
+    float lxBot = -25.0f * scale;
+    float lyBot = 11.0f * scale;
+
+    Vector2 topThrust = { position.x + (lxTop * cosA - lyTop * sinA), position.y + (lxTop * sinA + lyTop * cosA) };
+    Vector2 midThrust = { position.x + (lxMid * cosA - lyMid * sinA), position.y + (lxMid * sinA + lyMid * cosA) };
+    Vector2 botThrust = { position.x + (lxBot * cosA - lyBot * sinA), position.y + (lxBot * sinA + lyBot * cosA) };
+
+    float curSpeed = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+    if (curSpeed > 15.0f) {
+        emitTimer += dt * (curSpeed / maxSpeed);
+        while (emitTimer >= 0.02f) {
+            emitTimer -= 0.02f;
+            if (exhaust.size() < 128) {
+                float pSpeed = 35.0f + static_cast<float>(rand() % 35);
+                float spread1 = ((rand() % 100) - 50) * 0.005f;
+                float spread2 = ((rand() % 100) - 50) * 0.005f;
+                float spread3 = ((rand() % 100) - 50) * 0.005f;
+                Vector2 v1 = { (rear.x + perp.x * spread1) * pSpeed, (rear.y + perp.y * spread1) * pSpeed };
+                Vector2 v2 = { (rear.x + perp.x * spread2) * pSpeed, (rear.y + perp.y * spread2) * pSpeed };
+                Vector2 v3 = { (rear.x + perp.x * spread3) * pSpeed, (rear.y + perp.y * spread3) * pSpeed };
+                Color cAmber = (rand() % 2 == 0) ? ui::Colors::Amber400 : ui::Colors::Orange500;
+                Color cPurple = (rand() % 2 == 0) ? ui::Colors::Purple400 : ui::Colors::Purple500;
+                Color cCyan = (rand() % 2 == 0) ? ui::Colors::Cyan400 : ui::Colors::Amber300;
+                exhaust.push_back({ topThrust, v1, 0.28f, 0.28f, 2.6f, cAmber });
+                exhaust.push_back({ midThrust, v2, 0.32f, 0.32f, 3.0f, cPurple });
+                exhaust.push_back({ botThrust, v3, 0.28f, 0.28f, 2.6f, cCyan });
+            }
+        }
+    }
+
+    for (size_t i = 0; i < exhaust.size(); ) {
+        exhaust[i].life -= dt;
+        if (exhaust[i].life <= 0.0f) {
+            exhaust[i] = exhaust.back();
+            exhaust.pop_back();
+        } else {
+            exhaust[i].pos.x += exhaust[i].vel.x * dt;
+            exhaust[i].pos.y += exhaust[i].vel.y * dt;
+            exhaust[i].vel.x *= 0.94f;
+            exhaust[i].vel.y *= 0.94f;
+            ++i;
+        }
+    }
+}
+
 bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
     Vector2 delta = { b.position.x - a.position.x, b.position.y - a.position.y };
     float distSq = delta.x * delta.x + delta.y * delta.y;
@@ -251,8 +379,85 @@ void Ship::draw(const char* label, Color tint, bool speaking) const {
         Rectangle src = { 0.0f, 0.0f, static_cast<float>(texture.width), static_cast<float>(texture.height) };
         float w = static_cast<float>(texture.width) * scale;
         float h = static_cast<float>(texture.height) * scale;
-        Rectangle dest = { position.x, position.y, w, h };
         Vector2 origin = { w * 0.5f, h * 0.5f };
+
+        if (isMerchant) {
+            float hoverY = (!isMoving) ? (std::sin(static_cast<float>(GetTime()) * 1.8f) * 2.0f) : 0.0f;
+            Vector2 drawPos = { position.x, position.y + hoverY };
+
+            // 1. Hovering Drop Shadow
+            Vector2 shadowOffset = { 3.5f * scale, 5.0f * scale };
+            Rectangle shadowOuter = { drawPos.x + shadowOffset.x, drawPos.y + shadowOffset.y, w * 1.05f, h * 1.05f };
+            Vector2 originOuter = { shadowOuter.width * 0.5f, shadowOuter.height * 0.5f };
+            DrawTexturePro(texture, src, shadowOuter, originOuter, angle, Fade(BLACK, 0.20f));
+            Rectangle shadowDest = { drawPos.x + shadowOffset.x, drawPos.y + shadowOffset.y, w, h };
+            DrawTexturePro(texture, src, shadowDest, origin, angle, Fade(BLACK, 0.40f));
+
+            float theta = angle * DEG2RAD;
+            float cosA = std::cos(theta);
+            float sinA = std::sin(theta);
+
+            Vector2 rear = { -cosA, -sinA };
+            Vector2 perp = { -sinA, cosA };
+
+            float lxTop = -25.0f * scale;
+            float lyTop = -11.0f * scale;
+            float lxMid = -27.0f * scale;
+            float lyMid = 0.0f;
+            float lxBot = -25.0f * scale;
+            float lyBot = 11.0f * scale;
+
+            Vector2 topThrust = { drawPos.x + (lxTop * cosA - lyTop * sinA), drawPos.y + (lxTop * sinA + lyTop * cosA) };
+            Vector2 midThrust = { drawPos.x + (lxMid * cosA - lyMid * sinA), drawPos.y + (lxMid * sinA + lyMid * cosA) };
+            Vector2 botThrust = { drawPos.x + (lxBot * cosA - lyBot * sinA), drawPos.y + (lxBot * sinA + lyBot * cosA) };
+
+            float t = static_cast<float>(GetTime());
+            if (isMoving) {
+                float flk1 = 5.0f + 4.0f * std::sin(t * 38.0f);
+                float flk2 = 7.0f + 5.0f * std::cos(t * 44.0f);
+                float flk3 = 5.0f + 4.0f * std::sin(t * 36.0f);
+
+                DrawTriangle({ topThrust.x + rear.x * (flk1 * scale), topThrust.y + rear.y * (flk1 * scale) },
+                             { topThrust.x + perp.x * (1.8f * scale), topThrust.y + perp.y * (1.8f * scale) },
+                             { topThrust.x - perp.x * (1.8f * scale), topThrust.y - perp.y * (1.8f * scale) }, ui::Colors::Orange500);
+                DrawTriangle({ midThrust.x + rear.x * (flk2 * scale), midThrust.y + rear.y * (flk2 * scale) },
+                             { midThrust.x + perp.x * (2.2f * scale), midThrust.y + perp.y * (2.2f * scale) },
+                             { midThrust.x - perp.x * (2.2f * scale), midThrust.y - perp.y * (2.2f * scale) }, ui::Colors::Purple500);
+                DrawTriangle({ botThrust.x + rear.x * (flk3 * scale), botThrust.y + rear.y * (flk3 * scale) },
+                             { botThrust.x + perp.x * (1.8f * scale), botThrust.y + perp.y * (1.8f * scale) },
+                             { botThrust.x - perp.x * (1.8f * scale), botThrust.y - perp.y * (1.8f * scale) }, ui::Colors::Cyan500);
+
+                DrawTriangle({ topThrust.x + rear.x * (flk1 * 0.5f * scale), topThrust.y + rear.y * (flk1 * 0.5f * scale) },
+                             { topThrust.x + perp.x * (1.1f * scale), topThrust.y + perp.y * (1.1f * scale) },
+                             { topThrust.x - perp.x * (1.1f * scale), topThrust.y - perp.y * (1.1f * scale) }, ui::Colors::Amber300);
+                DrawTriangle({ midThrust.x + rear.x * (flk2 * 0.5f * scale), midThrust.y + rear.y * (flk2 * 0.5f * scale) },
+                             { midThrust.x + perp.x * (1.3f * scale), midThrust.y + perp.y * (1.3f * scale) },
+                             { midThrust.x - perp.x * (1.3f * scale), midThrust.y - perp.y * (1.3f * scale) }, ui::Colors::Purple300);
+                DrawTriangle({ botThrust.x + rear.x * (flk3 * 0.5f * scale), botThrust.y + rear.y * (flk3 * 0.5f * scale) },
+                             { botThrust.x + perp.x * (1.1f * scale), botThrust.y + perp.y * (1.1f * scale) },
+                             { botThrust.x - perp.x * (1.1f * scale), botThrust.y - perp.y * (1.1f * scale) }, ui::Colors::Cyan300);
+            } else {
+                float idlePulse = 0.5f + 0.5f * std::sin(t * 5.0f);
+                DrawCircleV(topThrust, 1.4f * scale + idlePulse * 0.6f, Fade(ui::Colors::Amber400, 0.8f));
+                DrawCircleV(midThrust, 1.8f * scale + idlePulse * 0.8f, Fade(ui::Colors::Purple400, 0.85f));
+                DrawCircleV(botThrust, 1.4f * scale + idlePulse * 0.6f, Fade(ui::Colors::Cyan400, 0.8f));
+            }
+
+            DrawTexturePro(texture, src, { drawPos.x, drawPos.y, w, h }, origin, angle, WHITE);
+            drewTexture = true;
+
+            const char* displayName = (label && label[0] != '\0') ? label : (!name.empty() ? name.c_str() : "SHOP");
+            int nameW = MeasureText(displayName, 12);
+            float badgeY = drawPos.y + (h * 0.5f) + 6.0f;
+            Rectangle badge = { drawPos.x - static_cast<float>(nameW + 16) * 0.5f, badgeY, static_cast<float>(nameW + 16), 16.0f };
+            DrawRectangleRec(badge, Fade(BLACK, 0.85f));
+            DrawRectangleLinesEx(badge, 1.0f, ui::Colors::Amber400);
+            DrawText(displayName, static_cast<int>(badge.x + 8), static_cast<int>(badge.y + 2), 12, ui::Colors::Amber300);
+            return;
+        }
+
+        // Standard Scout / Player Ship
+        Rectangle dest = { position.x, position.y, w, h };
 
         // 1. Hovering Drop Shadow
         Vector2 shadowOffset = { 2.5f * scale, 3.5f * scale };
@@ -359,6 +564,12 @@ Vector2 Ship::getNosePosition() const {
     float theta = angle * DEG2RAD;
     float sinA = std::sin(theta);
     float cosA = std::cos(theta);
+    if (isMerchant) {
+        return {
+            position.x + cosA * (28.0f * scale),
+            position.y + sinA * (28.0f * scale)
+        };
+    }
     return {
         position.x + sinA * (8.0f * scale),
         position.y - cosA * (8.0f * scale)
