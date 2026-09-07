@@ -140,7 +140,13 @@ std::vector<ShopShipAsset> AssetManager::loadShopShipAssets() {
         }
     }
 
-    std::sort(filePaths.begin(), filePaths.end());
+    std::sort(filePaths.begin(), filePaths.end(), [](const fs::path& a, const fs::path& b) {
+        std::string sA = a.stem().string();
+        std::string sB = b.stem().string();
+        std::transform(sA.begin(), sA.end(), sA.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::transform(sB.begin(), sB.end(), sB.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return sA < sB;
+    });
 
     int shopIndex = 1;
     for (const auto& p : filePaths) {

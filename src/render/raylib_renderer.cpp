@@ -114,6 +114,17 @@ void RaylibRenderer::init() {
     flagSkins.clear();
     namespace fs = std::filesystem;
 
+    struct SkinCandidate {
+        std::string stem;
+        std::string path;
+    };
+
+    auto skinSortPred = [](const SkinCandidate& a, const SkinCandidate& b) {
+        if (a.stem == "DEFAULT" && b.stem != "DEFAULT") return true;
+        if (b.stem == "DEFAULT" && a.stem != "DEFAULT") return false;
+        return a.stem < b.stem;
+    };
+
     std::vector<std::string> flagSearchDirs = {
         "assets/skins/flags",
         std::string(GetApplicationDirectory()) + "assets/skins/flags",
@@ -121,9 +132,10 @@ void RaylibRenderer::init() {
         std::string(GetApplicationDirectory()) + "../../assets/skins/flags"
     };
 
-    auto hasFlagSkin = [](const std::string& name) {
-        for (const auto& s : flagSkins) {
-            if (s.name == name) return true;
+    std::vector<SkinCandidate> flagCandidates;
+    auto hasFlagCandidate = [&](const std::string& stem) {
+        for (const auto& c : flagCandidates) {
+            if (c.stem == stem) return true;
         }
         return false;
     };
@@ -141,21 +153,24 @@ void RaylibRenderer::init() {
                     if (ext == ".png") {
                         std::string stem = path.stem().string();
                         for (char& c : stem) c = static_cast<char>(::toupper(c));
-                        if (!hasFlagSkin(stem)) {
-                            Texture2D tex = LoadTexture(path.string().c_str());
-                            if (tex.id != 0) {
-                                SetTextureFilter(tex, TEXTURE_FILTER_POINT);
-                                if (stem == "DEFAULT") {
-                                    flagSkins.insert(flagSkins.begin(), { stem, tex });
-                                } else {
-                                    flagSkins.push_back({ stem, tex });
-                                }
-                            }
+                        if (!hasFlagCandidate(stem)) {
+                            flagCandidates.push_back({ stem, path.string() });
                         }
                     }
                 }
             }
         } catch (...) {}
+        if (!flagCandidates.empty()) break;
+    }
+
+    std::sort(flagCandidates.begin(), flagCandidates.end(), skinSortPred);
+
+    for (const auto& c : flagCandidates) {
+        Texture2D tex = LoadTexture(c.path.c_str());
+        if (tex.id != 0) {
+            SetTextureFilter(tex, TEXTURE_FILTER_POINT);
+            flagSkins.push_back({ c.stem, tex });
+        }
     }
 
     if (flagSkins.empty() && FileExists("assets/flag.png")) {
@@ -196,9 +211,10 @@ void RaylibRenderer::init() {
         std::string(GetApplicationDirectory()) + "../../assets/skins"
     };
 
-    auto hasCursorSkin = [](const std::string& name) {
-        for (const auto& s : cursorSkins) {
-            if (s.name == name) return true;
+    std::vector<SkinCandidate> cursorCandidates;
+    auto hasCursorCandidate = [&](const std::string& stem) {
+        for (const auto& c : cursorCandidates) {
+            if (c.stem == stem) return true;
         }
         return false;
     };
@@ -216,17 +232,24 @@ void RaylibRenderer::init() {
                     if (ext == ".png") {
                         std::string stem = path.stem().string();
                         for (char& c : stem) c = static_cast<char>(::toupper(c));
-                        if (!hasCursorSkin(stem)) {
-                            Texture2D tex = LoadTexture(path.string().c_str());
-                            if (tex.id != 0) {
-                                SetTextureFilter(tex, TEXTURE_FILTER_POINT);
-                                cursorSkins.push_back({ stem, tex });
-                            }
+                        if (!hasCursorCandidate(stem)) {
+                            cursorCandidates.push_back({ stem, path.string() });
                         }
                     }
                 }
             }
         } catch (...) {}
+        if (!cursorCandidates.empty()) break;
+    }
+
+    std::sort(cursorCandidates.begin(), cursorCandidates.end(), skinSortPred);
+
+    for (const auto& c : cursorCandidates) {
+        Texture2D tex = LoadTexture(c.path.c_str());
+        if (tex.id != 0) {
+            SetTextureFilter(tex, TEXTURE_FILTER_POINT);
+            cursorSkins.push_back({ c.stem, tex });
+        }
     }
 
     if (cursorSkins.empty()) {
@@ -243,11 +266,25 @@ void RaylibRenderer::init() {
 
     // Load custom player skins from assets/skins/players
     playerSkins.clear();
-    std::string playersDir = "assets/skins/players";
-    if (DirectoryExists(playersDir.c_str())) {
-        namespace fs = std::filesystem;
+    std::vector<std::string> playerSearchDirs = {
+        "assets/skins/players",
+        std::string(GetApplicationDirectory()) + "assets/skins/players",
+        std::string(GetApplicationDirectory()) + "../assets/skins/players",
+        std::string(GetApplicationDirectory()) + "../../assets/skins/players"
+    };
+
+    std::vector<SkinCandidate> playerCandidates;
+    auto hasPlayerCandidate = [&](const std::string& stem) {
+        for (const auto& c : playerCandidates) {
+            if (c.stem == stem) return true;
+        }
+        return false;
+    };
+
+    for (const auto& pDir : playerSearchDirs) {
+        if (!DirectoryExists(pDir.c_str())) continue;
         try {
-            for (const auto& entry : fs::directory_iterator(playersDir)) {
+            for (const auto& entry : fs::directory_iterator(pDir)) {
                 if (entry.is_regular_file()) {
                     auto path = entry.path();
                     std::string ext = path.extension().string();
@@ -255,21 +292,26 @@ void RaylibRenderer::init() {
                         return static_cast<char>(std::tolower(c));
                     });
                     if (ext == ".png") {
-                        Texture2D tex = LoadTexture(path.string().c_str());
-                        if (tex.id != 0) {
-                            SetTextureFilter(tex, TEXTURE_FILTER_POINT);
-                            std::string stem = path.stem().string();
-                            for (char& c : stem) c = static_cast<char>(::toupper(c));
-                            if (stem == "DEFAULT") {
-                                playerSkins.insert(playerSkins.begin(), { stem, tex });
-                            } else {
-                                playerSkins.push_back({ stem, tex });
-                            }
+                        std::string stem = path.stem().string();
+                        for (char& c : stem) c = static_cast<char>(::toupper(c));
+                        if (!hasPlayerCandidate(stem)) {
+                            playerCandidates.push_back({ stem, path.string() });
                         }
                     }
                 }
             }
         } catch (...) {}
+        if (!playerCandidates.empty()) break;
+    }
+
+    std::sort(playerCandidates.begin(), playerCandidates.end(), skinSortPred);
+
+    for (const auto& c : playerCandidates) {
+        Texture2D tex = LoadTexture(c.path.c_str());
+        if (tex.id != 0) {
+            SetTextureFilter(tex, TEXTURE_FILTER_POINT);
+            playerSkins.push_back({ c.stem, tex });
+        }
     }
 
     if (playerSkins.empty()) {
@@ -1022,6 +1064,19 @@ void RaylibRenderer::fireLaser(Vector2 from, Vector2 to, Color color) {
 }
 
 Color RaylibRenderer::getLaserColorForSkin(int skinId) {
+    if (skinId >= 0 && skinId < static_cast<int>(cursorSkins.size())) {
+        const std::string& name = cursorSkins[skinId].name;
+        if (name == "BLUE")   return Color{ 0, 229, 255, 255 };
+        if (name == "BROWN")  return Color{ 255, 170, 0, 255 };
+        if (name == "CYAN")   return Color{ 0, 255, 210, 255 };
+        if (name == "GREEN")  return Color{ 34, 197, 94, 255 };
+        if (name == "ORANGE") return Color{ 255, 120, 0, 255 };
+        if (name == "PINK")   return Color{ 255, 105, 180, 255 };
+        if (name == "PURPLE") return Color{ 190, 80, 255, 255 };
+        if (name == "RED")    return Color{ 255, 50, 70, 255 };
+        if (name == "WHITE")  return Color{ 240, 255, 255, 255 };
+    }
+
     switch (skinId) {
         case 0: return Color{ 0, 229, 255, 255 };   // Cyan / Blue
         case 1: return Color{ 255, 170, 0, 255 };   // Amber / Brown
