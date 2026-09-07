@@ -1,6 +1,7 @@
 #pragma once
 
 #include "raylib.h"
+#include "core/ship_config.hpp"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -12,6 +13,7 @@ struct ShopShipAsset {
     std::string path;        // Resolved file path
     std::string displayName; // e.g. "SHOP 1", "SHOP 2"
     Texture2D texture;       // Loaded GPU texture
+    core::ShipConfig config; // Loaded ship configuration
 };
 
 class AssetManager {

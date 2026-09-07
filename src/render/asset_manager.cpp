@@ -156,7 +156,25 @@ std::vector<ShopShipAsset> AssetManager::loadShopShipAssets() {
                 displayName = "SHOP " + std::to_string(shopIndex);
             }
 
-            shopShipAssets.push_back({ stem, pathStr, displayName, tex });
+            core::ShipConfig cfg = core::ShipConfig::createDefault(tex.width, tex.height, displayName);
+            fs::path jsonPath = p.parent_path() / (stem + ".json");
+            if (fs::exists(jsonPath)) {
+                core::ShipConfig::loadFromFile(jsonPath.string(), cfg);
+            } else {
+                std::string resolvedJson = resolvePath("shops/" + stem + ".json");
+                if (!fs::exists(resolvedJson)) {
+                    resolvedJson = resolvePath("assets/shops/" + stem + ".json");
+                }
+                if (fs::exists(resolvedJson)) {
+                    core::ShipConfig::loadFromFile(resolvedJson, cfg);
+                }
+            }
+
+            if (!cfg.name.empty()) {
+                displayName = cfg.name;
+            }
+
+            shopShipAssets.push_back({ stem, pathStr, displayName, tex, cfg });
             ++shopIndex;
         }
     }

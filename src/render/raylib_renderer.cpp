@@ -303,7 +303,7 @@ void RaylibRenderer::init() {
     auto shopAssets = AssetManager::instance().loadShopShipAssets();
     for (size_t i = 0; i < shopAssets.size(); ++i) {
         Vector2 initAnchor = { -95.0f, 100.0f + static_cast<float>(i) * 110.0f };
-        shopShips.emplace_back(shopAssets[i].texture, initAnchor, shopAssets[i].displayName);
+        shopShips.emplace_back(shopAssets[i].texture, initAnchor, shopAssets[i].config);
         shopShips.back().isInitialized = false;
     }
     if (!shopShips.empty()) {

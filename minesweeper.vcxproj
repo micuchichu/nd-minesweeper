@@ -122,6 +122,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\core\board.hpp" />
     <ClInclude Include="src\core\save_manager.hpp" />
     <ClInclude Include="src\core\ship.hpp" />
+    <ClInclude Include="src\core\ship_config.hpp" />
     <ClInclude Include="src\core\rng.hpp" />
     <ClInclude Include="src\net\protocol.hpp" />
     <ClInclude Include="src\net\network_manager.hpp" />

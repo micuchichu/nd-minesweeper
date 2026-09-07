@@ -1,4 +1,5 @@
 #include "ship.hpp"
+#include "ship_config.hpp"
 #include "ui/theme.hpp"
 #include <cmath>
 #include <cstdlib>
@@ -52,6 +53,41 @@ void Ship::addThruster(Vector2 offset, Vector2 direction, float width, float len
     thrusters.push_back({ offset, direction, width, length, outer, inner });
 }
 
+void Ship::applyConfig(const ShipConfig& cfg) {
+    if (!cfg.name.empty()) {
+        name = cfg.name;
+    }
+    if (cfg.scale > 0.0f) {
+        scale = cfg.scale;
+    }
+    if (cfg.mass > 0.0f) {
+        mass = cfg.mass;
+    }
+    if (cfg.speed > 0.0f) {
+        speed = cfg.speed;
+    }
+    if (cfg.range > 0.0f) {
+        range = cfg.range;
+    }
+    if (cfg.collisionRadius > 0.0f) {
+        collisionRadius = cfg.collisionRadius;
+    }
+    thrusterColor = cfg.thrusterColor;
+
+    if (!cfg.thrusters.empty()) {
+        thrusters = cfg.thrusters;
+        for (auto& th : thrusters) {
+            th.outerColor = thrusterColor;
+            th.innerColor = Color{
+                static_cast<unsigned char>(std::min(255, thrusterColor.r + 50)),
+                static_cast<unsigned char>(std::min(255, thrusterColor.g + 50)),
+                static_cast<unsigned char>(std::min(255, thrusterColor.b + 50)),
+                255
+            };
+        }
+    }
+}
+
 void Ship::reset(Vector2 newPos, float newAngle) {
     position = newPos;
     velocity = { 0.0f, 0.0f };
@@ -93,6 +129,11 @@ void Ship::update(float dt) {
 }
 
 void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
+    if (isMoving) {
+        // Triangles removed as requested: only particle embers stream when moving (rendered in drawExhaust)
+        return;
+    }
+
     float theta = baseAngle * DEG2RAD;
     float cosA = std::cos(theta);
     float sinA = std::sin(theta);
@@ -107,35 +148,11 @@ void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
             drawPos.y + (th.offset.x * sinA + th.offset.y * cosA) * scale
         };
 
-        // 2. Calculate world exhaust direction & perpendicular
-        Vector2 worldDir = {
-            th.direction.x * cosA - th.direction.y * sinA,
-            th.direction.x * sinA + th.direction.y * cosA
-        };
-        Vector2 worldPerp = { -worldDir.y, worldDir.x };
-
-        if (isMoving) {
-            float phaseOffset = static_cast<float>(i) * 6.0f;
-            float flicker = (th.flameLength * 0.7f) + (th.flameLength * 0.5f) * std::sin(t * 40.0f + phaseOffset);
-
-            // Outer flame plume
-            float outerW = th.nozzleWidth * 0.55f * scale;
-            Vector2 tip = { worldNozzle.x + worldDir.x * (flicker * scale), worldNozzle.y + worldDir.y * (flicker * scale) };
-            Vector2 p1 = { worldNozzle.x + worldPerp.x * outerW, worldNozzle.y + worldPerp.y * outerW };
-            Vector2 p2 = { worldNozzle.x - worldPerp.x * outerW, worldNozzle.y - worldPerp.y * outerW };
-            DrawTriangle(tip, p1, p2, th.outerColor);
-
-            // Inner hot core
-            float innerW = th.nozzleWidth * 0.32f * scale;
-            Vector2 coreTip = { worldNozzle.x + worldDir.x * (flicker * 0.55f * scale), worldNozzle.y + worldDir.y * (flicker * 0.55f * scale) };
-            Vector2 cp1 = { worldNozzle.x + worldPerp.x * innerW, worldNozzle.y + worldPerp.y * innerW };
-            Vector2 cp2 = { worldNozzle.x - worldPerp.x * innerW, worldNozzle.y - worldPerp.y * innerW };
-            DrawTriangle(coreTip, cp1, cp2, th.innerColor);
-        } else {
-            float idlePulse = 0.4f + 0.4f * std::sin(t * 5.0f + static_cast<float>(i) * 1.5f);
-            float r = (th.nozzleWidth * 0.65f * scale) + idlePulse;
-            DrawCircleV(worldNozzle, r, Fade(th.outerColor, 0.8f));
-        }
+        // While idling: glowing circles at the back of thrusters
+        float idlePulse = 0.4f + 0.4f * std::sin(t * 5.0f + static_cast<float>(i) * 1.5f);
+        float r = (th.nozzleWidth * 0.65f * scale) + idlePulse;
+        DrawCircleV(worldNozzle, r, Fade(th.outerColor, 0.85f));
+        DrawCircleV(worldNozzle, r * 0.5f, Fade(th.innerColor, 0.65f));
     }
 }
 
@@ -496,14 +513,14 @@ Vector2 ScoutShip::getNosePosition() const {
 MerchantShip::MerchantShip()
     : Ship(8.0f, 100.0f, 140.0f)
 {
-    scale = 1.25f;
+    scale = 1.8f;
     collisionRadius = 26.0f;
 }
 
 MerchantShip::MerchantShip(float m, float r, float s, Texture2D tex, int skin)
     : Ship(m, r, s, tex, skin)
 {
-    scale = 1.25f;
+    scale = 1.8f;
     collisionRadius = 26.0f;
 }
 
@@ -604,7 +621,7 @@ void MerchantShip::update(float dt) {
 ShopShip::ShopShip()
     : MerchantShip(8.0f, 160.0f, 140.0f)
 {
-    scale = 1.25f;
+    scale = 1.8f;
     collisionRadius = 26.0f;
     name = "SHOP";
     color = ui::Colors::Amber400;
@@ -614,49 +631,25 @@ ShopShip::ShopShip()
 ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const std::string& shipName)
     : MerchantShip(8.0f, 160.0f, 140.0f, tex, 0)
 {
-    scale = 1.25f;
+    scale = 1.8f;
     name = shipName.empty() ? "SHOP" : shipName;
     color = ui::Colors::Amber400;
     setAnchor(anchor, 0.0f);
     setupThrusters();
 }
 
+ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const ShipConfig& config)
+    : MerchantShip(config.mass, config.range, config.speed, tex, 0)
+{
+    name = config.name.empty() ? "SHOP" : config.name;
+    color = ui::Colors::Amber400;
+    setAnchor(anchor, 0.0f);
+    applyConfig(config);
+}
+
 void ShopShip::setupThrusters() {
-    thrusters.clear();
-
-    if (texture.id == 0) {
-        // Fallback default thruster
-        addThruster({ -25.0f, 0.0f }, { -1.0f, 0.0f }, 2.0f, 6.0f, ui::Colors::Orange500, ui::Colors::Amber300);
-        return;
-    }
-
-    float w = static_cast<float>(texture.width);
-    float h = static_cast<float>(texture.height);
-
-    if (w == 64 && h == 32) {
-        // shop1.png: 3 rear nozzles
-        mass = 8.0f;
-        collisionRadius = 26.0f;
-        addThruster({ -25.0f, -11.0f }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Orange500, ui::Colors::Amber300);
-        addThruster({ -27.0f,   0.0f }, { -1.0f, 0.0f }, 4.4f, 8.0f, ui::Colors::Purple500, ui::Colors::Purple300);
-        addThruster({ -25.0f,  11.0f }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Cyan500,   ui::Colors::Cyan300);
-    } else if (w == 128 && h == 48) {
-        // shop2.png: larger freighter, 3 heavy nozzles
-        mass = 12.0f;
-        collisionRadius = 34.0f;
-        addThruster({ -48.0f, -14.0f }, { -1.0f, 0.0f }, 4.8f, 7.0f,  ui::Colors::Orange500, ui::Colors::Amber300);
-        addThruster({ -50.0f,   0.0f }, { -1.0f, 0.0f }, 6.4f, 10.0f, ui::Colors::Purple500, ui::Colors::Cyan300);
-        addThruster({ -48.0f,  14.0f }, { -1.0f, 0.0f }, 4.8f, 7.0f,  ui::Colors::Cyan500,   ui::Colors::Cyan300);
-    } else {
-        // Generic shop ship based on texture dimensions
-        float halfW = w * 0.5f;
-        float halfH = h * 0.5f;
-        mass = std::max(6.0f, (w * h) / 300.0f);
-        collisionRadius = std::max(20.0f, std::min(halfW, halfH) * 1.3f);
-        addThruster({ -halfW * 0.82f, -halfH * 0.60f }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Orange500, ui::Colors::Amber300);
-        addThruster({ -halfW * 0.86f,   0.0f          }, { -1.0f, 0.0f }, 4.8f, 8.0f, ui::Colors::Purple500, ui::Colors::Purple300);
-        addThruster({ -halfW * 0.82f,  halfH * 0.60f  }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Cyan500,   ui::Colors::Cyan300);
-    }
+    ShipConfig cfg = ShipConfig::createDefault(texture.width, texture.height, name);
+    applyConfig(cfg);
 }
 
 void ShopShip::update(float dt) {

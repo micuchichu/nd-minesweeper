@@ -6,6 +6,8 @@
 
 namespace minesweeper::core {
 
+struct ShipConfig;
+
 struct ShipExhaustParticle {
     Vector2 pos;
     Vector2 vel;
@@ -49,8 +51,10 @@ public:
     bool isInitialized = false;
 
     // Configurable thrusters:
+    Color thrusterColor = { 255, 179, 0, 255 }; // Unified thruster color across ship
     std::vector<ShipThruster> thrusters;
     void addThruster(Vector2 offset, Vector2 direction, float width, float length, Color outer, Color inner);
+    void applyConfig(const ShipConfig& cfg);
 
     // Visuals & effects:
     std::vector<ShipExhaustParticle> exhaust;
@@ -139,6 +143,7 @@ class ShopShip : public MerchantShip {
 public:
     ShopShip();
     ShopShip(Texture2D texture, Vector2 anchor, const std::string& shipName = "SHOP");
+    ShopShip(Texture2D texture, Vector2 anchor, const ShipConfig& config);
 
     void setupThrusters();
     void update(float dt) override;
