@@ -331,7 +331,7 @@ struct ShipConfig {
     float range = 160.0f;
     float collisionRadius = 26.0f;
     Color thrusterColor = { 255, 179, 0, 255 }; // Unified thruster color
-    bool isStatic = true; // Immovable anchor obstacle by default for shop freighters
+    bool bumpable = false; // Pushable, but not bumpable for shop freighters
     std::vector<ShipThruster> thrusters;
 
     static ShipConfig createDefault(int texW, int texH, const std::string& defaultName = "SHOP") {
@@ -339,7 +339,7 @@ struct ShipConfig {
         cfg.name = defaultName;
         cfg.scale = 1.8f;
         cfg.thrusterColor = { 255, 179, 0, 255 };
-        cfg.isStatic = true;
+        cfg.bumpable = false;
 
         if (texW == 64 && texH == 32) {
             cfg.mass = 8.0f;
@@ -417,14 +417,12 @@ struct ShipConfig {
             outConfig.thrusterColor = parseColorValue(root["color"], outConfig.thrusterColor);
         }
 
-        if (root.contains("isStatic")) {
-            outConfig.isStatic = root["isStatic"].asBool(outConfig.isStatic);
-        } else if (root.contains("static")) {
-            outConfig.isStatic = root["static"].asBool(outConfig.isStatic);
-        } else if (root.contains("is_static")) {
-            outConfig.isStatic = root["is_static"].asBool(outConfig.isStatic);
-        } else if (root.contains("immovable")) {
-            outConfig.isStatic = root["immovable"].asBool(outConfig.isStatic);
+        if (root.contains("bumpable")) {
+            outConfig.bumpable = root["bumpable"].asBool(outConfig.bumpable);
+        } else if (root.contains("isBumpable")) {
+            outConfig.bumpable = root["isBumpable"].asBool(outConfig.bumpable);
+        } else if (root.contains("canBump")) {
+            outConfig.bumpable = root["canBump"].asBool(outConfig.bumpable);
         }
 
         if (root.contains("thrusters") && root["thrusters"].isArray()) {

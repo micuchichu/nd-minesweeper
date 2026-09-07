@@ -938,34 +938,14 @@ void RaylibRenderer::resolveShipCollisions() {
     }
     for (auto& s : shopShips) {
         if (!s.isInitialized) continue;
-        if (core::Ship::resolveCollision(localShip, s)) {
-            Vector2 contact = {
-                (localShip.position.x + s.position.x) * 0.5f,
-                (localShip.position.y + s.position.y) * 0.5f
-            };
-            particles.emitDebris(contact, 3, ui::Colors::Amber400);
-        }
+        core::Ship::resolveCollision(localShip, s);
         for (auto& [id, rShip] : remoteShips) {
-            if (core::Ship::resolveCollision(rShip, s)) {
-                Vector2 contact = {
-                    (rShip.position.x + s.position.x) * 0.5f,
-                    (rShip.position.y + s.position.y) * 0.5f
-                };
-                particles.emitDebris(contact, 3, ui::Colors::Amber400);
-            }
+            core::Ship::resolveCollision(rShip, s);
         }
     }
     for (size_t i = 0; i < shopShips.size(); ++i) {
-        if (shopShips[i].isStatic) continue;
         for (size_t j = i + 1; j < shopShips.size(); ++j) {
-            if (shopShips[j].isStatic) continue;
-            if (core::Ship::resolveCollision(shopShips[i], shopShips[j])) {
-                Vector2 contact = {
-                    (shopShips[i].position.x + shopShips[j].position.x) * 0.5f,
-                    (shopShips[i].position.y + shopShips[j].position.y) * 0.5f
-                };
-                particles.emitDebris(contact, 2, ui::Colors::Amber400);
-            }
+            core::Ship::resolveCollision(shopShips[i], shopShips[j]);
         }
     }
     if (!shopShips.empty()) {
