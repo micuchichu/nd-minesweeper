@@ -49,7 +49,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     DrawText(scrapStr, static_cast<int>(scrapBadgeX + 32), static_cast<int>(scrapBadgeY + (scrapBadgeH - 15) * 0.5f), 15, Colors::Amber400);
 
     // Hover tooltip
-    Vector2 mPos = GetMousePosition();
+    Vector2 mPos = Widgets::getUIMousePos();
     if (CheckCollisionPointRec(mPos, scrapRect)) {
         const char* tip = TextFormat("TOTAL SCRAP: %llu", scrapCount);
         int tipW = MeasureText(tip, 12);
@@ -71,8 +71,11 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             : ((currentScreen == MenuScreen::Join) ? "// JOIN MULTIPLAYER //"
             : ((currentScreen == MenuScreen::Settings) ? "// SETTINGS //" : "// CUSTOMIZATION //"))));
         int subW = MeasureText(subTitle, 28);
-        DrawText(subTitle, static_cast<int>(centerX - subW * 0.5f + 2), static_cast<int>(centerY - 228), 28, Fade(BLACK, 0.85f));
-        DrawText(subTitle, static_cast<int>(centerX - subW * 0.5f), static_cast<int>(centerY - 230), 28, Colors::Amber400);
+        float subTitleY = (currentScreen == MenuScreen::Customize)
+            ? std::max(56.0f, centerY - 215.0f)
+            : (centerY - 230.0f);
+        DrawText(subTitle, static_cast<int>(centerX - subW * 0.5f + 2), static_cast<int>(subTitleY + 2), 28, Fade(BLACK, 0.85f));
+        DrawText(subTitle, static_cast<int>(centerX - subW * 0.5f), static_cast<int>(subTitleY), 28, Colors::Amber400);
     }
 
     static bool joinInputActive = false;
@@ -395,7 +398,8 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     }
     else if (currentScreen == MenuScreen::Customize) {
         Vector2 mouse = Widgets::getUIMousePos();
-        float startY = centerY - 170.0f;
+        float subTitleY = std::max(56.0f, centerY - 215.0f);
+        float startY = subTitleY + 48.0f;
 
         // Player Name Bar
         const char* prompt = "PLAYER NAME:";
@@ -403,8 +407,13 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         DrawText(prompt, static_cast<int>(centerX - pW * 0.5f), static_cast<int>(startY), 15, Colors::Zinc400);
         Widgets::textInput({ centerX - 140, startY + 22, 280, 34 }, playerName, sizeof(playerName), nameInputActive, "Player");
 
+        // HORIZONTAL REEL CONTAINER (Cursors & Flags)
+        float reelContainerW = std::min(580.0f, static_cast<float>(screenW) - 40.0f);
+        float reelContainerH = 118.0f;
+        float reelContainerX = centerX - reelContainerW * 0.5f;
+
         // CATEGORY TABS (CURSORS, FLAGS)
-        float tabW = 180.0f;
+        float tabW = std::min(180.0f, (reelContainerW - 16.0f) * 0.5f);
         float tabH = 34.0f;
         float tabGap = 16.0f;
         float tabsTotalW = 2 * tabW + tabGap;
@@ -454,10 +463,6 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             reelTargetScrollX = 0.0f;
         }
 
-        // HORIZONTAL REEL CONTAINER (Cursors & Flags)
-        float reelContainerW = 580.0f;
-        float reelContainerH = 118.0f;
-        float reelContainerX = centerX - reelContainerW * 0.5f;
         float reelContainerY = tabY + 44.0f;
 
         DrawRectangleRec({ reelContainerX, reelContainerY, reelContainerW, reelContainerH }, Colors::Zinc950);
@@ -541,7 +546,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             ? (vpX + (vpW - totalCardsW) * 0.5f)
             : (vpX - reelScrollX);
 
-        BeginScissorMode(static_cast<int>(vpX), static_cast<int>(vpY), static_cast<int>(vpW), static_cast<int>(vpH));
+        Widgets::beginScissor(vpX, vpY, vpW, vpH);
 
         for (int i = 0; i < itemCount; ++i) {
             float cX = contentStartX + i * (cardW + cardSpacing);
@@ -602,10 +607,10 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         DrawRectangleGradientH(static_cast<int>(vpX), static_cast<int>(vpY), 24, static_cast<int>(vpH), Fade(Colors::Zinc950, 0.95f), Fade(Colors::Zinc950, 0.0f));
         DrawRectangleGradientH(static_cast<int>(vpX + vpW - 24), static_cast<int>(vpY), 24, static_cast<int>(vpH), Fade(Colors::Zinc950, 0.0f), Fade(Colors::Zinc950, 0.95f));
 
-        EndScissorMode();
+        Widgets::endScissor();
 
         // LIVE SHOWCASE PREVIEW BOX
-        float previewBoxW = 420.0f;
+        float previewBoxW = std::min(420.0f, reelContainerW);
         float previewBoxH = 64.0f;
         float previewBoxX = centerX - previewBoxW * 0.5f;
         float previewBoxY = reelContainerY + reelContainerH + 14.0f;
@@ -642,10 +647,10 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         }
 
         // DONE BUTTON
-        float doneBtnW = 240.0f;
+        float doneBtnW = std::min(240.0f, reelContainerW);
         float doneBtnH = 44.0f;
         float doneBtnX = centerX - doneBtnW * 0.5f;
-        float doneBtnY = previewBoxY + previewBoxH + 20.0f;
+        float doneBtnY = previewBoxY + previewBoxH + 18.0f;
 
         if (Widgets::mindustryButton("DONE", "SAVE & RETURN", { doneBtnX, doneBtnY, doneBtnW, doneBtnH }, Colors::Green500, false, 18) || IsKeyPressed(KEY_ESCAPE)) {
             currentScreen = MenuScreen::Main;

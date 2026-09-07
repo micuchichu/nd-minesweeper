@@ -150,6 +150,9 @@ int main(int argc, char* argv[]) {
             runCapsuleTests();
             app.testShopMode = true;
         }
+        else if (std::string(argv[i]) == "--test-customize") {
+            app.testCustomizeMode = true;
+        }
         else if (std::string(argv[i]) == "+connect_lobby" && i + 1 < argc) {
             try {
                 app.initialLobbyId = std::stoull(argv[i + 1]);

@@ -960,6 +960,7 @@ void App::update(float dt) {
 void App::draw() {
     float scale = std::clamp(menu.guiScale, 0.75f, 1.50f);
     ui::Widgets::setScale(scale);
+    ui::Widgets::setCRT(menu.crtEnabled);
     renderer.guiScale = scale;
 
     int screenW = GetScreenWidth();
@@ -1156,6 +1157,26 @@ void App::draw() {
             shouldQuit = true;
         }
     }
+
+    if (testCustomizeMode) {
+        static int custFrame = 0;
+        ++custFrame;
+        if (custFrame == 5) {
+            menu.guiScale = 1.0f;
+        } else if (custFrame == 8) {
+            TakeScreenshot("screenshot_cust_100.png");
+            std::cout << "[TEST] Saved screenshot_cust_100.png" << std::endl;
+            menu.guiScale = 1.5f;
+        } else if (custFrame == 14) {
+            TakeScreenshot("screenshot_cust_150.png");
+            std::cout << "[TEST] Saved screenshot_cust_150.png" << std::endl;
+            menu.guiScale = 0.75f;
+        } else if (custFrame == 20) {
+            TakeScreenshot("screenshot_cust_75.png");
+            std::cout << "[TEST] Saved screenshot_cust_75.png" << std::endl;
+            shouldQuit = true;
+        }
+    }
 }
 
 void App::run() {
@@ -1166,6 +1187,10 @@ void App::run() {
         state = AppState::InGame;
         float boardWidth = 10 * renderer.cellSize;
         renderer.camera.reset({ boardWidth - 100.0f, -40.0f }, 1.3f);
+    }
+    if (testCustomizeMode) {
+        state = AppState::Menu;
+        menu.currentScreen = ui::MenuScreen::Customize;
     }
 
     while (!WindowShouldClose() && !shouldQuit) {

@@ -20,6 +20,7 @@ class App {
 public:
     uint64_t initialLobbyId = 0;
     bool testShopMode = false;
+    bool testCustomizeMode = false;
 
     App();
     ~App();

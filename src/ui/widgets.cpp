@@ -2,18 +2,40 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+#include <cmath>
 #include <algorithm>
 
 namespace minesweeper::ui {
 
 float Widgets::guiScale = 1.0f;
+bool Widgets::enableCRT = true;
 
 void Widgets::setScale(float scale) {
     guiScale = (scale > 0.01f) ? scale : 1.0f;
 }
 
+void Widgets::setCRT(bool enabled) {
+    enableCRT = enabled;
+}
+
+void Widgets::beginScissor(float x, float y, float width, float height) {
+    int sx = static_cast<int>(std::round(x * guiScale));
+    int sy = static_cast<int>(std::round(y * guiScale));
+    int sw = static_cast<int>(std::round(width * guiScale));
+    int sh = static_cast<int>(std::round(height * guiScale));
+    BeginScissorMode(sx, sy, sw, sh);
+}
+
+void Widgets::endScissor() {
+    EndScissorMode();
+}
+
 Vector2 Widgets::getUIMousePos() {
     Vector2 mouse = GetMousePosition();
+    if (!enableCRT) {
+        return { mouse.x / guiScale, mouse.y / guiScale };
+    }
+
     float screenW = static_cast<float>(GetScreenWidth());
     float screenH = static_cast<float>(GetScreenHeight());
     if (screenW <= 0.0f || screenH <= 0.0f) return { mouse.x / guiScale, mouse.y / guiScale };
@@ -309,13 +331,13 @@ bool Widgets::textInput(Rectangle rect, char* buffer, size_t maxLen, bool& isAct
         : (rect.x + (rect.width - textW) * 0.5f);
     float textY = rect.y + (rect.height - fontSize) * 0.5f;
 
-    BeginScissorMode(static_cast<int>(rect.x + 2), static_cast<int>(rect.y + 2), static_cast<int>(rect.width - 4), static_cast<int>(rect.height - 4));
+    beginScissor(rect.x + 2.0f, rect.y + 2.0f, rect.width - 4.0f, rect.height - 4.0f);
     DrawText(toDraw, static_cast<int>(textX), static_cast<int>(textY), fontSize, textColor);
 
     if (isActive && (static_cast<int>(GetTime() * 2.0) % 2 == 0)) {
         DrawRectangle(static_cast<int>(textX + textW + 2), static_cast<int>(textY), 2, fontSize, WHITE);
     }
-    EndScissorMode();
+    endScissor();
 
     return hover;
 }

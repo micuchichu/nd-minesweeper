@@ -9,7 +9,12 @@ namespace minesweeper::ui {
 class Widgets {
 public:
     static float guiScale;
+    static bool enableCRT;
     static void setScale(float scale);
+    static void setCRT(bool enabled);
+
+    static void beginScissor(float x, float y, float width, float height);
+    static void endScissor();
 
     static Vector2 getUIMousePos();
     static bool button(const char* label, Rectangle rect, Color baseCol = Colors::Zinc800, Color hoverCol = Colors::Green500, bool locked = false, int fontSize = 20);
