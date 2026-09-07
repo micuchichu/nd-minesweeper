@@ -519,7 +519,9 @@ void App::update(float dt) {
     if (testShopMode && state == AppState::InGame) {
         static int testUpdateFrame = 0;
         ++testUpdateFrame;
-        if (testUpdateFrame == 18) {
+        if (testUpdateFrame == 8) {
+            renderer.fireLaser({ 50.0f, 102.5f }, { -150.0f, 102.5f }, Color{ 0, 229, 255, 255 });
+        } else if (testUpdateFrame == 18) {
             renderer.localShip.position = { renderer.shopShip.position.x + 25.0f, renderer.shopShip.position.y };
             renderer.localShip.velocity = { -600.0f, 0.0f };
             renderer.localShip.isInitialized = true;
@@ -527,8 +529,8 @@ void App::update(float dt) {
             std::cout << "[TEST] Rammed shop ship, shop pos (" 
                       << renderer.shopShip.position.x << ", " << renderer.shopShip.position.y 
                       << "), shop vel (" << renderer.shopShip.velocity.x << ", " << renderer.shopShip.velocity.y << ")" << std::endl;
-        } else if (testUpdateFrame >= 22) {
-            renderer.localShip.position = { 150.0f, 150.0f };
+        } else if (testUpdateFrame >= 19) {
+            renderer.localShip.position = { 250.0f, 250.0f };
             renderer.localShip.velocity = { 0.0f, 0.0f };
         }
     }
@@ -545,6 +547,9 @@ void App::update(float dt) {
     menu.micInputLevel = voiceMgr.getMicLevel();
 
     Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
+    if (testShopMode) {
+        worldMouse = { 250.0f, 250.0f };
+    }
     renderer.updateShip(worldMouse, dt);
 
     voiceMgr.setLocalCursorPos(renderer.localShip.position.x, renderer.localShip.position.y);

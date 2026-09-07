@@ -1,4 +1,5 @@
 #include "raylib_renderer.hpp"
+#include "asset_manager.hpp"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -297,39 +298,17 @@ void RaylibRenderer::init() {
         playerSkins.push_back({ "DEFAULT", defTex });
     }
 
-    // Load shop ship texture from assets/shops/
-    shopTexture = { 0 };
-    std::vector<std::string> shopSearchDirs = {
-        "assets/shops",
-        std::string(GetApplicationDirectory()) + "assets/shops",
-        std::string(GetApplicationDirectory()) + "../assets/shops",
-        std::string(GetApplicationDirectory()) + "../../assets/shops"
-    };
-    for (const auto& sDir : shopSearchDirs) {
-        if (!DirectoryExists(sDir.c_str())) continue;
-        try {
-            for (const auto& entry : fs::directory_iterator(sDir)) {
-                if (entry.is_regular_file()) {
-                    auto path = entry.path();
-                    std::string ext = path.extension().string();
-                    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
-                        return static_cast<char>(std::tolower(c));
-                    });
-                    if (ext == ".png") {
-                        Texture2D tex = LoadTexture(path.string().c_str());
-                        if (tex.id != 0) {
-                            SetTextureFilter(tex, TEXTURE_FILTER_POINT);
-                            shopTexture = tex;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (shopTexture.id != 0) break;
-        } catch (...) {}
+    // Load all shop ships from assets/shops/ using AssetManager
+    shopShips.clear();
+    auto shopAssets = AssetManager::instance().loadShopShipAssets();
+    for (size_t i = 0; i < shopAssets.size(); ++i) {
+        Vector2 initAnchor = { -95.0f, 100.0f + static_cast<float>(i) * 110.0f };
+        shopShips.emplace_back(shopAssets[i].texture, initAnchor, shopAssets[i].displayName);
+        shopShips.back().isInitialized = false;
     }
-
-    shopShip = core::ShopShip(shopTexture, shopAnchorPos);
+    if (!shopShips.empty()) {
+        shopShip = shopShips.front();
+    }
 }
 
 void RaylibRenderer::initShaders() {
@@ -422,14 +401,17 @@ void RaylibRenderer::unloadAssets() {
     }
     playerSkins.clear();
 
-    if (shopTexture.id != 0) {
-        UnloadTexture(shopTexture);
-        shopTexture = { 0 };
-    }
+    AssetManager::instance().shutdown();
+    shopShips.clear();
 }
 
 void RaylibRenderer::update(float dt) {
-    shopShip.update(dt);
+    for (auto& s : shopShips) {
+        s.update(dt);
+    }
+    if (!shopShips.empty()) {
+        shopShip = shopShips.front();
+    }
 
     if (outOfReachTimer > 0.0f) {
         outOfReachTimer -= dt;
@@ -910,17 +892,31 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
     } else if (board.config.dim >= 4) {
         totalH = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
     }
-    Vector2 newAnchor = { -95.0f, totalH * 0.5f };
-    if (!shopShip.isInitialized) {
-        shopAnchorPos = newAnchor;
-        shopShip.anchorPosition = newAnchor;
-        shopShip.position = newAnchor;
-        shopShip.isInitialized = true;
-    } else if (std::abs(shopAnchorPos.x - newAnchor.x) > 1.0f || std::abs(shopAnchorPos.y - newAnchor.y) > 1.0f) {
-        Vector2 diff = { shopShip.position.x - shopAnchorPos.x, shopShip.position.y - shopAnchorPos.y };
-        shopAnchorPos = newAnchor;
-        shopShip.anchorPosition = newAnchor;
-        shopShip.position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+    if (shopShips.empty()) return;
+
+    const float spacing = 110.0f;
+    float totalSpan = static_cast<float>(shopShips.size() - 1) * spacing;
+    float startY = totalH * 0.5f - totalSpan * 0.5f;
+
+    for (size_t i = 0; i < shopShips.size(); ++i) {
+        float y = startY + static_cast<float>(i) * spacing;
+        float xOffset = (shopShips[i].texture.width > 64) ? -static_cast<float>(shopShips[i].texture.width - 64) * 0.35f : 0.0f;
+        Vector2 newAnchor = { -95.0f + xOffset, y };
+        if (i == 0) shopAnchorPos = newAnchor;
+
+        if (!shopShips[i].isInitialized) {
+            shopShips[i].setAnchor(newAnchor, 0.0f);
+            shopShips[i].position = newAnchor;
+            shopShips[i].velocity = { 0.0f, 0.0f };
+            shopShips[i].isInitialized = true;
+        } else if (std::abs(shopShips[i].anchorPosition.x - newAnchor.x) > 1.0f || std::abs(shopShips[i].anchorPosition.y - newAnchor.y) > 1.0f) {
+            Vector2 diff = { shopShips[i].position.x - shopShips[i].anchorPosition.x, shopShips[i].position.y - shopShips[i].anchorPosition.y };
+            shopShips[i].setAnchor(newAnchor, 0.0f);
+            shopShips[i].position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+        }
+    }
+    if (!shopShips.empty()) {
+        shopShip = shopShips.front();
     }
 }
 
@@ -935,23 +931,38 @@ void RaylibRenderer::resolveShipCollisions() {
             core::Ship::resolveCollision(it1->second, it2->second);
         }
     }
-    if (shopShip.isInitialized) {
-        if (core::Ship::resolveCollision(localShip, shopShip)) {
+    for (auto& s : shopShips) {
+        if (!s.isInitialized) continue;
+        if (core::Ship::resolveCollision(localShip, s)) {
             Vector2 contact = {
-                (localShip.position.x + shopShip.position.x) * 0.5f,
-                (localShip.position.y + shopShip.position.y) * 0.5f
+                (localShip.position.x + s.position.x) * 0.5f,
+                (localShip.position.y + s.position.y) * 0.5f
             };
             particles.emitDebris(contact, 2, ui::Colors::Amber400);
         }
         for (auto& [id, rShip] : remoteShips) {
-            if (core::Ship::resolveCollision(rShip, shopShip)) {
+            if (core::Ship::resolveCollision(rShip, s)) {
                 Vector2 contact = {
-                    (rShip.position.x + shopShip.position.x) * 0.5f,
-                    (rShip.position.y + shopShip.position.y) * 0.5f
+                    (rShip.position.x + s.position.x) * 0.5f,
+                    (rShip.position.y + s.position.y) * 0.5f
                 };
                 particles.emitDebris(contact, 2, ui::Colors::Amber400);
             }
         }
+    }
+    for (size_t i = 0; i < shopShips.size(); ++i) {
+        for (size_t j = i + 1; j < shopShips.size(); ++j) {
+            if (core::Ship::resolveCollision(shopShips[i], shopShips[j])) {
+                Vector2 contact = {
+                    (shopShips[i].position.x + shopShips[j].position.x) * 0.5f,
+                    (shopShips[i].position.y + shopShips[j].position.y) * 0.5f
+                };
+                particles.emitDebris(contact, 2, ui::Colors::Amber400);
+            }
+        }
+    }
+    if (!shopShips.empty()) {
+        shopShip = shopShips.front();
     }
 }
 
@@ -1173,7 +1184,43 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
 
     particles.updateAndDraw(GetFrameTime());
 
-    // Draw active laser beams
+    // Ensure shop anchors are aligned with board dimensions
+    updateShopAnchor(board);
+
+    // Sync remote players and resolve collisions
+    syncRemoteShips(net.remoteCursors);
+    resolveShipCollisions();
+
+    // 1. Draw exhaust particles beneath all ships
+    for (const auto& [id, rShip] : remoteShips) {
+        rShip.drawExhaust();
+    }
+    for (const auto& s : shopShips) {
+        s.drawExhaust();
+    }
+    localShip.drawExhaust();
+
+    // 2. Draw shop ships on the side of the board
+    for (const auto& s : shopShips) {
+        if (s.isInitialized) {
+            s.draw(s.name.c_str(), ui::Colors::Amber400);
+        }
+    }
+
+    // 3. Draw remote ships
+    for (const auto& [id, rShip] : remoteShips) {
+        Color curCol = ui::Colors::Red500;
+        if (id != 0) {
+            curCol = ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f);
+        }
+        const char* tag = !rShip.name.empty() ? rShip.name.c_str() : (id == 0 ? "HOST" : TextFormat("P%u", id));
+        rShip.draw(tag, curCol, rShip.isSpeaking);
+    }
+
+    // 4. Draw local player ship
+    localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
+
+    // 5. Draw active laser beams (rendered on top of ships)
     float frameDt = GetFrameTime();
     for (size_t i = 0; i < lasers.size(); ) {
         lasers[i].life -= frameDt;
@@ -1195,38 +1242,6 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
             ++i;
         }
     }
-
-    // Ensure shop anchor is aligned with board dimensions
-    updateShopAnchor(board);
-
-    // Sync remote players and resolve collisions
-    syncRemoteShips(net.remoteCursors);
-    resolveShipCollisions();
-
-    // 1. Draw exhaust particles beneath all ships
-    for (const auto& [id, rShip] : remoteShips) {
-        rShip.drawExhaust();
-    }
-    shopShip.drawExhaust();
-    localShip.drawExhaust();
-
-    // 2. Draw shop ship on the side of the board
-    if (shopShip.isInitialized) {
-        shopShip.draw("SHOP", ui::Colors::Amber400);
-    }
-
-    // 3. Draw remote ships
-    for (const auto& [id, rShip] : remoteShips) {
-        Color curCol = ui::Colors::Red500;
-        if (id != 0) {
-            curCol = ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f);
-        }
-        const char* tag = !rShip.name.empty() ? rShip.name.c_str() : (id == 0 ? "HOST" : TextFormat("P%u", id));
-        rShip.draw(tag, curCol, rShip.isSpeaking);
-    }
-
-    // 4. Draw local player ship
-    localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
 
     // Subtle tactical aim crosshair at the cursor
     Vector2 worldMouse = camera.getScreenToWorld(camera.getCRTMousePosition());

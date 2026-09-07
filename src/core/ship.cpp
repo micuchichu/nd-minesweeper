@@ -48,6 +48,10 @@ Ship::Ship(float m, float r, float s, Texture2D tex, int skin)
 {
 }
 
+void Ship::addThruster(Vector2 offset, Vector2 direction, float width, float length, Color outer, Color inner) {
+    thrusters.push_back({ offset, direction, width, length, outer, inner });
+}
+
 void Ship::reset(Vector2 newPos, float newAngle) {
     position = newPos;
     velocity = { 0.0f, 0.0f };
@@ -69,6 +73,10 @@ void Ship::update(float dt) {
         isMoving = false;
     }
 
+    if (isMoving) {
+        emitThrusterParticles(dt, curSpeed / speed);
+    }
+
     for (size_t i = 0; i < exhaust.size(); ) {
         exhaust[i].life -= dt;
         if (exhaust[i].life <= 0.0f) {
@@ -84,6 +92,90 @@ void Ship::update(float dt) {
     }
 }
 
+void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
+    float theta = baseAngle * DEG2RAD;
+    float cosA = std::cos(theta);
+    float sinA = std::sin(theta);
+    float t = static_cast<float>(GetTime());
+
+    for (size_t i = 0; i < thrusters.size(); ++i) {
+        const auto& th = thrusters[i];
+
+        // 1. Calculate world nozzle position
+        Vector2 worldNozzle = {
+            drawPos.x + (th.offset.x * cosA - th.offset.y * sinA) * scale,
+            drawPos.y + (th.offset.x * sinA + th.offset.y * cosA) * scale
+        };
+
+        // 2. Calculate world exhaust direction & perpendicular
+        Vector2 worldDir = {
+            th.direction.x * cosA - th.direction.y * sinA,
+            th.direction.x * sinA + th.direction.y * cosA
+        };
+        Vector2 worldPerp = { -worldDir.y, worldDir.x };
+
+        if (isMoving) {
+            float phaseOffset = static_cast<float>(i) * 6.0f;
+            float flicker = (th.flameLength * 0.7f) + (th.flameLength * 0.5f) * std::sin(t * 40.0f + phaseOffset);
+
+            // Outer flame plume
+            float outerW = th.nozzleWidth * 0.55f * scale;
+            Vector2 tip = { worldNozzle.x + worldDir.x * (flicker * scale), worldNozzle.y + worldDir.y * (flicker * scale) };
+            Vector2 p1 = { worldNozzle.x + worldPerp.x * outerW, worldNozzle.y + worldPerp.y * outerW };
+            Vector2 p2 = { worldNozzle.x - worldPerp.x * outerW, worldNozzle.y - worldPerp.y * outerW };
+            DrawTriangle(tip, p1, p2, th.outerColor);
+
+            // Inner hot core
+            float innerW = th.nozzleWidth * 0.32f * scale;
+            Vector2 coreTip = { worldNozzle.x + worldDir.x * (flicker * 0.55f * scale), worldNozzle.y + worldDir.y * (flicker * 0.55f * scale) };
+            Vector2 cp1 = { worldNozzle.x + worldPerp.x * innerW, worldNozzle.y + worldPerp.y * innerW };
+            Vector2 cp2 = { worldNozzle.x - worldPerp.x * innerW, worldNozzle.y - worldPerp.y * innerW };
+            DrawTriangle(coreTip, cp1, cp2, th.innerColor);
+        } else {
+            float idlePulse = 0.4f + 0.4f * std::sin(t * 5.0f + static_cast<float>(i) * 1.5f);
+            float r = (th.nozzleWidth * 0.65f * scale) + idlePulse;
+            DrawCircleV(worldNozzle, r, Fade(th.outerColor, 0.8f));
+        }
+    }
+}
+
+void Ship::emitThrusterParticles(float dt, float speedRatio) {
+    if (thrusters.empty()) return;
+
+    emitTimer += dt * std::clamp(speedRatio, 0.2f, 1.5f);
+    float theta = angle * DEG2RAD;
+    float cosA = std::cos(theta);
+    float sinA = std::sin(theta);
+
+    while (emitTimer >= 0.02f) {
+        emitTimer -= 0.02f;
+        if (exhaust.size() >= 160) break;
+
+        for (const auto& th : thrusters) {
+            Vector2 worldNozzle = {
+                position.x + (th.offset.x * cosA - th.offset.y * sinA) * scale,
+                position.y + (th.offset.x * sinA + th.offset.y * cosA) * scale
+            };
+            Vector2 worldDir = {
+                th.direction.x * cosA - th.direction.y * sinA,
+                th.direction.x * sinA + th.direction.y * cosA
+            };
+            Vector2 worldPerp = { -worldDir.y, worldDir.x };
+
+            float pSpeed = 35.0f + static_cast<float>(rand() % 40);
+            float spread = ((rand() % 100) - 50) * 0.005f;
+            Vector2 pVel = {
+                (worldDir.x + worldPerp.x * spread) * pSpeed,
+                (worldDir.y + worldPerp.y * spread) * pSpeed
+            };
+
+            Color pCol = (rand() % 2 == 0) ? th.outerColor : th.innerColor;
+            float sz = th.nozzleWidth * 1.3f;
+            exhaust.push_back({ worldNozzle, pVel, 0.28f, 0.28f, sz, pCol });
+        }
+    }
+}
+
 void Ship::draw(const char* label, Color tint, bool speaking) const {
     bool drewTexture = false;
     if (texture.id != 0) {
@@ -92,6 +184,8 @@ void Ship::draw(const char* label, Color tint, bool speaking) const {
         float h = static_cast<float>(texture.height) * scale;
         Vector2 origin = { w * 0.5f, h * 0.5f };
         Rectangle dest = { position.x, position.y, w, h };
+
+        drawThrusters(position, angle);
         DrawTexturePro(texture, src, dest, origin, angle, WHITE);
         drewTexture = true;
     }
@@ -220,6 +314,9 @@ ScoutShip::ScoutShip()
 {
     scale = 1.8f;
     collisionRadius = 14.0f;
+    // Dual plasma thrusters: offset {-3.5f, 4.5f} and {+3.5f, 4.5f}, pointing rearwards {0.0f, 1.0f}
+    addThruster({ -3.5f, 4.5f }, { 0.0f, 1.0f }, 3.2f, 5.0f, ui::Colors::Orange500, ui::Colors::Amber300);
+    addThruster({  3.5f, 4.5f }, { 0.0f, 1.0f }, 3.2f, 5.0f, ui::Colors::Orange500, ui::Colors::Amber300);
 }
 
 ScoutShip::ScoutShip(float m, float r, float s, Texture2D tex, int skin)
@@ -227,6 +324,8 @@ ScoutShip::ScoutShip(float m, float r, float s, Texture2D tex, int skin)
 {
     scale = 1.8f;
     collisionRadius = 14.0f;
+    addThruster({ -3.5f, 4.5f }, { 0.0f, 1.0f }, 3.2f, 5.0f, ui::Colors::Orange500, ui::Colors::Amber300);
+    addThruster({  3.5f, 4.5f }, { 0.0f, 1.0f }, 3.2f, 5.0f, ui::Colors::Orange500, ui::Colors::Amber300);
 }
 
 void ScoutShip::update(float dt) {
@@ -243,7 +342,6 @@ void ScoutShip::update(Vector2 targetPos, float dt) {
         exhaust.clear();
     }
 
-    // 1. Calculate direction to target (aim point)
     Vector2 toTarget = { targetPos.x - position.x, targetPos.y - position.y };
     float distToTarget = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
 
@@ -261,7 +359,6 @@ void ScoutShip::update(Vector2 targetPos, float dt) {
     Vector2 toIdeal = { idealPos.x - position.x, idealPos.y - position.y };
     float distToIdeal = std::sqrt(toIdeal.x * toIdeal.x + toIdeal.y * toIdeal.y);
 
-    // Smooth quadratic arrival deceleration curve
     float desiredSpeed = 0.0f;
     if (distToIdeal > slowRadius) {
         desiredSpeed = maxSpeed;
@@ -275,7 +372,6 @@ void ScoutShip::update(Vector2 targetPos, float dt) {
         desiredVel = { (toIdeal.x / distToIdeal) * desiredSpeed, (toIdeal.y / distToIdeal) * desiredSpeed };
     }
 
-    // Steering acceleration force
     Vector2 accel = { (desiredVel.x - velocity.x) * 10.0f, (desiredVel.y - velocity.y) * 10.0f };
     float accelMag = std::sqrt(accel.x * accel.x + accel.y * accel.y);
     if (accelMag > maxAccel) {
@@ -297,7 +393,6 @@ void ScoutShip::update(Vector2 targetPos, float dt) {
 
     isMoving = (curSpeed > 20.0f);
 
-    // 2. Rotate so eyes face target
     if (distToTarget > 0.001f) {
         float dirX = toTarget.x / distToTarget;
         float dirY = toTarget.y / distToTarget;
@@ -308,40 +403,8 @@ void ScoutShip::update(Vector2 targetPos, float dt) {
         angle += diffAngle * std::min(1.0f, 18.0f * dt);
     }
 
-    // 3. Trailing exhaust particle emitters at (4, 12) & (11, 12) relative to top-left
-    float theta = angle * DEG2RAD;
-    float cosA = std::cos(theta);
-    float sinA = std::sin(theta);
-
-    float lxLeft = -3.5f * scale;
-    float lxRight = 3.5f * scale;
-    float ly = 4.5f * scale;
-
-    Vector2 leftThrust = {
-        position.x + (lxLeft * cosA - ly * sinA),
-        position.y + (lxLeft * sinA + ly * cosA)
-    };
-    Vector2 rightThrust = {
-        position.x + (lxRight * cosA - ly * sinA),
-        position.y + (lxRight * sinA + ly * cosA)
-    };
-    Vector2 rear = { -sinA, cosA };
-    Vector2 right = { cosA, sinA };
-
     if (curSpeed > 25.0f) {
-        emitTimer += dt * (curSpeed / maxSpeed);
-        while (emitTimer >= 0.02f) {
-            emitTimer -= 0.02f;
-            if (exhaust.size() < 128) {
-                float pSpeed = 40.0f + static_cast<float>(rand() % 40);
-                float spread = ((rand() % 100) - 50) * 0.004f;
-                Vector2 pVel = { (rear.x + right.x * spread) * pSpeed, (rear.y + right.y * spread) * pSpeed };
-                Color c1 = (rand() % 2 == 0) ? ui::Colors::Amber400 : ui::Colors::Orange500;
-                Color c2 = (rand() % 2 == 0) ? ui::Colors::Yellow400 : ui::Colors::Amber400;
-                exhaust.push_back({ leftThrust, pVel, 0.28f, 0.28f, 2.4f, c1 });
-                exhaust.push_back({ rightThrust, pVel, 0.28f, 0.28f, 2.4f, c2 });
-            }
-        }
+        emitThrusterParticles(dt, curSpeed / maxSpeed);
     }
 
     for (size_t i = 0; i < exhaust.size(); ) {
@@ -376,49 +439,10 @@ void ScoutShip::draw(const char* label, Color tint, bool speaking) const {
         Rectangle shadowDest = { position.x + shadowOffset.x, position.y + shadowOffset.y, w, h };
         DrawTexturePro(texture, src, shadowDest, origin, angle, Fade(BLACK, 0.38f));
 
-        float theta = angle * DEG2RAD;
-        float cosA = std::cos(theta);
-        float sinA = std::sin(theta);
+        // 2. Configurable Thruster Plumes / Idle Glow
+        drawThrusters(position, angle);
 
-        float lxLeft = -3.5f * scale;
-        float lxRight = 3.5f * scale;
-        float ly = 4.5f * scale;
-
-        Vector2 leftThrust = {
-            position.x + (lxLeft * cosA - ly * sinA),
-            position.y + (lxLeft * sinA + ly * cosA)
-        };
-        Vector2 rightThrust = {
-            position.x + (lxRight * cosA - ly * sinA),
-            position.y + (lxRight * sinA + ly * cosA)
-        };
-
-        Vector2 rear = { -sinA, cosA };
-        Vector2 flameDir = { cosA, sinA };
-
-        float t = static_cast<float>(GetTime());
-        if (isMoving) {
-            float flicker1 = 4.0f + 3.0f * std::sin(t * 40.0f);
-            float flicker2 = 4.0f + 3.0f * std::cos(t * 46.0f);
-
-            Vector2 leftTip = { leftThrust.x + rear.x * (flicker1 * scale), leftThrust.y + rear.y * (flicker1 * scale) };
-            Vector2 rightTip = { rightThrust.x + rear.x * (flicker2 * scale), rightThrust.y + rear.y * (flicker2 * scale) };
-
-            float flameW = 1.6f * scale;
-            DrawTriangle(leftTip, { leftThrust.x + flameDir.x * flameW, leftThrust.y + flameDir.y * flameW }, { leftThrust.x - flameDir.x * flameW, leftThrust.y - flameDir.y * flameW }, ui::Colors::Orange500);
-            DrawTriangle(rightTip, { rightThrust.x + flameDir.x * flameW, rightThrust.y + flameDir.y * flameW }, { rightThrust.x - flameDir.x * flameW, rightThrust.y - flameDir.y * flameW }, ui::Colors::Orange500);
-
-            Vector2 leftCoreTip = { leftThrust.x + rear.x * (flicker1 * 0.55f * scale), leftThrust.y + rear.y * (flicker1 * 0.55f * scale) };
-            Vector2 rightCoreTip = { rightThrust.x + rear.x * (flicker2 * 0.55f * scale), rightThrust.y + rear.y * (flicker2 * 0.55f * scale) };
-            float coreW = 1.0f * scale;
-            DrawTriangle(leftCoreTip, { leftThrust.x + flameDir.x * coreW, leftThrust.y + flameDir.y * coreW }, { leftThrust.x - flameDir.x * coreW, leftThrust.y - flameDir.y * coreW }, ui::Colors::Amber300);
-            DrawTriangle(rightCoreTip, { rightThrust.x + flameDir.x * coreW, rightThrust.y + flameDir.y * coreW }, { rightThrust.x - flameDir.x * coreW, rightThrust.y - flameDir.y * coreW }, ui::Colors::Amber300);
-        } else {
-            float idlePulse = 0.4f + 0.4f * std::sin(t * 6.0f);
-            DrawCircleV(leftThrust, 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
-            DrawCircleV(rightThrust, 1.2f * scale + idlePulse, Fade(ui::Colors::Amber500, 0.75f));
-        }
-
+        // 3. Hull Texture
         DrawTexturePro(texture, src, dest, origin, angle, WHITE);
         drewTexture = true;
     }
@@ -584,60 +608,63 @@ ShopShip::ShopShip()
     collisionRadius = 26.0f;
     name = "SHOP";
     color = ui::Colors::Amber400;
+    setupThrusters();
 }
 
-ShopShip::ShopShip(Texture2D tex, Vector2 anchor)
+ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const std::string& shipName)
     : MerchantShip(8.0f, 160.0f, 140.0f, tex, 0)
 {
     scale = 1.25f;
-    collisionRadius = 26.0f;
-    name = "SHOP";
+    name = shipName.empty() ? "SHOP" : shipName;
     color = ui::Colors::Amber400;
     setAnchor(anchor, 0.0f);
+    setupThrusters();
+}
+
+void ShopShip::setupThrusters() {
+    thrusters.clear();
+
+    if (texture.id == 0) {
+        // Fallback default thruster
+        addThruster({ -25.0f, 0.0f }, { -1.0f, 0.0f }, 2.0f, 6.0f, ui::Colors::Orange500, ui::Colors::Amber300);
+        return;
+    }
+
+    float w = static_cast<float>(texture.width);
+    float h = static_cast<float>(texture.height);
+
+    if (w == 64 && h == 32) {
+        // shop1.png: 3 rear nozzles
+        mass = 8.0f;
+        collisionRadius = 26.0f;
+        addThruster({ -25.0f, -11.0f }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Orange500, ui::Colors::Amber300);
+        addThruster({ -27.0f,   0.0f }, { -1.0f, 0.0f }, 4.4f, 8.0f, ui::Colors::Purple500, ui::Colors::Purple300);
+        addThruster({ -25.0f,  11.0f }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Cyan500,   ui::Colors::Cyan300);
+    } else if (w == 128 && h == 48) {
+        // shop2.png: larger freighter, 3 heavy nozzles
+        mass = 12.0f;
+        collisionRadius = 34.0f;
+        addThruster({ -48.0f, -14.0f }, { -1.0f, 0.0f }, 4.8f, 7.0f,  ui::Colors::Orange500, ui::Colors::Amber300);
+        addThruster({ -50.0f,   0.0f }, { -1.0f, 0.0f }, 6.4f, 10.0f, ui::Colors::Purple500, ui::Colors::Cyan300);
+        addThruster({ -48.0f,  14.0f }, { -1.0f, 0.0f }, 4.8f, 7.0f,  ui::Colors::Cyan500,   ui::Colors::Cyan300);
+    } else {
+        // Generic shop ship based on texture dimensions
+        float halfW = w * 0.5f;
+        float halfH = h * 0.5f;
+        mass = std::max(6.0f, (w * h) / 300.0f);
+        collisionRadius = std::max(20.0f, std::min(halfW, halfH) * 1.3f);
+        addThruster({ -halfW * 0.82f, -halfH * 0.60f }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Orange500, ui::Colors::Amber300);
+        addThruster({ -halfW * 0.86f,   0.0f          }, { -1.0f, 0.0f }, 4.8f, 8.0f, ui::Colors::Purple500, ui::Colors::Purple300);
+        addThruster({ -halfW * 0.82f,  halfH * 0.60f  }, { -1.0f, 0.0f }, 3.6f, 6.0f, ui::Colors::Cyan500,   ui::Colors::Cyan300);
+    }
 }
 
 void ShopShip::update(float dt) {
     MerchantShip::update(dt);
 
-    float theta = angle * DEG2RAD;
-    float cosA = std::cos(theta);
-    float sinA = std::sin(theta);
-
-    Vector2 rear = { -cosA, -sinA };
-    Vector2 perp = { -sinA, cosA };
-
-    float lxTop = -25.0f * scale;
-    float lyTop = -11.0f * scale;
-    float lxMid = -27.0f * scale;
-    float lyMid = 0.0f;
-    float lxBot = -25.0f * scale;
-    float lyBot = 11.0f * scale;
-
-    Vector2 topThrust = { position.x + (lxTop * cosA - lyTop * sinA), position.y + (lxTop * sinA + lyTop * cosA) };
-    Vector2 midThrust = { position.x + (lxMid * cosA - lyMid * sinA), position.y + (lxMid * sinA + lyMid * cosA) };
-    Vector2 botThrust = { position.x + (lxBot * cosA - lyBot * sinA), position.y + (lxBot * sinA + lyBot * cosA) };
-
     float curSpeed = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
     if (curSpeed > 15.0f) {
-        emitTimer += dt * (curSpeed / speed);
-        while (emitTimer >= 0.02f) {
-            emitTimer -= 0.02f;
-            if (exhaust.size() < 128) {
-                float pSpeed = 35.0f + static_cast<float>(rand() % 35);
-                float spread1 = ((rand() % 100) - 50) * 0.005f;
-                float spread2 = ((rand() % 100) - 50) * 0.005f;
-                float spread3 = ((rand() % 100) - 50) * 0.005f;
-                Vector2 v1 = { (rear.x + perp.x * spread1) * pSpeed, (rear.y + perp.y * spread1) * pSpeed };
-                Vector2 v2 = { (rear.x + perp.x * spread2) * pSpeed, (rear.y + perp.y * spread2) * pSpeed };
-                Vector2 v3 = { (rear.x + perp.x * spread3) * pSpeed, (rear.y + perp.y * spread3) * pSpeed };
-                Color cAmber = (rand() % 2 == 0) ? ui::Colors::Amber400 : ui::Colors::Orange500;
-                Color cPurple = (rand() % 2 == 0) ? ui::Colors::Purple400 : ui::Colors::Purple500;
-                Color cCyan = (rand() % 2 == 0) ? ui::Colors::Cyan400 : ui::Colors::Amber300;
-                exhaust.push_back({ topThrust, v1, 0.28f, 0.28f, 2.6f, cAmber });
-                exhaust.push_back({ midThrust, v2, 0.32f, 0.32f, 3.0f, cPurple });
-                exhaust.push_back({ botThrust, v3, 0.28f, 0.28f, 2.6f, cCyan });
-            }
-        }
+        emitThrusterParticles(dt, curSpeed / speed);
     }
 }
 
@@ -665,58 +692,13 @@ void ShopShip::draw(const char* label, Color tint, bool speaking) const {
     Rectangle shadowDest = { drawPos.x + shadowOffset.x, drawPos.y + shadowOffset.y, w, h };
     DrawTexturePro(texture, src, shadowDest, origin, angle, Fade(BLACK, 0.40f));
 
-    float theta = angle * DEG2RAD;
-    float cosA = std::cos(theta);
-    float sinA = std::sin(theta);
+    // 2. Configurable Multi-Nozzle Thrusters
+    drawThrusters(drawPos, angle);
 
-    Vector2 rear = { -cosA, -sinA };
-    Vector2 perp = { -sinA, cosA };
-
-    float lxTop = -25.0f * scale;
-    float lyTop = -11.0f * scale;
-    float lxMid = -27.0f * scale;
-    float lyMid = 0.0f;
-    float lxBot = -25.0f * scale;
-    float lyBot = 11.0f * scale;
-
-    Vector2 topThrust = { drawPos.x + (lxTop * cosA - lyTop * sinA), drawPos.y + (lxTop * sinA + lyTop * cosA) };
-    Vector2 midThrust = { drawPos.x + (lxMid * cosA - lyMid * sinA), drawPos.y + (lxMid * sinA + lyMid * cosA) };
-    Vector2 botThrust = { drawPos.x + (lxBot * cosA - lyBot * sinA), drawPos.y + (lxBot * sinA + lyBot * cosA) };
-
-    float t = static_cast<float>(GetTime());
-    if (isMoving) {
-        float flk1 = 5.0f + 4.0f * std::sin(t * 38.0f);
-        float flk2 = 7.0f + 5.0f * std::cos(t * 44.0f);
-        float flk3 = 5.0f + 4.0f * std::sin(t * 36.0f);
-
-        DrawTriangle({ topThrust.x + rear.x * (flk1 * scale), topThrust.y + rear.y * (flk1 * scale) },
-                     { topThrust.x + perp.x * (1.8f * scale), topThrust.y + perp.y * (1.8f * scale) },
-                     { topThrust.x - perp.x * (1.8f * scale), topThrust.y - perp.y * (1.8f * scale) }, ui::Colors::Orange500);
-        DrawTriangle({ midThrust.x + rear.x * (flk2 * scale), midThrust.y + rear.y * (flk2 * scale) },
-                     { midThrust.x + perp.x * (2.2f * scale), midThrust.y + perp.y * (2.2f * scale) },
-                     { midThrust.x - perp.x * (2.2f * scale), midThrust.y - perp.y * (2.2f * scale) }, ui::Colors::Purple500);
-        DrawTriangle({ botThrust.x + rear.x * (flk3 * scale), botThrust.y + rear.y * (flk3 * scale) },
-                     { botThrust.x + perp.x * (1.8f * scale), botThrust.y + perp.y * (1.8f * scale) },
-                     { botThrust.x - perp.x * (1.8f * scale), botThrust.y - perp.y * (1.8f * scale) }, ui::Colors::Cyan500);
-
-        DrawTriangle({ topThrust.x + rear.x * (flk1 * 0.5f * scale), topThrust.y + rear.y * (flk1 * 0.5f * scale) },
-                     { topThrust.x + perp.x * (1.1f * scale), topThrust.y + perp.y * (1.1f * scale) },
-                     { topThrust.x - perp.x * (1.1f * scale), topThrust.y - perp.y * (1.1f * scale) }, ui::Colors::Amber300);
-        DrawTriangle({ midThrust.x + rear.x * (flk2 * 0.5f * scale), midThrust.y + rear.y * (flk2 * 0.5f * scale) },
-                     { midThrust.x + perp.x * (1.3f * scale), midThrust.y + perp.y * (1.3f * scale) },
-                     { midThrust.x - perp.x * (1.3f * scale), midThrust.y - perp.y * (1.3f * scale) }, ui::Colors::Purple300);
-        DrawTriangle({ botThrust.x + rear.x * (flk3 * 0.5f * scale), botThrust.y + rear.y * (flk3 * 0.5f * scale) },
-                     { botThrust.x + perp.x * (1.1f * scale), botThrust.y + perp.y * (1.1f * scale) },
-                     { botThrust.x - perp.x * (1.1f * scale), botThrust.y - perp.y * (1.1f * scale) }, ui::Colors::Cyan300);
-    } else {
-        float idlePulse = 0.5f + 0.5f * std::sin(t * 5.0f);
-        DrawCircleV(topThrust, 1.4f * scale + idlePulse * 0.6f, Fade(ui::Colors::Amber400, 0.8f));
-        DrawCircleV(midThrust, 1.8f * scale + idlePulse * 0.8f, Fade(ui::Colors::Purple400, 0.85f));
-        DrawCircleV(botThrust, 1.4f * scale + idlePulse * 0.6f, Fade(ui::Colors::Cyan400, 0.8f));
-    }
-
+    // 3. Ship Sprite
     DrawTexturePro(texture, src, { drawPos.x, drawPos.y, w, h }, origin, angle, WHITE);
 
+    // 4. Floating Badge
     const char* displayName = (label && label[0] != '\0') ? label : (!name.empty() ? name.c_str() : "SHOP");
     int nameW = MeasureText(displayName, 12);
     float badgeY = drawPos.y + (h * 0.5f) + 6.0f;
@@ -730,9 +712,10 @@ Vector2 ShopShip::getNosePosition() const {
     float theta = angle * DEG2RAD;
     float sinA = std::sin(theta);
     float cosA = std::cos(theta);
+    float noseOffset = (texture.width > 0) ? (static_cast<float>(texture.width) * 0.5f - 4.0f) : 28.0f;
     return {
-        position.x + cosA * (28.0f * scale),
-        position.y + sinA * (28.0f * scale)
+        position.x + cosA * (noseOffset * scale),
+        position.y + sinA * (noseOffset * scale)
     };
 }
 

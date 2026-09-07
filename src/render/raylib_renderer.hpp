@@ -74,7 +74,7 @@ public:
     core::ScoutShip localShip;
     std::map<uint32_t, core::ScoutShip> remoteShips;
 
-    Texture2D shopTexture = { 0 };
+    std::vector<core::ShopShip> shopShips;
     core::ShopShip shopShip;
     Vector2 shopAnchorPos = { -95.0f, 150.0f };
     void updateShopAnchor(const core::Board& board);
@@ -134,7 +134,7 @@ public:
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
-    void clearParticles() { particles.clear(); localShip.exhaust.clear(); shopShip.exhaust.clear(); lasers.clear(); clearOutOfReach(); clearFlagDrops(); }
+    void clearParticles() { particles.clear(); localShip.exhaust.clear(); shopShip.exhaust.clear(); for (auto& s : shopShips) s.exhaust.clear(); lasers.clear(); clearOutOfReach(); clearFlagDrops(); }
 
 private:
     Texture2D flagTexture = {0};

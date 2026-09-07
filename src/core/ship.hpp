@@ -16,6 +16,18 @@ struct ShipExhaustParticle {
 };
 
 // ============================================================================
+// Configurable Ship Thruster
+// ============================================================================
+struct ShipThruster {
+    Vector2 offset = { 0.0f, 0.0f };         // Local offset relative to sprite center (texture pixels)
+    Vector2 direction = { -1.0f, 0.0f };      // Exhaust plume direction in local space
+    float nozzleWidth = 2.0f;                 // Width/diameter of nozzle in texture pixels
+    float flameLength = 6.0f;                 // Maximum flame length in texture pixels
+    Color outerColor = { 255, 140, 0, 255 };  // Outer plume / flame color
+    Color innerColor = { 255, 220, 50, 255 }; // Hot inner core color
+};
+
+// ============================================================================
 // Base Ship Class
 // ============================================================================
 class Ship {
@@ -35,6 +47,10 @@ public:
     float scale = 1.8f;
     bool isMoving = false;
     bool isInitialized = false;
+
+    // Configurable thrusters:
+    std::vector<ShipThruster> thrusters;
+    void addThruster(Vector2 offset, Vector2 direction, float width, float length, Color outer, Color inner);
 
     // Visuals & effects:
     std::vector<ShipExhaustParticle> exhaust;
@@ -66,6 +82,11 @@ public:
 
     // Resolves pairwise circular collision between two ships with mass-proportional separation & impulse
     static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.15f);
+
+protected:
+    // Helper to draw thrusters for any ship configuration
+    void drawThrusters(Vector2 drawPos, float baseAngle) const;
+    void emitThrusterParticles(float dt, float speedRatio);
 };
 
 // ============================================================================
@@ -74,7 +95,7 @@ public:
 class ScoutShip : public Ship {
 public:
     Vector2 targetPosition = { 0.0f, 0.0f };
-    float targetFollowDistance = 70.0f;  // Keep 70px follow distance requested by user
+    float targetFollowDistance = 70.0f;  // 70px follow distance
     float slowRadius = 140.0f;
     float maxAccel = 2200.0f;
 
@@ -89,7 +110,6 @@ public:
     Vector2 getNosePosition() const override;
 };
 
-// Alias for PlayerShip
 using PlayerShip = ScoutShip;
 
 // ============================================================================
@@ -118,8 +138,9 @@ public:
 class ShopShip : public MerchantShip {
 public:
     ShopShip();
-    ShopShip(Texture2D texture, Vector2 anchor);
+    ShopShip(Texture2D texture, Vector2 anchor, const std::string& shipName = "SHOP");
 
+    void setupThrusters();
     void update(float dt) override;
     void draw(const char* label = nullptr, Color tint = WHITE, bool speaking = false) const override;
     Vector2 getNosePosition() const override;

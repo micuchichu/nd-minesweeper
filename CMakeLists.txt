@@ -14,6 +14,7 @@ set(SOURCES
     src/core/ship.cpp
     src/net/network_manager.cpp
     src/net/steam_manager.cpp
+    src/render/asset_manager.cpp
     src/render/camera_controller.cpp
     src/render/particles.cpp
     src/render/raylib_renderer.cpp
