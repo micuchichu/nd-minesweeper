@@ -406,13 +406,6 @@ void RaylibRenderer::unloadAssets() {
 }
 
 void RaylibRenderer::update(float dt) {
-    for (auto& s : shopShips) {
-        s.update(dt);
-    }
-    if (!shopShips.empty()) {
-        shopShip = shopShips.front();
-    }
-
     if (outOfReachTimer > 0.0f) {
         outOfReachTimer -= dt;
         if (outOfReachTimer <= 0.0f) {
@@ -922,13 +915,25 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
 
 void RaylibRenderer::resolveShipCollisions() {
     for (auto& [id, rShip] : remoteShips) {
-        core::Ship::resolveCollision(localShip, rShip);
+        if (core::Ship::resolveCollision(localShip, rShip)) {
+            Vector2 contact = {
+                (localShip.position.x + rShip.position.x) * 0.5f,
+                (localShip.position.y + rShip.position.y) * 0.5f
+            };
+            particles.emitDebris(contact, 4, ui::Colors::Amber400);
+        }
     }
     for (auto it1 = remoteShips.begin(); it1 != remoteShips.end(); ++it1) {
         auto it2 = it1;
         ++it2;
         for (; it2 != remoteShips.end(); ++it2) {
-            core::Ship::resolveCollision(it1->second, it2->second);
+            if (core::Ship::resolveCollision(it1->second, it2->second)) {
+                Vector2 contact = {
+                    (it1->second.position.x + it2->second.position.x) * 0.5f,
+                    (it1->second.position.y + it2->second.position.y) * 0.5f
+                };
+                particles.emitDebris(contact, 3, ui::Colors::Cyan400);
+            }
         }
     }
     for (auto& s : shopShips) {
@@ -938,7 +943,7 @@ void RaylibRenderer::resolveShipCollisions() {
                 (localShip.position.x + s.position.x) * 0.5f,
                 (localShip.position.y + s.position.y) * 0.5f
             };
-            particles.emitDebris(contact, 2, ui::Colors::Amber400);
+            particles.emitDebris(contact, 3, ui::Colors::Amber400);
         }
         for (auto& [id, rShip] : remoteShips) {
             if (core::Ship::resolveCollision(rShip, s)) {
@@ -946,7 +951,7 @@ void RaylibRenderer::resolveShipCollisions() {
                     (rShip.position.x + s.position.x) * 0.5f,
                     (rShip.position.y + s.position.y) * 0.5f
                 };
-                particles.emitDebris(contact, 2, ui::Colors::Amber400);
+                particles.emitDebris(contact, 3, ui::Colors::Amber400);
             }
         }
     }
@@ -963,6 +968,36 @@ void RaylibRenderer::resolveShipCollisions() {
     }
     if (!shopShips.empty()) {
         shopShip = shopShips.front();
+    }
+}
+
+void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
+    // 1. Update player / local ship physics at fixed timestep
+    localShip.skinId = activeCursorSkin;
+    localShip.texture = getCursorSkinTexture(activeCursorSkin);
+    localShip.update(targetPos, fixedDt);
+
+    // 2. Update shop freighters at fixed timestep
+    for (auto& s : shopShips) {
+        s.update(fixedDt);
+    }
+    if (!shopShips.empty()) {
+        shopShip = shopShips.front();
+    }
+
+    // 3. Resolve all pairwise collisions at fixed timestep
+    resolveShipCollisions();
+}
+
+void RaylibRenderer::updatePhysics(Vector2 targetPos, float dt) {
+    float clampedDt = std::clamp(dt, 0.0f, 0.1f);
+    physicsAccumulator += clampedDt;
+
+    int maxSteps = 8;
+    while (physicsAccumulator >= FIXED_PHYSICS_DT && maxSteps > 0) {
+        stepPhysics(targetPos, FIXED_PHYSICS_DT);
+        physicsAccumulator -= FIXED_PHYSICS_DT;
+        --maxSteps;
     }
 }
 
@@ -1187,9 +1222,8 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     // Ensure shop anchors are aligned with board dimensions
     updateShopAnchor(board);
 
-    // Sync remote players and resolve collisions
+    // Sync remote players
     syncRemoteShips(net.remoteCursors);
-    resolveShipCollisions();
 
     // 1. Draw exhaust particles beneath all ships
     for (const auto& [id, rShip] : remoteShips) {

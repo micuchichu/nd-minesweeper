@@ -84,8 +84,11 @@ public:
     // Reset position and clear velocity/exhaust
     void reset(Vector2 newPos, float newAngle = 0.0f);
 
-    // Resolves pairwise circular collision between two ships with mass-proportional separation & impulse
-    static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.15f);
+    // Bump / collision recoil timer
+    float bumpTimer = 0.0f;
+
+    // Resolves pairwise circular collision between two ships with controlled bumper dynamics & mass-proportional impulse
+    static bool resolveCollision(Ship& a, Ship& b, float restitution = 0.60f);
 
 protected:
     // Helper to draw thrusters for any ship configuration

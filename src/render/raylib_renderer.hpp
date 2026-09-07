@@ -93,6 +93,12 @@ public:
     void resolveShipCollisions();
     void updateShip(Vector2 targetPos, float dt);
 
+    // Fixed timestep physics (120 Hz) & controlled bumper simulation
+    static constexpr float FIXED_PHYSICS_DT = 1.0f / 120.0f;
+    float physicsAccumulator = 0.0f;
+    void updatePhysics(Vector2 targetPos, float dt);
+    void stepPhysics(Vector2 targetPos, float fixedDt);
+
     bool isLocalSpeaking = false;
     float guiScale = 1.0f;
 

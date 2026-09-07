@@ -550,7 +550,8 @@ void App::update(float dt) {
     if (testShopMode) {
         worldMouse = { 250.0f, 250.0f };
     }
-    renderer.updateShip(worldMouse, dt);
+    renderer.syncRemoteShips(net.remoteCursors);
+    renderer.updatePhysics(worldMouse, dt);
 
     voiceMgr.setLocalCursorPos(renderer.localShip.position.x, renderer.localShip.position.y);
     voiceMgr.setPushToTalkActive(IsKeyDown(KEY_V));
