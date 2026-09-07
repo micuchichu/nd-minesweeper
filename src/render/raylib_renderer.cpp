@@ -302,8 +302,10 @@ void RaylibRenderer::init() {
     shopShips.clear();
     auto shopAssets = AssetManager::instance().loadShopShipAssets();
     for (size_t i = 0; i < shopAssets.size(); ++i) {
-        Vector2 initAnchor = { -95.0f, 100.0f + static_cast<float>(i) * 110.0f };
+        Vector2 initAnchor = { 400.0f, 100.0f + static_cast<float>(i) * 240.0f };
         shopShips.emplace_back(shopAssets[i].texture, initAnchor, shopAssets[i].config);
+        shopShips.back().setAnchor(initAnchor, 90.0f);
+        shopShips.back().angle = 90.0f;
         shopShips.back().isInitialized = false;
     }
     if (!shopShips.empty()) {
@@ -886,33 +888,47 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
     if (board.config.size <= 0) return;
     float boardWidth = static_cast<float>(board.config.size) * cellSize;
     float sliceStride = boardWidth + slicePadding;
+    float totalW = boardWidth;
     float totalH = boardWidth;
     if (board.config.dim == 3) {
         totalH = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
     } else if (board.config.dim >= 4) {
+        totalW = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
         totalH = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
     }
     if (shopShips.empty()) return;
 
-    const float spacing = 110.0f;
-    float totalSpan = static_cast<float>(shopShips.size() - 1) * spacing;
+    // Calculate dynamic vertical spacing along the right side of the board facing down
+    const float gap = 45.0f;
+    std::vector<float> relY(shopShips.size(), 0.0f);
+    for (size_t i = 1; i < shopShips.size(); ++i) {
+        float halfLenPrev = ((shopShips[i - 1].texture.width > 0 ? static_cast<float>(shopShips[i - 1].texture.width) : 64.0f) * shopShips[i - 1].scale) * 0.5f;
+        float halfLenCurr = ((shopShips[i].texture.width > 0 ? static_cast<float>(shopShips[i].texture.width) : 64.0f) * shopShips[i].scale) * 0.5f;
+        relY[i] = relY[i - 1] + halfLenPrev + 24.0f + gap + halfLenCurr;
+    }
+    float totalSpan = relY.back() - relY.front();
     float startY = totalH * 0.5f - totalSpan * 0.5f;
 
     for (size_t i = 0; i < shopShips.size(); ++i) {
-        float y = startY + static_cast<float>(i) * spacing;
-        float xOffset = (shopShips[i].texture.width > 64) ? -static_cast<float>(shopShips[i].texture.width - 64) * 0.35f : 0.0f;
-        Vector2 newAnchor = { -95.0f + xOffset, y };
+        float y = startY + relY[i];
+        float xOffset = (shopShips[i].texture.height > 48) ? static_cast<float>(shopShips[i].texture.height - 48) * 0.5f : 0.0f;
+        Vector2 newAnchor = { totalW + 90.0f + xOffset, y };
         if (i == 0) shopAnchorPos = newAnchor;
 
         if (!shopShips[i].isInitialized) {
-            shopShips[i].setAnchor(newAnchor, 0.0f);
+            shopShips[i].setAnchor(newAnchor, 90.0f);
             shopShips[i].position = newAnchor;
+            shopShips[i].angle = 90.0f;
             shopShips[i].velocity = { 0.0f, 0.0f };
             shopShips[i].isInitialized = true;
-        } else if (std::abs(shopShips[i].anchorPosition.x - newAnchor.x) > 1.0f || std::abs(shopShips[i].anchorPosition.y - newAnchor.y) > 1.0f) {
-            Vector2 diff = { shopShips[i].position.x - shopShips[i].anchorPosition.x, shopShips[i].position.y - shopShips[i].anchorPosition.y };
-            shopShips[i].setAnchor(newAnchor, 0.0f);
+        } else if (std::abs(shopShips[i].anchorPosition.x - newAnchor.x) > 1.0f ||
+                   std::abs(shopShips[i].anchorPosition.y - newAnchor.y) > 1.0f ||
+                   std::abs(shopShips[i].restAngle - 90.0f) > 0.1f) {
+            Vector2 diff = { shopShips[i].position.x - shopShips[i].anchorPosition.x,
+                             shopShips[i].position.y - shopShips[i].anchorPosition.y };
+            shopShips[i].setAnchor(newAnchor, 90.0f);
             shopShips[i].position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+            shopShips[i].angle = 90.0f;
         }
     }
     if (!shopShips.empty()) {

@@ -554,7 +554,7 @@ void App::update(float dt) {
         static int testUpdateFrame = 0;
         ++testUpdateFrame;
         if (testUpdateFrame == 8) {
-            renderer.fireLaser({ 50.0f, 102.5f }, { -150.0f, 102.5f }, Color{ 0, 229, 255, 255 });
+            renderer.fireLaser({ 250.0f, renderer.shopShip.position.y }, { renderer.shopShip.position.x, renderer.shopShip.position.y }, Color{ 0, 229, 255, 255 });
         } else if (testUpdateFrame == 18) {
             renderer.localShip.position = { renderer.shopShip.position.x + 25.0f, renderer.shopShip.position.y };
             renderer.localShip.velocity = { -600.0f, 0.0f };
@@ -1164,7 +1164,8 @@ void App::run() {
     if (testShopMode) {
         startNewGame(2, 10, 10, 12345);
         state = AppState::InGame;
-        renderer.camera.reset({ -150.0f, -50.0f }, 1.3f);
+        float boardWidth = 10 * renderer.cellSize;
+        renderer.camera.reset({ boardWidth - 100.0f, -40.0f }, 1.3f);
     }
 
     while (!WindowShouldClose() && !shouldQuit) {

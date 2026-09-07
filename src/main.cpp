@@ -138,12 +138,15 @@ static int runCapsuleTests() {
 }
 
 int main(int argc, char* argv[]) {
-    minesweeper::App app;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--test-capsule") {
             return runCapsuleTests();
         }
-        else if (std::string(argv[i]) == "--test-shop") {
+    }
+
+    minesweeper::App app;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--test-shop") {
             runCapsuleTests();
             app.testShopMode = true;
         }

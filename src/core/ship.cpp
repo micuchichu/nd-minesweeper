@@ -144,10 +144,10 @@ void Ship::updateExhaust(float dt) {
 }
 
 void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
-    if (isMoving) {
-        // Triangles removed as requested: only particle embers stream when moving (rendered in drawExhaust)
-        return;
-    }
+    //if (isMoving) {
+    //    // Triangles removed as requested: only particle embers stream when moving (rendered in drawExhaust)
+    //    return;
+    //}
 
     float theta = baseAngle * DEG2RAD;
     float cosA = std::cos(theta);
@@ -166,8 +166,9 @@ void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
         // While idling: glowing circles at the back of thrusters
         float idlePulse = 0.4f + 0.4f * std::sin(t * 5.0f + static_cast<float>(i) * 1.5f);
         float r = (th.nozzleWidth * 0.65f * scale) + idlePulse;
-        DrawCircleV(worldNozzle, r, Fade(th.outerColor, 0.85f));
-        DrawCircleV(worldNozzle, r * 0.5f, Fade(th.innerColor, 0.65f));
+        float currSpeedNorm = Vector2Length(velocity) / (speed * 0.6f);
+        DrawCircleV(worldNozzle, r, Fade(Fade(th.outerColor, 0.85f), 1.0f - currSpeedNorm));
+        DrawCircleV(worldNozzle, r * 0.5f, Fade(Fade(th.innerColor, 0.65f), 1.0f - currSpeedNorm));
     }
 }
 
@@ -829,7 +830,9 @@ void MerchantShip::update(float dt) {
 
         float targetAngle = restAngle;
         if (dist > 3.0f) {
-            float tilt = std::clamp(velocity.y * 0.08f, -15.0f, 15.0f);
+            float rad = restAngle * DEG2RAD;
+            float lateralVel = -velocity.x * std::sin(rad) + velocity.y * std::cos(rad);
+            float tilt = std::clamp(lateralVel * 0.08f, -15.0f, 15.0f);
             targetAngle = restAngle + tilt;
         }
         float diffAngle = targetAngle - angle;
@@ -872,6 +875,7 @@ ShopShip::ShopShip()
     collisionRadius = 26.0f;
     name = "SHOP";
     color = ui::Colors::Amber400;
+    setAnchor({ 0.0f, 0.0f }, 90.0f);
     setupThrusters();
 }
 
@@ -881,7 +885,7 @@ ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const std::string& shipName)
     scale = 1.8f;
     name = shipName.empty() ? "SHOP" : shipName;
     color = ui::Colors::Amber400;
-    setAnchor(anchor, 0.0f);
+    setAnchor(anchor, 90.0f);
     setupThrusters();
 }
 
@@ -890,7 +894,7 @@ ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const ShipConfig& config)
 {
     name = config.name.empty() ? "SHOP" : config.name;
     color = ui::Colors::Amber400;
-    setAnchor(anchor, 0.0f);
+    setAnchor(anchor, 90.0f);
     applyConfig(config);
 }
 
@@ -941,7 +945,9 @@ void ShopShip::draw(const char* label, Color tint, bool speaking) const {
     // 4. Floating Badge
     const char* displayName = (label && label[0] != '\0') ? label : (!name.empty() ? name.c_str() : "SHOP");
     int nameW = MeasureText(displayName, 12);
-    float badgeY = drawPos.y + (h * 0.5f) + 6.0f;
+    float rad = angle * DEG2RAD;
+    float halfExtentY = (std::abs(w * std::sin(rad)) + std::abs(h * std::cos(rad))) * 0.5f;
+    float badgeY = drawPos.y + halfExtentY + 6.0f;
     Rectangle badge = { drawPos.x - static_cast<float>(nameW + 16) * 0.5f, badgeY, static_cast<float>(nameW + 16), 16.0f };
     DrawRectangleRec(badge, Fade(BLACK, 0.85f));
     DrawRectangleLinesEx(badge, 1.0f, ui::Colors::Amber400);
