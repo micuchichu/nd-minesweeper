@@ -587,6 +587,15 @@ int64_t RaylibRenderer::getCellIndexAtWorldPos(Vector2 worldPos, const core::Boa
 }
 
 int64_t RaylibRenderer::getHoveredCellIndex(const core::Board& board) const {
+    if (!IsCursorOnScreen()) {
+        return -1;
+    }
+    Vector2 rawMouse = GetMousePosition();
+    if (rawMouse.x < 0.0f || rawMouse.x >= static_cast<float>(GetScreenWidth()) ||
+        rawMouse.y < 0.0f || rawMouse.y >= static_cast<float>(GetScreenHeight())) {
+        return -1;
+    }
+
     Vector2 mouseCRT = camera.getCRTMousePosition();
     float topH = 70.0f * guiScale;
     if (mouseCRT.y >= 0.0f && mouseCRT.y < topH) {

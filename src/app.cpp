@@ -219,6 +219,7 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     renderer.clearParticles();
     renderer.localShip.isInitialized = false;
     pendingUncoverCell = -1;
+    currentHoveredCell = -1;
     renderer.clearOutOfReach();
     int leftover = scrapSystem.collectAll();
     if (leftover > 0) {
@@ -620,14 +621,12 @@ void App::update(float dt) {
 
     // 2. Mouse tracking state
     Vector2 curMouse = GetMousePosition();
-    if (Vector2Distance(curMouse, prevMousePos) > 3.0f || IsMouseButtonDown(MOUSE_LEFT_BUTTON) || IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
-        mouseAimTimer = 2.0f;
+    if (Vector2Distance(curMouse, prevMousePos) > 1.0f ||
+        IsMouseButtonDown(MOUSE_LEFT_BUTTON) ||
+        IsMouseButtonDown(MOUSE_RIGHT_BUTTON) ||
+        IsMouseButtonDown(MOUSE_MIDDLE_BUTTON)) {
         prevMousePos = curMouse;
         renderer.isMouseActive = true;
-    }
-    if (moveInputLen > 0.05f) {
-        renderer.isMouseActive = false;
-        mouseAimTimer = 0.0f;
     }
 
     // 3. Right Stick: Used for selecting a cell & aiming laser
@@ -641,6 +640,7 @@ void App::update(float dt) {
         float rLen = std::sqrt(rx * rx + ry * ry);
 
         if (rLen > 0.22f) {
+            renderer.isMouseActive = false;
             Vector2 rDir = { rx / rLen, ry / rLen };
             hasAim = true;
             aimAngle = std::atan2(rDir.y, rDir.x) * RAD2DEG + 90.0f;
@@ -660,25 +660,10 @@ void App::update(float dt) {
     // 4. Update cell selection
     if (rightStickCell >= 0) {
         currentHoveredCell = rightStickCell;
+    } else if (hasAim) {
+        currentHoveredCell = -1;
     } else if (renderer.isMouseActive) {
-        int64_t mCell = renderer.getHoveredCellIndex(board);
-        if (mCell >= 0) {
-            currentHoveredCell = mCell;
-        } else if (menu.controlMode == 0) {
-            currentHoveredCell = -1;
-        }
-    } else if (moveInputLen > 0.05f) {
-        int64_t cellUnder = renderer.getCellIndexAtWorldPos(renderer.localShip.position, board);
-        if (cellUnder < 0) {
-            cellUnder = renderer.getCellIndexAtWorldPos(renderer.localShip.getNosePosition(), board);
-        }
-        if (cellUnder >= 0) {
-            currentHoveredCell = cellUnder;
-        }
-    }
-
-    if (menu.controlMode == 1 && currentHoveredCell < 0 && board.coord.totalCells > 0) {
-        currentHoveredCell = (board.startingCell >= 0) ? board.startingCell : 0;
+        currentHoveredCell = renderer.getHoveredCellIndex(board);
     }
 
     renderer.controlMode = menu.controlMode;
@@ -775,20 +760,7 @@ void App::update(float dt) {
             }
         }
 
-        int64_t hovered = -1;
-        if (menu.controlMode == 1) {
-            hovered = currentHoveredCell;
-        } else {
-            if (currentHoveredCell >= 0 && padAvailable && !renderer.isMouseActive) {
-                hovered = currentHoveredCell;
-            } else {
-                hovered = renderer.getHoveredCellIndex(board);
-                if (hovered >= 0) {
-                    currentHoveredCell = hovered;
-                }
-            }
-        }
-        currentHoveredCell = hovered;
+        int64_t hovered = currentHoveredCell;
 
         // In-game Input Handling
         if (!board.isGameOver && !board.isVictory && !hud.showLargeGridWarning) {
@@ -1237,7 +1209,7 @@ void App::draw() {
             EndMode2D();
         }
         else {
-            int64_t hovered = (menu.controlMode == 1) ? currentHoveredCell : renderer.getHoveredCellIndex(board);
+            int64_t hovered = currentHoveredCell;
             renderer.render(board, hovered, net);
 
             BeginMode2D(renderer.camera.camera);

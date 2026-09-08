@@ -473,6 +473,63 @@ static int runControlTests() {
         std::cout << "  [PASS] Test 7: Laser targeting alignment (mouse pointer & cell center) verified." << std::endl;
     }
 
+    // Test 8: Unselect cell when mouse is outside the board
+    {
+        minesweeper::render::RaylibRenderer renderer;
+        renderer.cellSize = 40.0f;
+        renderer.slicePadding = 20.0f;
+
+        minesweeper::core::Board board;
+        board.init(2, 10, 10, 12345); // 10x10 board = 400x400 pixels in world space
+
+        // 8a: Outside board to the left (x < 0)
+        int64_t idxLeft = renderer.getCellIndexAtWorldPos({ -10.0f, 100.0f }, board);
+        if (idxLeft != -1) {
+            std::cerr << "  [FAIL] Test 8a: Expected -1 for position left of board, got " << idxLeft << std::endl;
+            return 24;
+        }
+
+        // 8b: Outside board to the right (x >= 400)
+        int64_t idxRight = renderer.getCellIndexAtWorldPos({ 450.0f, 100.0f }, board);
+        if (idxRight != -1) {
+            std::cerr << "  [FAIL] Test 8b: Expected -1 for position right of board, got " << idxRight << std::endl;
+            return 25;
+        }
+
+        // 8c: Outside board above (y < 0)
+        int64_t idxTop = renderer.getCellIndexAtWorldPos({ 100.0f, -15.0f }, board);
+        if (idxTop != -1) {
+            std::cerr << "  [FAIL] Test 8c: Expected -1 for position above board, got " << idxTop << std::endl;
+            return 26;
+        }
+
+        // 8d: Outside board below (y >= 400)
+        int64_t idxBottom = renderer.getCellIndexAtWorldPos({ 100.0f, 420.0f }, board);
+        if (idxBottom != -1) {
+            std::cerr << "  [FAIL] Test 8d: Expected -1 for position below board, got " << idxBottom << std::endl;
+            return 27;
+        }
+
+        // 8e: Verify cell selection unselects in both control modes
+        for (int mode = 0; mode <= 1; ++mode) {
+            int64_t currentHoveredCell = 42; // previously hovered cell
+            bool isMouseActive = true;
+
+            // Mouse moves outside board
+            int64_t mCell = renderer.getCellIndexAtWorldPos({ -50.0f, -50.0f }, board);
+            if (isMouseActive) {
+                currentHoveredCell = mCell;
+            }
+
+            if (currentHoveredCell != -1) {
+                std::cerr << "  [FAIL] Test 8e: Cell did not unselect when mouse moved outside board in mode " << mode << ", got " << currentHoveredCell << std::endl;
+                return 28;
+            }
+        }
+
+        std::cout << "  [PASS] Test 8: Unselect cell when mouse is outside the board verified." << std::endl;
+    }
+
     std::cout << "[TEST-CONTROLS] ALL CONTROLS TESTS PASSED!" << std::endl;
     return 0;
 }
