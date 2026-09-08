@@ -1030,11 +1030,7 @@ void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
     // 1. Update player / local ship physics at fixed timestep
     localShip.skinId = activeCursorSkin;
     localShip.texture = getCursorSkinTexture(activeCursorSkin);
-    if (controlMode == 1) {
-        localShip.updateDirect(moveInput, fixedDt, hasAim, aimAngle);
-    } else {
-        localShip.update(targetPos, fixedDt);
-    }
+    localShip.update(targetPos, fixedDt);
 
     // 2. Update shop freighters at fixed timestep
     for (auto& s : shopShips) {

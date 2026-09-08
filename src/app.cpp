@@ -588,72 +588,90 @@ void App::update(float dt) {
     }
 
     bool padAvailable = IsGamepadAvailable(0);
-    Vector2 moveInput = { 0.0f, 0.0f };
-    bool hasAim = false;
-    float aimAngle = 0.0f;
+
+    // Grid selection navigation via Left Stick, D-Pad, and WASD/Arrows
+    int dirX = 0;
+    int dirY = 0;
+
+    if (padAvailable) {
+        float stickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
+        float stickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+        if (stickX < -0.45f) dirX = -1;
+        else if (stickX > 0.45f) dirX = 1;
+        if (stickY < -0.45f) dirY = -1;
+        else if (stickY > 0.45f) dirY = 1;
+
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) dirX = -1;
+        else if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) dirX = 1;
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) dirY = -1;
+        else if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) dirY = 1;
+    }
 
     if (menu.controlMode == 1) {
-        // Keyboard WASD / Arrows
-        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) moveInput.y -= 1.0f;
-        if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) moveInput.y += 1.0f;
-        if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) moveInput.x -= 1.0f;
-        if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) moveInput.x += 1.0f;
+        if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) dirX = -1;
+        else if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) dirX = 1;
+        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) dirY = -1;
+        else if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) dirY = 1;
+    }
 
-        // Gamepad Left Stick & D-Pad
-        if (padAvailable) {
-            float stickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
-            float stickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
-            if (std::abs(stickX) < 0.15f) stickX = 0.0f;
-            if (std::abs(stickY) < 0.15f) stickY = 0.0f;
-            if (stickX != 0.0f || stickY != 0.0f) {
-                moveInput.x += stickX;
-                moveInput.y += stickY;
-            }
-
-            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) moveInput.y -= 1.0f;
-            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) moveInput.y += 1.0f;
-            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) moveInput.x -= 1.0f;
-            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) moveInput.x += 1.0f;
-        }
-
-        float mLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
-        if (mLen > 1.0f) {
-            moveInput.x /= mLen;
-            moveInput.y /= mLen;
-        }
-
-        // Gamepad Right Stick Aiming
-        if (padAvailable) {
-            float rStickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
-            float rStickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
-            if (std::abs(rStickX) > 0.25f || std::abs(rStickY) > 0.25f) {
-                hasAim = true;
-                aimAngle = std::atan2(rStickY, rStickX) * RAD2DEG + 90.0f;
-            }
-        }
-
-        // Mouse aim tracking in keyboard mode
-        Vector2 curMouse = GetMousePosition();
-        if (Vector2Distance(curMouse, prevMousePos) > 3.0f || IsMouseButtonDown(MOUSE_LEFT_BUTTON) || IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
-            mouseAimTimer = 2.0f;
-            prevMousePos = curMouse;
-        }
-        if (mouseAimTimer > 0.0f) {
-            mouseAimTimer -= dt;
-            if (!hasAim) {
-                Vector2 toM = { worldMouse.x - renderer.localShip.position.x, worldMouse.y - renderer.localShip.position.y };
-                if (std::sqrt(toM.x * toM.x + toM.y * toM.y) > 8.0f) {
-                    hasAim = true;
-                    aimAngle = std::atan2(toM.y, toM.x) * RAD2DEG + 90.0f;
+    bool shouldStep = false;
+    if (dirX != 0 || dirY != 0) {
+        if (dirX != navLastDirX || dirY != navLastDirY) {
+            shouldStep = true;
+            navLastDirX = dirX;
+            navLastDirY = dirY;
+            navHoldTimer = 0.0f;
+            navRepeatTimer = 0.0f;
+        } else {
+            navHoldTimer += dt;
+            if (navHoldTimer >= 0.22f) {
+                navRepeatTimer += dt;
+                if (navRepeatTimer >= 0.08f) {
+                    navRepeatTimer -= 0.08f;
+                    shouldStep = true;
                 }
             }
         }
+    } else {
+        navLastDirX = 0;
+        navLastDirY = 0;
+        navHoldTimer = 0.0f;
+        navRepeatTimer = 0.0f;
+    }
+
+    // Mouse movement updates selected cell if hovering over board
+    Vector2 curMouse = GetMousePosition();
+    if (Vector2Distance(curMouse, prevMousePos) > 4.0f) {
+        prevMousePos = curMouse;
+        int64_t mCell = renderer.getHoveredCellIndex(board);
+        if (mCell >= 0) {
+            currentHoveredCell = mCell;
+        } else if (menu.controlMode == 0) {
+            currentHoveredCell = -1;
+        }
+    }
+
+    // Step cell if navigation active
+    if (shouldStep && board.coord.totalCells > 0) {
+        if (currentHoveredCell < 0) {
+            int64_t mCell = renderer.getHoveredCellIndex(board);
+            if (mCell >= 0) currentHoveredCell = mCell;
+            else if (board.startingCell >= 0) currentHoveredCell = board.startingCell;
+            else currentHoveredCell = 0;
+        } else {
+            currentHoveredCell = board.coord.stepCell(currentHoveredCell, dirX, dirY);
+        }
+    }
+
+    // Ensure valid selection in keyboard mode
+    if (menu.controlMode == 1 && currentHoveredCell < 0 && board.coord.totalCells > 0) {
+        currentHoveredCell = (board.startingCell >= 0) ? board.startingCell : 0;
     }
 
     renderer.controlMode = menu.controlMode;
-    renderer.moveInput = moveInput;
-    renderer.hasAim = hasAim;
-    renderer.aimAngle = aimAngle;
+    renderer.moveInput = { static_cast<float>(dirX), static_cast<float>(dirY) };
+    renderer.hasAim = false;
+    renderer.aimAngle = 0.0f;
 
     renderer.syncRemoteShips(net.remoteCursors);
     renderer.updatePhysics(worldMouse, dt);
@@ -694,7 +712,7 @@ void App::update(float dt) {
             renderer.camera.manualPanActive = false;
             renderer.camera.centerOn(renderer.localShip.position);
         }
-        if (!testShopMode && !hud.showLargeGridWarning && renderer.localShip.isInitialized) {
+        if (!testShopMode && !hud.showLargeGridWarning && renderer.localShip.isInitialized && menu.controlMode == 0) {
             renderer.camera.followShip(renderer.localShip.position, dt);
         }
 
@@ -745,39 +763,15 @@ void App::update(float dt) {
         }
 
         int64_t hovered = -1;
-        if (menu.controlMode == 0) {
-            hovered = renderer.getHoveredCellIndex(board);
+        if (menu.controlMode == 1) {
+            hovered = currentHoveredCell;
         } else {
-            // Keyboard / Controller mode:
-            // 1. If mouse was moved recently, use mouse hover
-            if (mouseAimTimer > 0.0f) {
+            if (currentHoveredCell >= 0 && (padAvailable || dirX != 0 || dirY != 0)) {
+                hovered = currentHoveredCell;
+            } else {
                 hovered = renderer.getHoveredCellIndex(board);
-            }
-            // 2. If right stick on gamepad is pushed, sample along stick direction
-            if (hovered < 0 && padAvailable) {
-                float rx = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
-                float ry = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
-                if (std::abs(rx) > 0.25f || std::abs(ry) > 0.25f) {
-                    float rLen = std::sqrt(rx * rx + ry * ry);
-                    Vector2 rDir = { rx / rLen, ry / rLen };
-                    for (float dist = 40.0f; dist <= 120.0f; dist += 25.0f) {
-                        Vector2 testPt = { renderer.localShip.position.x + rDir.x * dist, renderer.localShip.position.y + rDir.y * dist };
-                        int64_t idx = renderer.getCellIndexAtWorldPos(testPt, board);
-                        if (idx >= 0) {
-                            hovered = idx;
-                            break;
-                        }
-                    }
-                }
-            }
-            // 3. If still no cell, check cell in front of ship nose
-            if (hovered < 0) {
-                float rad = (renderer.localShip.angle - 90.0f) * DEG2RAD;
-                Vector2 fwd = { std::cos(rad), std::sin(rad) };
-                Vector2 targetPt = { renderer.localShip.position.x + fwd.x * 40.0f, renderer.localShip.position.y + fwd.y * 40.0f };
-                hovered = renderer.getCellIndexAtWorldPos(targetPt, board);
-                if (hovered < 0) {
-                    hovered = renderer.getCellIndexAtWorldPos(renderer.localShip.position, board);
+                if (hovered >= 0) {
+                    currentHoveredCell = hovered;
                 }
             }
         }
@@ -836,7 +830,7 @@ void App::update(float dt) {
                         Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
                         float dist = Vector2Distance(renderer.localShip.position, cellCenter);
 
-                        if (dist > renderer.localShip.range && menu.controlMode == 0) {
+                        if (dist > renderer.localShip.range && menu.controlMode == 0 && !padAvailable) {
                             renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellPos);
                             pendingUncoverCell = static_cast<int64_t>(hIdx);
                         } else {
@@ -1011,7 +1005,7 @@ void App::update(float dt) {
                         Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
                         float dist = Vector2Distance(renderer.localShip.position, cellCenter);
 
-                        if (dist > renderer.localShip.range && menu.controlMode == 0) {
+                        if (dist > renderer.localShip.range && menu.controlMode == 0 && !padAvailable) {
                             renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellPos);
                         } else {
                             renderer.clearOutOfReach();

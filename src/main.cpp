@@ -337,6 +337,78 @@ static int runControlTests() {
         std::cout << "  [PASS] Test 4: getCellIndexAtWorldPos board space mappings verified." << std::endl;
     }
 
+    // Test 5: CoordND::stepCell grid navigation (2D, 3D, 4D)
+    {
+        // 2D: 10x10 board
+        minesweeper::core::CoordND c2d;
+        c2d.init(2, 10);
+        // At (0, 0)
+        int64_t cell0 = 0;
+        int64_t right = c2d.stepCell(cell0, 1, 0);
+        if (right != 1) {
+            std::cerr << "  [FAIL] Test 5a: step right from 0 expected 1, got " << right << std::endl;
+            return 12;
+        }
+        int64_t down = c2d.stepCell(cell0, 0, 1);
+        if (down != 10) {
+            std::cerr << "  [FAIL] Test 5b: step down from 0 expected 10, got " << down << std::endl;
+            return 13;
+        }
+        int64_t clampUp = c2d.stepCell(cell0, 0, -1);
+        if (clampUp != 0) {
+            std::cerr << "  [FAIL] Test 5c: step up from 0 should clamp to 0, got " << clampUp << std::endl;
+            return 14;
+        }
+
+        // 3D: 5x5x5 board
+        minesweeper::core::CoordND c3d;
+        c3d.init(3, 5);
+        // Cell at (x=2, y=4, z=0) -> bottom edge of slice 0
+        int64_t bottomSlice0 = static_cast<int64_t>(c3d.toIndex3D(2, 4, 0));
+        // Stepping down should cross into slice 1 at (x=2, y=0, z=1)
+        int64_t topSlice1 = c3d.stepCell(bottomSlice0, 0, 1);
+        size_t rx, ry, rz;
+        c3d.toCoord3D(static_cast<size_t>(topSlice1), rx, ry, rz);
+        if (rx != 2 || ry != 0 || rz != 1) {
+            std::cerr << "  [FAIL] Test 5d: 3D slice down transition failed, got (" << rx << "," << ry << "," << rz << ")" << std::endl;
+            return 15;
+        }
+
+        // 4D: 4x4x4x4 board
+        minesweeper::core::CoordND c4d;
+        c4d.init(4, 4);
+        int64_t cell4d = static_cast<int64_t>(c4d.toIndex4D(3, 1, 0, 0));
+        int64_t crossSliceZ = c4d.stepCell(cell4d, 1, 0); // x=3 + 1 -> z=1, x=0
+        size_t c4x, c4y, c4z, c4w;
+        c4d.toCoord4D(static_cast<size_t>(crossSliceZ), c4x, c4y, c4z, c4w);
+        if (c4x != 0 || c4z != 1) {
+            std::cerr << "  [FAIL] Test 5e: 4D slice Z transition failed, got (" << c4x << "," << c4z << ")" << std::endl;
+            return 16;
+        }
+        std::cout << "  [PASS] Test 5: CoordND::stepCell 2D, 3D, and 4D traversal verified." << std::endl;
+    }
+
+    // Test 6: ScoutShip mouse follower tracking
+    {
+        minesweeper::core::ScoutShip ship;
+        ship.position = { 0.0f, 0.0f };
+        ship.isInitialized = true;
+
+        Vector2 targetMouse = { 200.0f, 0.0f };
+        for (int i = 0; i < 10; ++i) {
+            ship.update(targetMouse, 0.05f);
+        }
+        if (ship.position.x <= 0.0f) {
+            std::cerr << "  [FAIL] Test 6: Ship did not move towards target mouse position!" << std::endl;
+            return 17;
+        }
+        if (ship.velocity.x <= 0.0f) {
+            std::cerr << "  [FAIL] Test 6: Ship velocity did not accelerate towards target mouse!" << std::endl;
+            return 18;
+        }
+        std::cout << "  [PASS] Test 6: ScoutShip mouse follower tracking verified." << std::endl;
+    }
+
     std::cout << "[TEST-CONTROLS] ALL CONTROLS TESTS PASSED!" << std::endl;
     return 0;
 }

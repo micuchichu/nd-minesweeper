@@ -842,7 +842,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             float lineY = curY + 8.0f;
 
             DrawText("LEFT STICK / D-PAD", static_cast<int>(col1X), static_cast<int>(lineY), 12, Colors::Cyan400);
-            DrawText("Fly / Steer Ship", static_cast<int>(col1X + 130.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+            DrawText("Select Cell", static_cast<int>(col1X + 130.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
 
             DrawText("CROSS [X] / (A)", static_cast<int>(col2X), static_cast<int>(lineY), 12, Colors::Green400);
             DrawText("Uncover Cell", static_cast<int>(col2X + 110.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
@@ -877,7 +877,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
 
             float kLineY = curY + 8.0f;
             DrawText("W / A / S / D or ARROWS", static_cast<int>(col1X), static_cast<int>(kLineY), 12, Colors::Cyan400);
-            DrawText("Fly Ship (Keyboard Mode)", static_cast<int>(col1X + 160.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);
+            DrawText("Select Cell (Keyboard Mode)", static_cast<int>(col1X + 160.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);
 
             DrawText("SPACE / ENTER", static_cast<int>(col2X), static_cast<int>(kLineY), 12, Colors::Green400);
             DrawText("Uncover Cell", static_cast<int>(col2X + 110.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);

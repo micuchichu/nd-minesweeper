@@ -36,6 +36,10 @@ private:
     int64_t currentHoveredCell = -1;
     float mouseAimTimer = 0.0f;
     Vector2 prevMousePos = { -9999.0f, -9999.0f };
+    int navLastDirX = 0;
+    int navLastDirY = 0;
+    float navHoldTimer = 0.0f;
+    float navRepeatTimer = 0.0f;
 
     core::Board board;
     render::RaylibRenderer renderer;

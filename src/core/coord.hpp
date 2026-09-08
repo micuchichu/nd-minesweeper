@@ -58,6 +58,90 @@ struct CoordND {
         w = index / stride3;
     }
 
+    inline int64_t stepCell(int64_t currentIndex, int dx, int dy) const {
+        if (totalCells == 0) return -1;
+        if (currentIndex < 0 || static_cast<size_t>(currentIndex) >= totalCells) {
+            return 0;
+        }
+
+        const int S = static_cast<int>(size);
+        if (dim == 2) {
+            size_t x = 0, y = 0;
+            toCoord2D(static_cast<size_t>(currentIndex), x, y);
+            int nx = std::clamp(static_cast<int>(x) + dx, 0, S - 1);
+            int ny = std::clamp(static_cast<int>(y) + dy, 0, S - 1);
+            return static_cast<int64_t>(toIndex2D(static_cast<size_t>(nx), static_cast<size_t>(ny)));
+        }
+        else if (dim == 3) {
+            size_t x = 0, y = 0, z = 0;
+            toCoord3D(static_cast<size_t>(currentIndex), x, y, z);
+            int nx = static_cast<int>(x) + dx;
+            int ny = static_cast<int>(y) + dy;
+            int nz = static_cast<int>(z);
+
+            if (nx < 0) nx = 0;
+            if (nx >= S) nx = S - 1;
+
+            if (ny < 0) {
+                if (nz > 0) {
+                    nz -= 1;
+                    ny = S - 1;
+                } else {
+                    ny = 0;
+                }
+            } else if (ny >= S) {
+                if (nz + 1 < S) {
+                    nz += 1;
+                    ny = 0;
+                } else {
+                    ny = S - 1;
+                }
+            }
+            return static_cast<int64_t>(toIndex3D(static_cast<size_t>(nx), static_cast<size_t>(ny), static_cast<size_t>(nz)));
+        }
+        else {
+            size_t x = 0, y = 0, z = 0, w = 0;
+            toCoord4D(static_cast<size_t>(currentIndex), x, y, z, w);
+            int nx = static_cast<int>(x) + dx;
+            int ny = static_cast<int>(y) + dy;
+            int nz = static_cast<int>(z);
+            int nw = static_cast<int>(w);
+
+            if (nx < 0) {
+                if (nz > 0) {
+                    nz -= 1;
+                    nx = S - 1;
+                } else {
+                    nx = 0;
+                }
+            } else if (nx >= S) {
+                if (nz + 1 < S) {
+                    nz += 1;
+                    nx = 0;
+                } else {
+                    nx = S - 1;
+                }
+            }
+
+            if (ny < 0) {
+                if (nw > 0) {
+                    nw -= 1;
+                    ny = S - 1;
+                } else {
+                    ny = 0;
+                }
+            } else if (ny >= S) {
+                if (nw + 1 < S) {
+                    nw += 1;
+                    ny = 0;
+                } else {
+                    ny = S - 1;
+                }
+            }
+            return static_cast<int64_t>(toIndex4D(static_cast<size_t>(nx), static_cast<size_t>(ny), static_cast<size_t>(nz), static_cast<size_t>(nw)));
+        }
+    }
+
     // Inlined high-performance neighbor traversal
     template <typename Func>
     inline void forEachNeighbor(size_t index, Func&& func) const {
