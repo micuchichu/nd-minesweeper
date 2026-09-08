@@ -29,7 +29,8 @@ enum class CustomizeTab {
 
 enum class SettingsTab {
     Graphics = 0,
-    Audio = 1
+    Audio = 1,
+    Controls = 2
 };
 
 struct MenuActions {
@@ -47,6 +48,7 @@ struct MenuActions {
     bool vsyncChanged = false;
     bool fpsLimitChanged = false;
     bool guiScaleChanged = false;
+    bool controlModeChanged = false;
 };
 
 class MainMenu {
@@ -64,6 +66,7 @@ public:
     bool showFPS = false;
     float fpsLimit = 144.0f;
     float guiScale = 1.0f;
+    int controlMode = 0; // 0 = Mouse Follower, 1 = Keyboard / Controller
 
     int cursorSkin = 0;
     int flagSkin = 0;

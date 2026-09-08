@@ -33,6 +33,9 @@ private:
     float timePlayed = 0.0f;
     uint64_t scrapCount = 0;
     int64_t pendingUncoverCell = -1;
+    int64_t currentHoveredCell = -1;
+    float mouseAimTimer = 0.0f;
+    Vector2 prevMousePos = { -9999.0f, -9999.0f };
 
     core::Board board;
     render::RaylibRenderer renderer;

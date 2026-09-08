@@ -225,15 +225,137 @@ static int runCameraTests() {
     return 0;
 }
 
+static int runControlTests() {
+    std::cout << "[TEST-CONTROLS] Starting Controls & Keyboard/Controller Unit Tests..." << std::endl;
+
+    // Test 1: ScoutShip direct movement acceleration
+    {
+        minesweeper::core::ScoutShip ship;
+        ship.position = { 100.0f, 100.0f };
+        ship.velocity = { 0.0f, 0.0f };
+        ship.angle = 0.0f;
+        ship.isInitialized = true;
+
+        // Move right with full input
+        ship.updateDirect({ 1.0f, 0.0f }, 0.05f);
+        if (ship.velocity.x <= 0.0f) {
+            std::cerr << "  [FAIL] Test 1: Ship velocity.x did not accelerate positively on right input!" << std::endl;
+            return 1;
+        }
+        if (ship.position.x <= 100.0f) {
+            std::cerr << "  [FAIL] Test 1: Ship position.x did not advance on right input!" << std::endl;
+            return 2;
+        }
+        if (!ship.isMoving) {
+            std::cerr << "  [FAIL] Test 1: Ship isMoving is false during movement input!" << std::endl;
+            return 3;
+        }
+        std::cout << "  [PASS] Test 1: ScoutShip direct movement acceleration verified." << std::endl;
+    }
+
+    // Test 2: ScoutShip space braking when input is released
+    {
+        minesweeper::core::ScoutShip ship;
+        ship.position = { 100.0f, 100.0f };
+        ship.velocity = { 300.0f, 0.0f };
+        ship.isInitialized = true;
+
+        float prevVelX = ship.velocity.x;
+        ship.updateDirect({ 0.0f, 0.0f }, 0.05f);
+        if (ship.velocity.x >= prevVelX) {
+            std::cerr << "  [FAIL] Test 2: Ship did not decelerate when input was neutral!" << std::endl;
+            return 4;
+        }
+
+        // Run multiple frames to verify complete stop
+        for (int i = 0; i < 60; ++i) {
+            ship.updateDirect({ 0.0f, 0.0f }, 0.05f);
+        }
+        if (ship.velocity.x != 0.0f || ship.velocity.y != 0.0f) {
+            std::cerr << "  [FAIL] Test 2: Ship did not come to a complete stop after braking!" << std::endl;
+            return 5;
+        }
+        if (ship.isMoving) {
+            std::cerr << "  [FAIL] Test 2: Ship isMoving is true when stopped!" << std::endl;
+            return 6;
+        }
+        std::cout << "  [PASS] Test 2: ScoutShip active braking and full stop verified." << std::endl;
+    }
+
+    // Test 3: ScoutShip aim override
+    {
+        minesweeper::core::ScoutShip ship;
+        ship.position = { 100.0f, 100.0f };
+        ship.velocity = { 0.0f, 0.0f };
+        ship.angle = 0.0f;
+        ship.isInitialized = true;
+
+        // Move right with stick aim pointing 180 degrees (down)
+        for (int i = 0; i < 20; ++i) {
+            ship.updateDirect({ 1.0f, 0.0f }, 0.05f, true, 180.0f);
+        }
+        if (ship.angle <= 45.0f) {
+            std::cerr << "  [FAIL] Test 3: Ship angle did not rotate towards aimAngle (180 deg)!" << std::endl;
+            return 7;
+        }
+        std::cout << "  [PASS] Test 3: ScoutShip aimAngle override verified." << std::endl;
+    }
+
+    // Test 4: getCellIndexAtWorldPos for 2D, 3D and out of bounds
+    {
+        minesweeper::render::RaylibRenderer renderer;
+        renderer.cellSize = 40.0f;
+        renderer.slicePadding = 20.0f;
+
+        // 2D board: 10x10
+        minesweeper::core::Board b2d;
+        b2d.init(2, 10, 10, 12345);
+
+        int64_t idx0 = renderer.getCellIndexAtWorldPos({ 10.0f, 10.0f }, b2d);
+        if (idx0 != 0) {
+            std::cerr << "  [FAIL] Test 4a: Expected cell index 0 at (10, 10), got " << idx0 << std::endl;
+            return 8;
+        }
+
+        int64_t idx1 = renderer.getCellIndexAtWorldPos({ 50.0f, 10.0f }, b2d);
+        if (idx1 != 1) {
+            std::cerr << "  [FAIL] Test 4b: Expected cell index 1 at (50, 10), got " << idx1 << std::endl;
+            return 9;
+        }
+
+        int64_t idxOOB = renderer.getCellIndexAtWorldPos({ -10.0f, -10.0f }, b2d);
+        if (idxOOB != -1) {
+            std::cerr << "  [FAIL] Test 4c: Expected -1 for out of bounds coordinate, got " << idxOOB << std::endl;
+            return 10;
+        }
+
+        int64_t idxOOB2 = renderer.getCellIndexAtWorldPos({ 500.0f, 500.0f }, b2d);
+        if (idxOOB2 != -1) {
+            std::cerr << "  [FAIL] Test 4d: Expected -1 for out of bounds coordinate, got " << idxOOB2 << std::endl;
+            return 11;
+        }
+        std::cout << "  [PASS] Test 4: getCellIndexAtWorldPos board space mappings verified." << std::endl;
+    }
+
+    std::cout << "[TEST-CONTROLS] ALL CONTROLS TESTS PASSED!" << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--test-capsule") {
             int r1 = runCapsuleTests();
             int r2 = runCameraTests();
-            return (r1 != 0) ? r1 : r2;
+            int r3 = runControlTests();
+            if (r1 != 0) return r1;
+            if (r2 != 0) return r2;
+            return r3;
         }
         if (std::string(argv[i]) == "--test-camera") {
             return runCameraTests();
+        }
+        if (std::string(argv[i]) == "--test-controls") {
+            return runControlTests();
         }
     }
 
@@ -242,6 +364,7 @@ int main(int argc, char* argv[]) {
         if (std::string(argv[i]) == "--test-shop") {
             runCapsuleTests();
             runCameraTests();
+            runControlTests();
             app.testShopMode = true;
         }
         else if (std::string(argv[i]) == "--test-customize") {

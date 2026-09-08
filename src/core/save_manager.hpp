@@ -49,6 +49,7 @@ struct GlobalSettings {
     float guiScale = 1.0f;
 
     int lastActiveSlot = 1;
+    int controlMode = 0; // 0 = Mouse Follower, 1 = Keyboard / Controller
 };
 
 class SaveManager {

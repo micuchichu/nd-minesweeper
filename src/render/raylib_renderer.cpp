@@ -536,6 +536,56 @@ void RaylibRenderer::drawOffscreenToScreen() {
     }
 }
 
+int64_t RaylibRenderer::getCellIndexAtWorldPos(Vector2 worldPos, const core::Board& board) const {
+    float boardWidth = board.config.size * cellSize;
+    float sliceStride = boardWidth + slicePadding;
+
+    if (board.config.dim == 2) {
+        if (worldPos.x >= 0.0f && worldPos.x < boardWidth &&
+            worldPos.y >= 0.0f && worldPos.y < boardWidth) {
+            size_t x = static_cast<size_t>(worldPos.x / cellSize);
+            size_t y = static_cast<size_t>(worldPos.y / cellSize);
+            if (x < board.coord.size && y < board.coord.size) {
+                return static_cast<int64_t>(board.coord.toIndex2D(x, y));
+            }
+        }
+    }
+    else if (board.config.dim == 3) {
+        if (worldPos.x >= 0.0f && worldPos.x < boardWidth && worldPos.y >= 0.0f) {
+            size_t z = static_cast<size_t>(worldPos.y / sliceStride);
+            if (z < board.coord.size) {
+                float localY = worldPos.y - (z * sliceStride);
+                if (localY >= 0.0f && localY < boardWidth) {
+                    size_t x = static_cast<size_t>(worldPos.x / cellSize);
+                    size_t y = static_cast<size_t>(localY / cellSize);
+                    if (x < board.coord.size && y < board.coord.size) {
+                        return static_cast<int64_t>(board.coord.toIndex3D(x, y, z));
+                    }
+                }
+            }
+        }
+    }
+    else if (board.config.dim >= 4) {
+        if (worldPos.x >= 0.0f && worldPos.y >= 0.0f) {
+            size_t z = static_cast<size_t>(worldPos.x / sliceStride);
+            size_t w = static_cast<size_t>(worldPos.y / sliceStride);
+            if (z < board.coord.size && w < board.coord.size) {
+                float localX = worldPos.x - (z * sliceStride);
+                float localY = worldPos.y - (w * sliceStride);
+                if (localX >= 0.0f && localX < boardWidth && localY >= 0.0f && localY < boardWidth) {
+                    size_t x = static_cast<size_t>(localX / cellSize);
+                    size_t y = static_cast<size_t>(localY / cellSize);
+                    if (x < board.coord.size && y < board.coord.size) {
+                        return static_cast<int64_t>(board.coord.toIndex4D(x, y, z, w));
+                    }
+                }
+            }
+        }
+    }
+
+    return -1;
+}
+
 int64_t RaylibRenderer::getHoveredCellIndex(const core::Board& board) const {
     Vector2 mouseCRT = camera.getCRTMousePosition();
     float topH = 70.0f * guiScale;
@@ -549,53 +599,7 @@ int64_t RaylibRenderer::getHoveredCellIndex(const core::Board& board) const {
     }
 
     Vector2 mouseWorld = camera.getScreenToWorld(mouseCRT);
-    float boardWidth = board.config.size * cellSize;
-    float sliceStride = boardWidth + slicePadding;
-
-    if (board.config.dim == 2) {
-        if (mouseWorld.x >= 0.0f && mouseWorld.x < boardWidth &&
-            mouseWorld.y >= 0.0f && mouseWorld.y < boardWidth) {
-            size_t x = static_cast<size_t>(mouseWorld.x / cellSize);
-            size_t y = static_cast<size_t>(mouseWorld.y / cellSize);
-            if (x < board.coord.size && y < board.coord.size) {
-                return static_cast<int64_t>(board.coord.toIndex2D(x, y));
-            }
-        }
-    }
-    else if (board.config.dim == 3) {
-        if (mouseWorld.x >= 0.0f && mouseWorld.x < boardWidth && mouseWorld.y >= 0.0f) {
-            size_t z = static_cast<size_t>(mouseWorld.y / sliceStride);
-            if (z < board.coord.size) {
-                float localY = mouseWorld.y - (z * sliceStride);
-                if (localY >= 0.0f && localY < boardWidth) {
-                    size_t x = static_cast<size_t>(mouseWorld.x / cellSize);
-                    size_t y = static_cast<size_t>(localY / cellSize);
-                    if (x < board.coord.size && y < board.coord.size) {
-                        return static_cast<int64_t>(board.coord.toIndex3D(x, y, z));
-                    }
-                }
-            }
-        }
-    }
-    else if (board.config.dim >= 4) {
-        if (mouseWorld.x >= 0.0f && mouseWorld.y >= 0.0f) {
-            size_t z = static_cast<size_t>(mouseWorld.x / sliceStride);
-            size_t w = static_cast<size_t>(mouseWorld.y / sliceStride);
-            if (z < board.coord.size && w < board.coord.size) {
-                float localX = mouseWorld.x - (z * sliceStride);
-                float localY = mouseWorld.y - (w * sliceStride);
-                if (localX >= 0.0f && localX < boardWidth && localY >= 0.0f && localY < boardWidth) {
-                    size_t x = static_cast<size_t>(localX / cellSize);
-                    size_t y = static_cast<size_t>(localY / cellSize);
-                    if (x < board.coord.size && y < board.coord.size) {
-                        return static_cast<int64_t>(board.coord.toIndex4D(x, y, z, w));
-                    }
-                }
-            }
-        }
-    }
-
-    return -1;
+    return getCellIndexAtWorldPos(mouseWorld, board);
 }
 
 Vector2 RaylibRenderer::getCellWorldPosition(size_t index, const core::Board& board) const {
@@ -1026,7 +1030,11 @@ void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
     // 1. Update player / local ship physics at fixed timestep
     localShip.skinId = activeCursorSkin;
     localShip.texture = getCursorSkinTexture(activeCursorSkin);
-    localShip.update(targetPos, fixedDt);
+    if (controlMode == 1) {
+        localShip.updateDirect(moveInput, fixedDt, hasAim, aimAngle);
+    } else {
+        localShip.update(targetPos, fixedDt);
+    }
 
     // 2. Update shop freighters at fixed timestep
     for (auto& s : shopShips) {

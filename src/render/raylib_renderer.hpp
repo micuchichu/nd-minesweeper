@@ -79,6 +79,11 @@ public:
     Vector2 shopAnchorPos = { -95.0f, 150.0f };
     void updateShopAnchor(const core::Board& board);
 
+    int controlMode = 0; // 0 = Mouse Follower, 1 = Keyboard / Controller
+    Vector2 moveInput = { 0.0f, 0.0f };
+    bool hasAim = false;
+    float aimAngle = 0.0f;
+
     std::vector<LaserBeam> lasers;
     void fireLaser(Vector2 from, Vector2 to, Color color = { 0, 229, 255, 255 });
     static Color getLaserColorForSkin(int skinId);
@@ -132,6 +137,7 @@ public:
     void cleanup() override;
 
     int64_t getHoveredCellIndex(const core::Board& board) const override;
+    int64_t getCellIndexAtWorldPos(Vector2 worldPos, const core::Board& board) const;
     Vector2 getCellWorldPosition(size_t index, const core::Board& board) const override;
 
     void beginOffscreen();

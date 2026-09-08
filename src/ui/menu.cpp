@@ -668,19 +668,23 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         float rowX = panelX + 24.0f;
         float rowW = panelW - 48.0f;
 
-        // Top Tabs: [ GRAPHICS ] and [ AUDIO ]
-        float tabW = (rowW - 8.0f) * 0.5f;
+        // Top Tabs: [ GRAPHICS ], [ AUDIO ], and [ CONTROLS ]
+        float tabW = (rowW - 16.0f) / 3.0f;
         float tabH = 36.0f;
         float tabY = panelY + 44.0f;
 
         bool isGfx = (activeSettingsTab == SettingsTab::Graphics);
         bool isAud = (activeSettingsTab == SettingsTab::Audio);
+        bool isCtr = (activeSettingsTab == SettingsTab::Controls);
 
-        if (Widgets::button("GRAPHICS", { rowX, tabY, tabW, tabH }, isGfx ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 16)) {
+        if (Widgets::button("GRAPHICS", { rowX, tabY, tabW, tabH }, isGfx ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 15)) {
             activeSettingsTab = SettingsTab::Graphics;
         }
-        if (Widgets::button("AUDIO", { rowX + tabW + 8.0f, tabY, tabW, tabH }, isAud ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 16)) {
+        if (Widgets::button("AUDIO", { rowX + tabW + 8.0f, tabY, tabW, tabH }, isAud ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 15)) {
             activeSettingsTab = SettingsTab::Audio;
+        }
+        if (Widgets::button("CONTROLS", { rowX + (tabW + 8.0f) * 2.0f, tabY, tabW, tabH }, isCtr ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 15)) {
+            activeSettingsTab = SettingsTab::Controls;
         }
 
         float curY = tabY + tabH + 16.0f;
@@ -779,6 +783,115 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             DrawText("PUSH-TO-TALK KEY", static_cast<int>(rowX), static_cast<int>(curY), 13, Colors::Zinc400);
             int valW = MeasureText("KEYBOARD [ V ]", 13);
             DrawText("KEYBOARD [ V ]", static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 13, Colors::Cyan400);
+        }
+        else if (activeSettingsTab == SettingsTab::Controls) {
+            // 1. Movement Mode Toggle
+            DrawText("SHIP MOVEMENT CONTROL MODE", static_cast<int>(rowX), static_cast<int>(curY), 14, Colors::Zinc300);
+            curY += 22.0f;
+
+            float modeBtnW = (rowW - 8.0f) * 0.5f;
+            float modeBtnH = 34.0f;
+            bool isMouse = (controlMode == 0);
+            bool isKeyb = (controlMode == 1);
+
+            if (Widgets::button("MOUSE FOLLOWER", { rowX, curY, modeBtnW, modeBtnH }, isMouse ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 14)) {
+                if (controlMode != 0) {
+                    controlMode = 0;
+                    actions.controlModeChanged = true;
+                }
+            }
+            if (Widgets::button("KEYBOARD / CONTROLLER", { rowX + modeBtnW + 8.0f, curY, modeBtnW, modeBtnH }, isKeyb ? Colors::Cyan500 : Colors::Zinc800, Colors::Cyan400, false, 14)) {
+                if (controlMode != 1) {
+                    controlMode = 1;
+                    actions.controlModeChanged = true;
+                }
+            }
+            curY += modeBtnH + 6.0f;
+
+            if (controlMode == 0) {
+                DrawText("Ship smoothly tracks the cursor. Left-Click reveals, Right-Click flags.", static_cast<int>(rowX + 4.0f), static_cast<int>(curY), 12, Colors::Zinc500);
+            } else {
+                DrawText("Direct ship piloting via WASD / Arrows or Gamepad stick. Press M in-game to toggle.", static_cast<int>(rowX + 4.0f), static_cast<int>(curY), 12, Colors::Green400);
+            }
+            curY += 20.0f;
+
+            DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
+            curY += 10.0f;
+
+            // 2. Controller / Gamepad Support Section
+            bool padAvailable = IsGamepadAvailable(0);
+            DrawText("GAMEPAD / CONTROLLER SUPPORT", static_cast<int>(rowX), static_cast<int>(curY), 14, Colors::Zinc300);
+            if (padAvailable) {
+                const char* padName = GetGamepadName(0);
+                std::string connectedStr = "CONNECTED: " + std::string(padName ? padName : "Gamepad");
+                int connW = MeasureText(connectedStr.c_str(), 12);
+                DrawText(connectedStr.c_str(), static_cast<int>(rowX + rowW - connW), static_cast<int>(curY + 1.0f), 12, Colors::Green400);
+            } else {
+                int noConnW = MeasureText("NO CONTROLLER DETECTED", 12);
+                DrawText("NO CONTROLLER DETECTED", static_cast<int>(rowX + rowW - noConnW), static_cast<int>(curY + 1.0f), 12, Colors::Zinc500);
+            }
+            curY += 20.0f;
+
+            // Box listing gamepad controls
+            float padBoxH = 92.0f;
+            DrawRectangleRec({ rowX, curY, rowW, padBoxH }, Colors::Zinc900);
+            DrawRectangleLinesEx({ rowX, curY, rowW, padBoxH }, 1.0f, Colors::Zinc800);
+
+            float col1X = rowX + 14.0f;
+            float col2X = rowX + rowW * 0.5f + 14.0f;
+            float lineY = curY + 8.0f;
+
+            DrawText("LEFT STICK / D-PAD", static_cast<int>(col1X), static_cast<int>(lineY), 12, Colors::Cyan400);
+            DrawText("Fly / Steer Ship", static_cast<int>(col1X + 130.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+
+            DrawText("CROSS [X] / (A)", static_cast<int>(col2X), static_cast<int>(lineY), 12, Colors::Green400);
+            DrawText("Uncover Cell", static_cast<int>(col2X + 110.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+
+            lineY += 20.0f;
+            DrawText("RIGHT STICK", static_cast<int>(col1X), static_cast<int>(lineY), 12, Colors::Cyan400);
+            DrawText("Aim Laser / Reticle", static_cast<int>(col1X + 130.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+
+            DrawText("CIRCLE [O] / (B)", static_cast<int>(col2X), static_cast<int>(lineY), 12, Colors::Amber500);
+            DrawText("Flag / Unflag Cell", static_cast<int>(col2X + 110.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+
+            lineY += 20.0f;
+            DrawText("LT / RT TRIGGERS", static_cast<int>(col1X), static_cast<int>(lineY), 12, Colors::Cyan400);
+            DrawText("Zoom Camera Out/In", static_cast<int>(col1X + 130.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+
+            DrawText("SQUARE [] / R1", static_cast<int>(col2X), static_cast<int>(lineY), 12, Colors::Purple400);
+            DrawText("Chord Number Cell", static_cast<int>(col2X + 110.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+
+            lineY += 20.0f;
+            DrawText("L3 / SELECT", static_cast<int>(col1X), static_cast<int>(lineY), 12, Colors::Cyan400);
+            DrawText("Center Camera", static_cast<int>(col1X + 130.0f), static_cast<int>(lineY), 12, Colors::Zinc400);
+
+            curY += padBoxH + 10.0f;
+
+            // 3. Keyboard Controls Reference
+            DrawText("KEYBOARD CONTROLS SUMMARY", static_cast<int>(rowX), static_cast<int>(curY), 14, Colors::Zinc300);
+            curY += 18.0f;
+
+            float kbdBoxH = 64.0f;
+            DrawRectangleRec({ rowX, curY, rowW, kbdBoxH }, Colors::Zinc900);
+            DrawRectangleLinesEx({ rowX, curY, rowW, kbdBoxH }, 1.0f, Colors::Zinc800);
+
+            float kLineY = curY + 8.0f;
+            DrawText("W / A / S / D or ARROWS", static_cast<int>(col1X), static_cast<int>(kLineY), 12, Colors::Cyan400);
+            DrawText("Fly Ship (Keyboard Mode)", static_cast<int>(col1X + 160.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);
+
+            DrawText("SPACE / ENTER", static_cast<int>(col2X), static_cast<int>(kLineY), 12, Colors::Green400);
+            DrawText("Uncover Cell", static_cast<int>(col2X + 110.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);
+
+            kLineY += 18.0f;
+            DrawText("KEY [ M ]", static_cast<int>(col1X), static_cast<int>(kLineY), 12, Colors::Cyan400);
+            DrawText("Toggle Movement Mode", static_cast<int>(col1X + 160.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);
+
+            DrawText("KEY [ F ]", static_cast<int>(col2X), static_cast<int>(kLineY), 12, Colors::Amber500);
+            DrawText("Flag Cell", static_cast<int>(col2X + 110.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);
+
+            kLineY += 18.0f;
+            DrawText("KEY [ C ]", static_cast<int>(col1X), static_cast<int>(kLineY), 12, Colors::Cyan400);
+            DrawText("Chord Revealed Number", static_cast<int>(col1X + 160.0f), static_cast<int>(kLineY), 12, Colors::Zinc400);
         }
 
         // DONE BUTTON

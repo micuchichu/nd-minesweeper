@@ -680,6 +680,85 @@ void ScoutShip::update(Vector2 targetPos, float dt) {
     updateExhaust(dt);
 }
 
+void ScoutShip::updateDirect(Vector2 moveInput, float dt, bool hasAim, float aimAngle) {
+    if (!isInitialized) {
+        velocity = { 0.0f, 0.0f };
+        angle = 0.0f;
+        isInitialized = true;
+        exhaust.clear();
+    }
+
+    if (bumpTimer > 0.0f) {
+        bumpTimer -= dt;
+        if (bumpTimer < 0.0f) bumpTimer = 0.0f;
+    }
+
+    float inputLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
+    if (inputLen > 1.0f) {
+        moveInput.x /= inputLen;
+        moveInput.y /= inputLen;
+        inputLen = 1.0f;
+    }
+
+    float baseMaxSpeed = speed; // 600 px/s
+    Vector2 desiredVel = { moveInput.x * baseMaxSpeed, moveInput.y * baseMaxSpeed };
+
+    // Direct movement acceleration & deceleration
+    if (inputLen > 0.01f) {
+        Vector2 accel = { (desiredVel.x - velocity.x) * 14.0f, (desiredVel.y - velocity.y) * 14.0f };
+        float accelMag = std::sqrt(accel.x * accel.x + accel.y * accel.y);
+        float limitAccel = maxAccel * 1.5f;
+        if (accelMag > limitAccel && accelMag > 0.001f) {
+            accel.x = (accel.x / accelMag) * limitAccel;
+            accel.y = (accel.y / accelMag) * limitAccel;
+        }
+        velocity.x += accel.x * dt;
+        velocity.y += accel.y * dt;
+    } else {
+        // Active space braking when no direction keys are held
+        float brake = std::max(0.0f, 1.0f - 9.0f * dt);
+        velocity.x *= brake;
+        velocity.y *= brake;
+        if (std::abs(velocity.x) < 2.0f) velocity.x = 0.0f;
+        if (std::abs(velocity.y) < 2.0f) velocity.y = 0.0f;
+    }
+
+    // Bleed off excess bump/explosion recoil speed
+    float curSpeed = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+    if (curSpeed > baseMaxSpeed) {
+        float dragFactor = std::max(0.0f, 1.0f - 7.0f * dt);
+        velocity.x *= dragFactor;
+        velocity.y *= dragFactor;
+    }
+
+    position.x += velocity.x * dt;
+    position.y += velocity.y * dt;
+
+    isMoving = (curSpeed > 20.0f || inputLen > 0.01f);
+
+    // Orientation / rotation handling
+    if (hasAim) {
+        float diffAngle = aimAngle - angle;
+        while (diffAngle < -180.0f) diffAngle += 360.0f;
+        while (diffAngle > 180.0f) diffAngle -= 360.0f;
+        angle += diffAngle * std::min(1.0f, 18.0f * dt);
+    } else if (inputLen > 0.1f && curSpeed > 10.0f) {
+        float targetAngle = std::atan2(velocity.y, velocity.x) * RAD2DEG + 90.0f;
+        float diffAngle = targetAngle - angle;
+        while (diffAngle < -180.0f) diffAngle += 360.0f;
+        while (diffAngle > 180.0f) diffAngle -= 360.0f;
+        angle += diffAngle * std::min(1.0f, 14.0f * dt);
+    }
+
+    if (bumpTimer > 0.0f) {
+        emitThrusterParticles(dt, 1.4f);
+    } else if (isMoving) {
+        emitThrusterParticles(dt, std::min(1.0f, curSpeed / baseMaxSpeed));
+    }
+
+    updateExhaust(dt);
+}
+
 void ScoutShip::draw(const char* label, Color tint, bool speaking) const {
     bool drewTexture = false;
     if (texture.id != 0) {

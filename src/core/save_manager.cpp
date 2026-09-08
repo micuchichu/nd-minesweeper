@@ -16,7 +16,7 @@ constexpr uint32_t SLOT_MAGIC = 0x5057534D; // 'MSWP'
 constexpr uint32_t SLOT_VERSION = 1;
 
 constexpr uint32_t SETTINGS_MAGIC = 0x53544553; // 'SETS'
-constexpr uint32_t SETTINGS_VERSION = 1;
+constexpr uint32_t SETTINGS_VERSION = 2;
 
 std::string formatTimestamp(int64_t epochSeconds) {
     if (epochSeconds <= 0) return "Never";
@@ -129,12 +129,22 @@ bool SaveManager::loadGlobalSettings(GlobalSettings& outSettings) {
     file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
 
-    if (magic != SETTINGS_MAGIC || version != SETTINGS_VERSION) {
+    if (magic != SETTINGS_MAGIC) {
         return false;
     }
 
-    file.read(reinterpret_cast<char*>(&outSettings), sizeof(GlobalSettings));
-    return file.good();
+    if (version == 1) {
+        // Version 1 had GlobalSettings without controlMode
+        size_t oldSize = sizeof(GlobalSettings) - sizeof(int);
+        file.read(reinterpret_cast<char*>(&outSettings), oldSize);
+        outSettings.controlMode = 0;
+        return file.good();
+    } else if (version == SETTINGS_VERSION) {
+        file.read(reinterpret_cast<char*>(&outSettings), sizeof(GlobalSettings));
+        return file.good();
+    }
+
+    return false;
 }
 
 bool SaveManager::saveGlobalSettings(const GlobalSettings& inSettings) {

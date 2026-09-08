@@ -123,6 +123,7 @@ public:
     // Physics & steering towards a target position with arrival deceleration (player / remote ships)
     void update(Vector2 targetPos, float dt);
     void update(float dt) override;
+    void updateDirect(Vector2 moveInput, float dt, bool hasAim = false, float aimAngle = 0.0f);
 
     void draw(const char* label = nullptr, Color tint = WHITE, bool speaking = false) const override;
     Vector2 getNosePosition() const override;
