@@ -26,6 +26,7 @@ public:
 
     void emitExplosion(Vector2 pos, int count, Color color);
     void emitDebris(Vector2 pos, int count, Color color);
+    void emitCellUncover(Vector2 pos, int count, Color color);
     void updateAndDraw(float dt);
     void clear();
 

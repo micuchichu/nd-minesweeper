@@ -33,16 +33,61 @@ void ParticleSystem::emitExplosion(Vector2 pos, int count, Color color) {
 void ParticleSystem::emitDebris(Vector2 pos, int count, Color color) {
     for (int i = 0; i < count; ++i) {
         float angle = randomFloat(0.0f, 6.2831853f);
-        float speed = randomFloat(150.0f, 600.0f);
+        float speed = randomFloat(80.0f, 360.0f);
+        float life = randomFloat(0.35f, 0.75f);
         particles.push_back({
             pos,
-            { std::cos(angle) * speed, std::sin(angle) * speed },
+            { std::cos(angle) * speed, std::sin(angle) * speed - randomFloat(20.0f, 60.0f) },
             color,
-            randomFloat(0.2f, 0.5f),
-            0.5f,
-            randomFloat(2.0f, 5.0f),
+            life,
+            life,
+            randomFloat(4.0f, 8.5f),
             randomFloat(0.0f, 360.0f),
             randomFloat(-200.0f, 200.0f)
+        });
+    }
+}
+
+void ParticleSystem::emitCellUncover(Vector2 pos, int count, Color color) {
+    for (int i = 0; i < count; ++i) {
+        float angle = randomFloat(0.0f, 6.2831853f);
+        float speed = randomFloat(70.0f, 320.0f);
+        Vector2 vel = {
+            std::cos(angle) * speed,
+            std::sin(angle) * speed - randomFloat(30.0f, 110.0f)
+        };
+
+        float life = randomFloat(0.5f, 0.95f);
+        float size = randomFloat(5.5f, 12.0f);
+
+        // High-visibility palette: sparkling white, electric cyan, bright silver zinc, and boosted cell tint
+        Color pCol;
+        int variant = rand() % 4;
+        if (variant == 0) {
+            pCol = Color{ 255, 255, 255, 255 }; // Pure white glint
+        } else if (variant == 1) {
+            pCol = Color{ 145, 242, 255, 255 }; // Electric neon cyan
+        } else if (variant == 2) {
+            pCol = Color{ 235, 240, 248, 255 }; // Crisp metallic silver
+        } else {
+            // Brightened version of the cell/number color
+            pCol = Color{
+                static_cast<unsigned char>(std::min(255, static_cast<int>(color.r) + 85)),
+                static_cast<unsigned char>(std::min(255, static_cast<int>(color.g) + 85)),
+                static_cast<unsigned char>(std::min(255, static_cast<int>(color.b) + 85)),
+                255
+            };
+        }
+
+        particles.push_back({
+            pos,
+            vel,
+            pCol,
+            life,
+            life,
+            size,
+            randomFloat(0.0f, 360.0f),
+            randomFloat(-260.0f, 260.0f)
         });
     }
 }
@@ -56,9 +101,9 @@ void ParticleSystem::updateAndDraw(float dt) {
             particles[i] = particles.back();
             particles.pop_back();
         } else {
-            p.velocity.y += 800.0f * dt;
+            p.velocity.y += 480.0f * dt;
             p.velocity.x *= 0.94f;
-            p.velocity.y *= 0.98f;
+            p.velocity.y *= 0.96f;
 
             p.position.x += p.velocity.x * dt;
             p.position.y += p.velocity.y * dt;
