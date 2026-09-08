@@ -379,7 +379,7 @@ void App::handleNetEvents() {
                                 for (size_t cIdx : newlyRevealed) {
                                     if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                         Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                        scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                        scrapSystem.spawn(cPos);
                                     }
                                 }
                             }
@@ -403,7 +403,7 @@ void App::handleNetEvents() {
                                     } else {
                                         renderer.emitDebris(pos, ui::Colors::Zinc400);
                                         if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
-                                            scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
+                                            scrapSystem.spawn(pos);
                                         }
                                     }
 
@@ -471,7 +471,7 @@ void App::handleNetEvents() {
                         for (size_t cIdx : newlyRevealed) {
                             if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                 Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                scrapSystem.spawn(cPos);
                             }
                         }
                     }
@@ -817,10 +817,15 @@ void App::update(float dt) {
                 triggerUncover = false;
             }
 
+            bool isMouseAction = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) ||
+                                 IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) ||
+                                 (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON) && !renderer.camera.isMiddleDragging());
+
             Vector2 actionTarget = worldMouse;
-            if (hovered >= 0) {
-                Vector2 cPos = renderer.getCellWorldPosition(static_cast<size_t>(hovered), board);
-                actionTarget = { cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f };
+            if (isMouseAction || (renderer.isMouseActive && menu.controlMode == 0)) {
+                actionTarget = worldMouse;
+            } else if (hovered >= 0) {
+                actionTarget = renderer.getCellWorldPosition(static_cast<size_t>(hovered), board);
             } else if (menu.controlMode == 1) {
                 float rad = (renderer.localShip.angle - 90.0f) * DEG2RAD;
                 actionTarget = { renderer.localShip.position.x + std::cos(rad) * 60.0f, renderer.localShip.position.y + std::sin(rad) * 60.0f };
@@ -839,12 +844,11 @@ void App::update(float dt) {
                 if (hovered >= 0) {
                     size_t hIdx = static_cast<size_t>(hovered);
                     if (board.getState(hIdx) == core::CellState::Hidden) {
-                        Vector2 cellPos = renderer.getCellWorldPosition(hIdx, board);
-                        Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
+                        Vector2 cellCenter = renderer.getCellWorldPosition(hIdx, board);
                         float dist = Vector2Distance(renderer.localShip.position, cellCenter);
 
                         if (dist > renderer.localShip.range && menu.controlMode == 0 && !padAvailable) {
-                            renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellPos);
+                            renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellCenter);
                             pendingUncoverCell = static_cast<int64_t>(hIdx);
                         } else {
                             renderer.clearOutOfReach();
@@ -870,7 +874,7 @@ void App::update(float dt) {
                                     for (size_t cIdx : newlyRevealed) {
                                         if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                             Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                            scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                            scrapSystem.spawn(cPos);
                                         }
                                     }
                                 }
@@ -898,8 +902,7 @@ void App::update(float dt) {
                 if (board.isGameOver || board.isVictory || pIdx >= board.totalCells() || board.getState(pIdx) != core::CellState::Hidden || IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) || IsKeyPressed(KEY_ESCAPE)) {
                     pendingUncoverCell = -1;
                 } else {
-                    Vector2 cellPos = renderer.getCellWorldPosition(pIdx, board);
-                    Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
+                    Vector2 cellCenter = renderer.getCellWorldPosition(pIdx, board);
                     float dist = Vector2Distance(renderer.localShip.position, cellCenter);
                     if (dist <= renderer.localShip.range) {
                         pendingUncoverCell = -1;
@@ -926,7 +929,7 @@ void App::update(float dt) {
                                 for (size_t cIdx : newlyRevealed) {
                                     if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                         Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                        scrapSystem.spawn({ cPos.x + renderer.cellSize * 0.5f, cPos.y + renderer.cellSize * 0.5f });
+                                        scrapSystem.spawn(cPos);
                                     }
                                 }
                             }
@@ -1014,12 +1017,11 @@ void App::update(float dt) {
                 if (hovered >= 0) {
                     size_t hIdx = static_cast<size_t>(hovered);
                     if (board.getState(hIdx) == core::CellState::Revealed) {
-                        Vector2 cellPos = renderer.getCellWorldPosition(hIdx, board);
-                        Vector2 cellCenter = { cellPos.x + renderer.cellSize * 0.5f, cellPos.y + renderer.cellSize * 0.5f };
+                        Vector2 cellCenter = renderer.getCellWorldPosition(hIdx, board);
                         float dist = Vector2Distance(renderer.localShip.position, cellCenter);
 
                         if (dist > renderer.localShip.range && menu.controlMode == 0 && !padAvailable) {
-                            renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellPos);
+                            renderer.triggerOutOfReach(static_cast<int64_t>(hIdx), cellCenter);
                         } else {
                             renderer.clearOutOfReach();
                             pendingUncoverCell = -1;
@@ -1041,7 +1043,7 @@ void App::update(float dt) {
                                         } else {
                                             renderer.emitDebris(pos, ui::Colors::Zinc400);
                                             if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
-                                                scrapSystem.spawn({ pos.x + renderer.cellSize * 0.5f, pos.y + renderer.cellSize * 0.5f });
+                                                scrapSystem.spawn(pos);
                                             }
                                         }
 

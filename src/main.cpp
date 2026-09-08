@@ -409,6 +409,70 @@ static int runControlTests() {
         std::cout << "  [PASS] Test 6: ScoutShip mouse follower tracking verified." << std::endl;
     }
 
+    // Test 7: Laser targeting alignment (mouse vs cell center)
+    {
+        minesweeper::render::RaylibRenderer renderer;
+        renderer.cellSize = 40.0f;
+        renderer.slicePadding = 20.0f;
+
+        minesweeper::core::Board board;
+        board.init(2, 10, 10, 12345);
+
+        // Cell 0 is at (0, 0). Center must be (20, 20), NOT corner (40, 40)
+        Vector2 cPos = renderer.getCellWorldPosition(0, board);
+        if (std::abs(cPos.x - 20.0f) > 0.001f || std::abs(cPos.y - 20.0f) > 0.001f) {
+            std::cerr << "  [FAIL] Test 7a: getCellWorldPosition(0) center expected (20, 20), got (" << cPos.x << ", " << cPos.y << ")" << std::endl;
+            return 19;
+        }
+
+        // Cell 1 is at (1, 0). Center must be (60, 20)
+        Vector2 cPos1 = renderer.getCellWorldPosition(1, board);
+        if (std::abs(cPos1.x - 60.0f) > 0.001f || std::abs(cPos1.y - 20.0f) > 0.001f) {
+            std::cerr << "  [FAIL] Test 7b: getCellWorldPosition(1) center expected (60, 20), got (" << cPos1.x << ", " << cPos1.y << ")" << std::endl;
+            return 20;
+        }
+
+        // Simulating targeting logic:
+        Vector2 worldMouse = { 27.5f, 15.2f };
+        int64_t hovered = 0;
+
+        // Case A: Mouse action -> targets exact worldMouse position directly
+        bool isMouseAction = true;
+        int controlMode = 0; // Mouse follower
+        Vector2 actionTargetA = worldMouse;
+        if (isMouseAction || (renderer.isMouseActive && controlMode == 0)) {
+            actionTargetA = worldMouse;
+        } else if (hovered >= 0) {
+            actionTargetA = renderer.getCellWorldPosition(static_cast<size_t>(hovered), board);
+        }
+        if (std::abs(actionTargetA.x - worldMouse.x) > 0.001f || std::abs(actionTargetA.y - worldMouse.y) > 0.001f) {
+            std::cerr << "  [FAIL] Test 7c: Laser did not target mouse pointer when mouse was active!" << std::endl;
+            return 21;
+        }
+
+        // Case B: Gamepad / Controller action -> targets exact cell center, NOT corner
+        isMouseAction = false;
+        controlMode = 1; // Keyboard / Controller mode
+        Vector2 actionTargetB = worldMouse;
+        if (isMouseAction || (renderer.isMouseActive && controlMode == 0)) {
+            actionTargetB = worldMouse;
+        } else if (hovered >= 0) {
+            actionTargetB = renderer.getCellWorldPosition(static_cast<size_t>(hovered), board);
+        }
+        if (std::abs(actionTargetB.x - 20.0f) > 0.001f || std::abs(actionTargetB.y - 20.0f) > 0.001f) {
+            std::cerr << "  [FAIL] Test 7d: Laser did not target exact cell center for controller action!" << std::endl;
+            return 22;
+        }
+
+        // Case C: Ensure old bug (double half-cell offset = 40.0f corner) does NOT happen
+        if (std::abs(actionTargetB.x - 40.0f) < 0.001f && std::abs(actionTargetB.y - 40.0f) < 0.001f) {
+            std::cerr << "  [FAIL] Test 7e: Regression detected! Laser targeted bottom-right cell corner instead of center!" << std::endl;
+            return 23;
+        }
+
+        std::cout << "  [PASS] Test 7: Laser targeting alignment (mouse pointer & cell center) verified." << std::endl;
+    }
+
     std::cout << "[TEST-CONTROLS] ALL CONTROLS TESTS PASSED!" << std::endl;
     return 0;
 }

@@ -12,6 +12,9 @@ set(SOURCES
     src/core/board.cpp
     src/core/save_manager.cpp
     src/core/ship.cpp
+    src/core/scout_ship.cpp
+    src/core/merchant_ship.cpp
+    src/core/shop_ship.cpp
     src/net/network_manager.cpp
     src/net/steam_manager.cpp
     src/render/asset_manager.cpp
