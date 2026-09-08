@@ -428,13 +428,6 @@ void RaylibRenderer::unloadAssets() {
     if (gridShader.id != 0) { UnloadShader(gridShader); gridShader = {0}; }
     if (postProcessShader.id != 0) { UnloadShader(postProcessShader); postProcessShader = {0}; }
 
-    for (int i = 0; i < 8; ++i) {
-        if (previewCardRTs[i].id != 0) {
-            UnloadRenderTexture(previewCardRTs[i]);
-            previewCardRTs[i] = { 0 };
-        }
-    }
-    lastPreviewHoveredIndex = -1;
     ProceduralTextures::instance().cleanup();
 
     for (auto& s : cursorSkins) {
@@ -1794,103 +1787,7 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
         }
     };
 
-    // 1. Re-render cached card render textures ONLY when hovered cell or board state changes
-    bool needsCardUpdate = (hoveredIndex != lastPreviewHoveredIndex ||
-                            board.revealedCount != lastPreviewRevealedCount ||
-                            board.flaggedCount != lastPreviewFlagCount);
-
-    if (needsCardUpdate) {
-        lastPreviewHoveredIndex = hoveredIndex;
-        lastPreviewRevealedCount = board.revealedCount;
-        lastPreviewFlagCount = board.flaggedCount;
-
-        for (size_t i = 0; i < activeCards.size() && i < 8; ++i) {
-            const auto& card = activeCards[i];
-            if (previewCardRTs[i].id == 0) {
-                previewCardRTs[i] = LoadRenderTexture(static_cast<int>(cardW), static_cast<int>(cardH));
-            }
-
-            BeginTextureMode(previewCardRTs[i]);
-            ClearBackground(BLANK);
-
-            // Card background & border
-            DrawRectangleRounded({ 0.0f, 0.0f, cardW, cardH }, 0.12f, 4, ui::Colors::Zinc950);
-            DrawRectangleLinesEx({ 0.0f, 0.0f, cardW, cardH }, 1.5f, ui::Colors::Zinc700);
-
-            // Header Title
-            int titleFontSize = 10;
-            int tw = MeasureText(card.title.c_str(), titleFontSize);
-            float textStartX = (cardW - tw) * 0.5f;
-            float headerY = 5.0f;
-            DrawText(card.title.c_str(), static_cast<int>(textStartX), static_cast<int>(headerY), titleFontSize, ui::Colors::Green400);
-
-            // 3x3 Grid
-            float miniCellSize = 23.0f;
-            float miniCellMargin = 2.0f;
-            float gridStartX = (cardW - 3.0f * miniCellSize) * 0.5f;
-            float gridStartY = 19.0f;
-
-            for (int r = 0; r < 3; ++r) {
-                for (int c = 0; c < 3; ++c) {
-                    const auto& cell = card.cells[r * 3 + c];
-                    Rectangle mRect = {
-                        gridStartX + static_cast<float>(c) * miniCellSize + miniCellMargin,
-                        gridStartY + static_cast<float>(r) * miniCellSize + miniCellMargin,
-                        miniCellSize - miniCellMargin * 2.0f,
-                        miniCellSize - miniCellMargin * 2.0f
-                    };
-
-                    if (!cell.valid) {
-                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Zinc900, 0.6f));
-                        continue;
-                    }
-
-                    if (cell.state == core::CellState::Revealed) {
-                        DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::CellRevealed);
-                        if (cell.count > 0) {
-                            Color tc = ui::getNeighborColor(cell.count);
-                            int fs = 12;
-                            const char* num = TextFormat("%d", cell.count);
-                            int nw = MeasureText(num, fs);
-                            DrawText(num, static_cast<int>(mRect.x + (mRect.width - nw) * 0.5f), static_cast<int>(mRect.y + (mRect.height - fs) * 0.5f), fs, tc);
-                        }
-                    }
-                    else if (cell.state == core::CellState::Flagged) {
-                        DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::CellHidden);
-                        DrawRectangleRounded({ mRect.x + 2, mRect.y + 2, mRect.width - 4, mRect.height - 4 }, 0.2f, 2, ui::Colors::Red500);
-                        int fs = 11;
-                        int fw = MeasureText("F", fs);
-                        DrawText("F", static_cast<int>(mRect.x + (mRect.width - fw) * 0.5f), static_cast<int>(mRect.y + 2), fs, WHITE);
-                    }
-                    else {
-                        DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::CellHidden);
-                        if (board.isGameOver && cell.isBomb) {
-                            DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::Red500);
-                            int fs = 12;
-                            int bw = MeasureText("*", fs);
-                            DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, ui::Colors::Red700);
-                        }
-                    }
-
-                    if (cell.isCenter) {
-                        DrawRectangleLinesEx(mRect, 1.5f, Fade(WHITE, 0.95f));
-                    }
-                }
-            }
-
-            // Footer
-            std::string footer = TextFormat("FLAGS: %d  HIDDEN: %d", card.flags, card.hidden);
-            int footerFs = 9;
-            int ftw = MeasureText(footer.c_str(), footerFs);
-            DrawText(footer.c_str(), static_cast<int>((cardW - ftw) * 0.5f), static_cast<int>(cardH - 18.0f), footerFs, ui::Colors::Zinc400);
-
-            EndTextureMode();
-        }
-    }
-
-    // 2. Draw cached cards to screen
-    for (size_t i = 0; i < activeCards.size() && i < 8; ++i) {
-        const auto& card = activeCards[i];
+    for (const auto& card : activeCards) {
         Rectangle cardRect = getSlotRect(card.slot);
 
         Rectangle hoverBox = { cardRect.x - 8.0f, cardRect.y - 8.0f, cardRect.width + 16.0f, cardRect.height + 16.0f };
@@ -1899,19 +1796,80 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
 
         // Drop shadow
         DrawRectangleRounded({ cardRect.x + 2.0f, cardRect.y + 2.0f, cardW, cardH }, 0.12f, 4, Fade(BLACK, 0.40f * alpha));
+        // Card background
+        DrawRectangleRounded(cardRect, 0.12f, 4, Fade(ui::Colors::Zinc950, alpha));
+        // Border
+        DrawRectangleLinesEx(cardRect, 1.5f, Fade(ui::Colors::Zinc700, alpha));
 
-        // Draw cached card texture
-        if (previewCardRTs[i].id != 0) {
-            Rectangle srcRec = { 0.0f, 0.0f, cardW, -cardH };
-            DrawTextureRec(previewCardRTs[i].texture, srcRec, { cardRect.x, cardRect.y }, Fade(WHITE, alpha));
-        }
-
-        // Header Title Directional Chevron Indicator
+        // Header Title with Directional Chevron Indicator
         int titleFontSize = 10;
         int tw = MeasureText(card.title.c_str(), titleFontSize);
         float textStartX = cardRect.x + (cardW - tw) * 0.5f;
         float headerY = cardRect.y + 5.0f;
         drawSlotArrow(card.slot, textStartX - 7.0f, headerY + 5.0f, Fade(ui::Colors::Green400, alpha));
+        DrawText(card.title.c_str(), static_cast<int>(textStartX), static_cast<int>(headerY), titleFontSize, Fade(ui::Colors::Green400, alpha));
+
+        // 3x3 Grid
+        float miniCellSize = 23.0f;
+        float miniCellMargin = 2.0f;
+        float gridStartX = cardRect.x + (cardW - 3.0f * miniCellSize) * 0.5f;
+        float gridStartY = cardRect.y + 19.0f;
+
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) {
+                const auto& cell = card.cells[r * 3 + c];
+                Rectangle mRect = {
+                    gridStartX + static_cast<float>(c) * miniCellSize + miniCellMargin,
+                    gridStartY + static_cast<float>(r) * miniCellSize + miniCellMargin,
+                    miniCellSize - miniCellMargin * 2.0f,
+                    miniCellSize - miniCellMargin * 2.0f
+                };
+
+                if (!cell.valid) {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Zinc900, 0.6f * alpha));
+                    continue;
+                }
+
+                if (cell.state == core::CellState::Revealed) {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellRevealed, alpha));
+                    if (cell.count > 0) {
+                        Color tc = ui::getNeighborColor(cell.count);
+                        tc.a = static_cast<unsigned char>(255 * alpha);
+                        int fs = 12;
+                        const char* num = TextFormat("%d", cell.count);
+                        int nw = MeasureText(num, fs);
+                        DrawText(num, static_cast<int>(mRect.x + (mRect.width - nw) * 0.5f), static_cast<int>(mRect.y + (mRect.height - fs) * 0.5f), fs, tc);
+                    }
+                }
+                else if (cell.state == core::CellState::Flagged) {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
+                    DrawRectangleRounded({ mRect.x + 2, mRect.y + 2, mRect.width - 4, mRect.height - 4 }, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
+                    int fs = 11;
+                    int fw = MeasureText("F", fs);
+                    DrawText("F", static_cast<int>(mRect.x + (mRect.width - fw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(WHITE, alpha));
+                }
+                else {
+                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
+                    if (board.isGameOver && cell.isBomb) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
+                        int fs = 12;
+                        int bw = MeasureText("*", fs);
+                        DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(ui::Colors::Red700, alpha));
+                    }
+                }
+
+                // Direct projected center neighbor receives a distinct white border
+                if (cell.isCenter) {
+                    DrawRectangleLinesEx(mRect, 1.5f, Fade(WHITE, 0.95f * alpha));
+                }
+            }
+        }
+
+        // Footer showing flag and hidden totals in that slice's 3x3
+        std::string footer = TextFormat("FLAGS: %d  HIDDEN: %d", card.flags, card.hidden);
+        int footerFs = 9;
+        int ftw = MeasureText(footer.c_str(), footerFs);
+        DrawText(footer.c_str(), static_cast<int>(cardRect.x + (cardW - ftw) * 0.5f), static_cast<int>(cardRect.y + cardH - 18.0f), footerFs, Fade(ui::Colors::Zinc400, alpha));
     }
 }
 
