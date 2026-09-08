@@ -9,6 +9,10 @@
 #include <vector>
 #include <unordered_map>
 
+namespace minesweeper::core {
+struct InventorySlot;
+}
+
 namespace minesweeper::render {
 
 
@@ -161,11 +165,24 @@ public:
     void updateAndDrawBubbles(float dt);
 
     float bubbleBlurTimer = 0.0f;
+    float currentBubbleBlur = 0.0f;
+    float targetBubbleBlur = 0.0f;
     static constexpr float BUBBLE_BLUR_DURATION = 3.0f;
     void triggerBubbleBlur(float duration = BUBBLE_BLUR_DURATION) { bubbleBlurTimer = duration; }
+    void applyBubbleBlurSource(Vector2 bubbleSourcePos, float maxRadius = 650.0f);
 
     bool hasRadarActive = false;
+    float radarTimer = 0.0f;
+    static constexpr float RADAR_DURATION = 4.0f;
+    void triggerRadar(float duration = RADAR_DURATION) {
+        hasRadarActive = true;
+        radarTimer = duration;
+    }
     void drawRadarSweep(Vector2 shipPos, const core::Board& board, float dt);
+
+    const core::InventorySlot* heldSlot = nullptr;
+    bool isUsingItem = false;
+    void drawHeldItem(Vector2 shipPos, float shipAngle, const core::InventorySlot* slot, bool isUsing);
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }

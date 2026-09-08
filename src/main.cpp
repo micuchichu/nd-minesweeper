@@ -689,34 +689,97 @@ static int runItemTests() {
     }
     std::cout << "  [PASS] Test 6: ShopShip mini (2 slots) and big (4 slots) initialization verified." << std::endl;
 
-    // 5. PlayerInventory and active boost calculations
+    // 5. PlayerInventory 5-slot hotbar capacity & item addition
     minesweeper::core::PlayerInventory pInv;
-    if (pInv.hasBanana || pInv.hasRadar || pInv.bubbleCharges != 0) {
-        std::cerr << "  [FAIL] Fresh PlayerInventory not empty!" << std::endl;
+    if (!pInv.hasFreeSlot() || pInv.getFreeSlotIndex() != 0) {
+        std::cerr << "  [FAIL] Fresh PlayerInventory should have 5 free slots, free idx 0!" << std::endl;
         catalog.shutdown();
         CloseWindow();
         return 10;
     }
-    pInv.hasBanana = true;
-    float baseSpeed = 600.0f;
-    float boostedSpeed = baseSpeed * (pInv.hasBanana ? 1.30f : 1.0f);
-    if (std::abs(boostedSpeed - 780.0f) >= 0.001f) {
-        std::cerr << "  [FAIL] Banana +30% speed boost calculation mismatch!" << std::endl;
+
+    pInv.addItem(*banana);
+    pInv.addItem(*radar);
+    pInv.addItem(*bubbles);
+
+    if (pInv.slots[0].item.id != minesweeper::core::ItemId::Banana ||
+        pInv.slots[1].item.id != minesweeper::core::ItemId::Radar ||
+        pInv.slots[2].item.id != minesweeper::core::ItemId::Bubbles ||
+        !pInv.slots[0].occupied || !pInv.slots[1].occupied || !pInv.slots[2].occupied) {
+        std::cerr << "  [FAIL] Items not added correctly to hotbar slots!" << std::endl;
         catalog.shutdown();
         CloseWindow();
         return 11;
     }
-    std::cout << "  [PASS] Test 7: Banana +30% boost calculation verified (780 px/s)." << std::endl;
+    std::cout << "  [PASS] Test 7: 5-slot hotbar item addition and tracking verified." << std::endl;
 
-    pInv.bubbleCharges = 2;
-    --pInv.bubbleCharges;
-    if (pInv.bubbleCharges != 1) {
-        std::cerr << "  [FAIL] Bubble charge decrement failed!" << std::endl;
+    // 6. Slot selection and carried item retrieval
+    pInv.selectedSlot = 2; // Bubbles
+    auto* held = pInv.getSelectedSlot();
+    if (!held || held->item.id != minesweeper::core::ItemId::Bubbles) {
+        std::cerr << "  [FAIL] Selected slot 2 retrieval failed!" << std::endl;
         catalog.shutdown();
         CloseWindow();
         return 12;
     }
-    std::cout << "  [PASS] Test 8: Bubble charge tracking and consumption verified." << std::endl;
+    std::cout << "  [PASS] Test 8: Hotbar slot selection and held item retrieval verified." << std::endl;
+
+    // 7. Durability depletion for Bubbles
+    if (held->durability <= 0.0f || held->maxDurability < 5.0f) {
+        std::cerr << "  [FAIL] Bubbles initial durability incorrect!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 13;
+    }
+    held->durability -= 1.5f;
+    if (std::abs(held->durability - 4.5f) > 0.01f) {
+        std::cerr << "  [FAIL] Bubbles durability depletion calculation failed!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 14;
+    }
+    std::cout << "  [PASS] Test 9: Bubbles hold-to-use durability tracking verified." << std::endl;
+
+    // 8. Banana active buff calculation
+    pInv.bananaBoostTimer = 20.0f;
+    float baseSpeed = 600.0f;
+    float boostedSpeed = baseSpeed * (pInv.bananaBoostTimer > 0.0f ? 1.30f : 1.0f);
+    if (std::abs(boostedSpeed - 780.0f) >= 0.001f) {
+        std::cerr << "  [FAIL] Banana +30% speed boost calculation mismatch!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 15;
+    }
+    std::cout << "  [PASS] Test 10: Banana +30% speed boost buff verified (780 px/s)." << std::endl;
+
+    // 9. Radar scan 4.0s timer
+    pInv.radarActiveTimer = 4.0f;
+    if (pInv.radarActiveTimer <= 0.0f) {
+        std::cerr << "  [FAIL] Radar active timer failed to initialize!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 16;
+    }
+    std::cout << "  [PASS] Test 11: Radar scan 4.0s duration timer verified." << std::endl;
+
+    // 10. Radar unsafe cell center alignment check
+    {
+        minesweeper::render::RaylibRenderer renderer;
+        renderer.cellSize = 40.0f;
+        renderer.slicePadding = 20.0f;
+        minesweeper::core::Board b;
+        b.init(2, 10, 10, 12345);
+
+        Vector2 c0 = renderer.getCellWorldPosition(0, b);
+        // Center of cell 0 (0..40, 0..40) must be exactly (20, 20)
+        if (std::abs(c0.x - 20.0f) > 0.001f || std::abs(c0.y - 20.0f) > 0.001f) {
+            std::cerr << "  [FAIL] Radar cell center misaligned! Expected (20, 20), got (" << c0.x << ", " << c0.y << ")" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 17;
+        }
+    }
+    std::cout << "  [PASS] Test 12: Radar unsafe cell exact center alignment verified." << std::endl;
 
     catalog.shutdown();
     CloseWindow();

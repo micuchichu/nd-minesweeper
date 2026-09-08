@@ -1,6 +1,7 @@
 #include "raylib_renderer.hpp"
 #include "asset_manager.hpp"
 #include "procedural_textures.hpp"
+#include "../core/item.hpp"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -505,6 +506,26 @@ void RaylibRenderer::update(float dt) {
         rShip.updateExhaust(dt);
     }
 
+    // Smooth dynamic bubble blur
+    if (bubbleBlurTimer > 0.0f) {
+        bubbleBlurTimer = std::max(0.0f, bubbleBlurTimer - dt);
+        targetBubbleBlur = std::max(targetBubbleBlur, 0.40f * (bubbleBlurTimer / BUBBLE_BLUR_DURATION));
+    }
+    if (currentBubbleBlur < targetBubbleBlur) {
+        currentBubbleBlur = std::min(targetBubbleBlur, currentBubbleBlur + dt * 5.0f);
+    } else {
+        currentBubbleBlur = std::max(0.0f, currentBubbleBlur - dt * 2.5f);
+    }
+    targetBubbleBlur = 0.0f; // reset for next frame
+
+    // Radar scan timer countdown
+    if (radarTimer > 0.0f) {
+        radarTimer = std::max(0.0f, radarTimer - dt);
+        hasRadarActive = (radarTimer > 0.0f);
+    } else {
+        hasRadarActive = false;
+    }
+
     if (IsWindowResized()) {
         int w = GetScreenWidth();
         int h = GetScreenHeight();
@@ -512,6 +533,15 @@ void RaylibRenderer::update(float dt) {
             UnloadRenderTexture(offscreenTarget);
             offscreenTarget = LoadRenderTexture(w, h);
         }
+    }
+}
+
+void RaylibRenderer::applyBubbleBlurSource(Vector2 bubbleSourcePos, float maxRadius) {
+    float dist = Vector2Distance(localShip.position, bubbleSourcePos);
+    if (dist < maxRadius) {
+        float norm = 1.0f - (dist / maxRadius);
+        float intensity = norm * norm * 0.45f;
+        targetBubbleBlur = std::max(targetBubbleBlur, intensity);
     }
 }
 
@@ -525,17 +555,7 @@ void RaylibRenderer::endOffscreen() {
 }
 
 void RaylibRenderer::drawOffscreenToScreen() {
-    float blurVal = 0.0f;
-    if (bubbleBlurTimer > 0.0f) {
-        if (bubbleBlurTimer > BUBBLE_BLUR_DURATION - 0.3f) {
-            blurVal = (BUBBLE_BLUR_DURATION - bubbleBlurTimer) / 0.3f;
-        } else if (bubbleBlurTimer < 0.8f) {
-            blurVal = bubbleBlurTimer / 0.8f;
-        } else {
-            blurVal = 1.0f;
-        }
-        blurVal = std::clamp(blurVal, 0.0f, 1.0f);
-    }
+    float blurVal = currentBubbleBlur;
 
     bool useShader = (enableCRT || blurVal > 0.001f) && postProcessShader.id != 0;
 
@@ -1153,13 +1173,15 @@ void RaylibRenderer::emitBubbleBurst(Vector2 pos, int count) {
 void RaylibRenderer::emitBubbles(Vector2 pos, int count) {
     for (int i = 0; i < count; ++i) {
         float offsetAngle = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 6.2831853f;
-        float offsetDist = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 25.0f;
+        float offsetDist = 12.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 42.0f;
         Vector2 spawnPos = { pos.x + std::cos(offsetAngle) * offsetDist, pos.y + std::sin(offsetAngle) * offsetDist };
 
-        float speedX = -30.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 60.0f;
-        float speedY = -50.0f - (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 80.0f;
-        float life = 1.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 1.4f;
-        float size = 6.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 14.0f;
+        float speedAngle = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 6.2831853f;
+        float speedMag = 25.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 75.0f;
+        float speedX = std::cos(speedAngle) * speedMag;
+        float speedY = std::sin(speedAngle) * speedMag - 30.0f;
+        float life = 1.1f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 1.5f;
+        float size = 5.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 14.0f;
 
         Color tint = (rand() % 3 == 0)
             ? Color{ 192, 132, 252, 255 }
@@ -1179,10 +1201,6 @@ void RaylibRenderer::emitBubbles(Vector2 pos, int count) {
 }
 
 void RaylibRenderer::updateAndDrawBubbles(float dt) {
-    if (bubbleBlurTimer > 0.0f) {
-        bubbleBlurTimer = std::max(0.0f, bubbleBlurTimer - dt);
-    }
-
     for (size_t i = 0; i < bubbleParticles.size();) {
         BubbleParticle& bp = bubbleParticles[i];
         bp.life -= dt;
@@ -1220,55 +1238,105 @@ void RaylibRenderer::updateAndDrawBubbles(float dt) {
 }
 
 void RaylibRenderer::drawRadarSweep(Vector2 shipPos, const core::Board& board, float dt) {
-    if (!hasRadarActive) return;
+    if (radarTimer <= 0.0f) return;
 
-    radarSweepAngle += 220.0f * dt;
+    float radarAlpha = 1.0f;
+    if (radarTimer < 0.8f) {
+        radarAlpha = std::clamp(radarTimer / 0.8f, 0.0f, 1.0f);
+    }
+
+    radarSweepAngle += 260.0f * dt;
     if (radarSweepAngle >= 360.0f) radarSweepAngle -= 360.0f;
 
     float sweepRad = radarSweepAngle * DEG2RAD;
-    float maxRadarDist = 180.0f;
+    // 3 cells radius
+    float maxRadarDist = cellSize * 3.2f;
 
     // Expanding sonar pulse wave
-    float wavePhase = std::fmod(static_cast<float>(GetTime()) * 0.65f, 1.0f);
+    float wavePhase = std::fmod(static_cast<float>(GetTime()) * 0.75f, 1.0f);
     float waveRadius = wavePhase * maxRadarDist;
-    float waveAlpha = (1.0f - wavePhase) * 0.45f;
+    float waveAlpha = (1.0f - wavePhase) * 0.45f * radarAlpha;
 
     DrawCircleLines(static_cast<int>(shipPos.x), static_cast<int>(shipPos.y), waveRadius, Fade(ui::Colors::Amber400, waveAlpha));
-    DrawCircleLines(static_cast<int>(shipPos.x), static_cast<int>(shipPos.y), maxRadarDist, Fade(ui::Colors::Amber400, 0.18f));
+    DrawCircleLines(static_cast<int>(shipPos.x), static_cast<int>(shipPos.y), maxRadarDist, Fade(ui::Colors::Amber400, 0.20f * radarAlpha));
 
     // Sweep line
     Vector2 sweepEnd = {
         shipPos.x + std::cos(sweepRad) * maxRadarDist,
         shipPos.y + std::sin(sweepRad) * maxRadarDist
     };
-    DrawLineEx(shipPos, sweepEnd, 1.5f, Fade(ui::Colors::Amber400, 0.40f));
+    DrawLineEx(shipPos, sweepEnd, 1.5f, Fade(ui::Colors::Amber400, 0.40f * radarAlpha));
 
-    // Check cells within 3 cells around the player in 2D
-    if (board.config.dim == 2) {
-        int cx = static_cast<int>(shipPos.x / cellSize);
-        int cy = static_cast<int>(shipPos.y / cellSize);
-        int bSize = board.config.size;
+    // Check cells within 3 cells around the player
+    for (size_t cellIdx = 0; cellIdx < board.totalCells(); ++cellIdx) {
+        if (board.isBomb(cellIdx) && board.getState(cellIdx) == core::CellState::Hidden) {
+            Vector2 cellCenter = getCellWorldPosition(cellIdx, board);
+            float dist = Vector2Distance(shipPos, cellCenter);
+            if (dist <= maxRadarDist) {
+                float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 9.0f);
+                float w = cellSize - cellMargin;
+                Rectangle cellRect = { cellCenter.x - w * 0.5f, cellCenter.y - w * 0.5f, w, w };
 
-        for (int dy = -3; dy <= 3; ++dy) {
-            for (int dx = -3; dx <= 3; ++dx) {
-                int nx = cx + dx;
-                int ny = cy + dy;
-                if (nx < 0 || nx >= bSize || ny < 0 || ny >= bSize) continue;
-
-                size_t cellIdx = static_cast<size_t>(ny * bSize + nx);
-                if (board.isBomb(cellIdx) && board.getState(cellIdx) == core::CellState::Hidden) {
-                    Vector2 cellPos = getCellWorldPosition(cellIdx, board);
-                    Vector2 center = { cellPos.x + cellSize * 0.5f, cellPos.y + cellSize * 0.5f };
-                    float dist = Vector2Distance(shipPos, center);
-                    if (dist <= maxRadarDist) {
-                        float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 8.0f);
-                        // Sonar warning blip diamond
-                        DrawPoly(center, 4, 8.0f, 45.0f, Fade(ui::Colors::Red500, 0.35f + 0.45f * pulse));
-                        DrawPolyLinesEx(center, 4, 9.0f, 45.0f, 1.5f, Fade(ui::Colors::Amber400, 0.8f));
-                    }
-                }
+                // 1. Semi-transparent hazard warning fill over the full cell
+                DrawRectangleRounded(cellRect, 0.15f, 4, Fade(ui::Colors::Red500, (0.28f + 0.25f * pulse) * radarAlpha));
+                // 2. High-visibility warning outline
+                DrawRectangleRoundedLines(cellRect, 0.15f, 4, Fade(ui::Colors::Amber400, (0.75f + 0.25f * pulse) * radarAlpha));
+                // 3. Central sonar diamond blip
+                DrawPoly(cellCenter, 4, 7.0f, 45.0f, Fade(ui::Colors::Red500, (0.60f + 0.40f * pulse) * radarAlpha));
+                DrawPolyLinesEx(cellCenter, 4, 8.0f, 45.0f, 1.5f, Fade(ui::Colors::Amber300, 0.90f * radarAlpha));
             }
         }
+    }
+}
+
+void RaylibRenderer::drawHeldItem(Vector2 shipPos, float shipAngle, const core::InventorySlot* slot, bool isUsing) {
+    if (!slot || !slot->occupied || slot->item.icon.id == 0) return;
+
+    float rad = shipAngle * DEG2RAD;
+    // Offset slightly behind and to the side of the ship
+    Vector2 sideOffset = {
+        -std::cos(rad) * 26.0f + std::sin(rad) * 22.0f,
+        -std::sin(rad) * 26.0f - std::cos(rad) * 22.0f
+    };
+    float bob = std::sin(static_cast<float>(GetTime()) * 3.5f) * 3.0f;
+    Vector2 itemPos = { shipPos.x + sideOffset.x, shipPos.y + sideOffset.y + bob };
+
+    if (isUsing) {
+        float jitterX = (-1.0f + static_cast<float>(rand() % 200) / 100.0f) * 1.5f;
+        float jitterY = (-1.0f + static_cast<float>(rand() % 200) / 100.0f) * 1.5f;
+        itemPos.x += jitterX;
+        itemPos.y += jitterY;
+    }
+
+    Color tierCol = ui::Colors::Green400;
+    if (slot->item.tier == core::ItemTier::Tier2) tierCol = ui::Colors::Amber400;
+    else if (slot->item.tier == core::ItemTier::Tier3) tierCol = ui::Colors::Purple400;
+
+    // 1. Holographic tractor-beam tether connecting ship hull to item
+    DrawLineEx(shipPos, itemPos, 1.2f, Fade(tierCol, 0.40f));
+    DrawCircleV(itemPos, 2.5f, Fade(tierCol, 0.75f));
+
+    // 2. Soft glowing aura / halo
+    DrawCircleV(itemPos, 13.0f, Fade(tierCol, 0.20f));
+    DrawCircleLines(static_cast<int>(itemPos.x), static_cast<int>(itemPos.y), 13.5f, Fade(tierCol, 0.55f));
+
+    // 3. Item icon (18x18)
+    const float iconDrawSize = 18.0f;
+    Rectangle src = { 0.0f, 0.0f, static_cast<float>(slot->item.icon.width), static_cast<float>(slot->item.icon.height) };
+    Rectangle dst = { itemPos.x, itemPos.y, iconDrawSize, iconDrawSize };
+    Vector2 origin = { iconDrawSize * 0.5f, iconDrawSize * 0.5f };
+    DrawTexturePro(slot->item.icon, src, dst, origin, 0.0f, WHITE);
+
+    // 4. Durability gauge below item if applicable
+    if (slot->item.id == core::ItemId::Bubbles && slot->maxDurability > 0.0f) {
+        float pct = std::clamp(slot->durability / slot->maxDurability, 0.0f, 1.0f);
+        float barW = 16.0f;
+        float barH = 3.0f;
+        Rectangle barBg = { itemPos.x - barW * 0.5f, itemPos.y + 10.0f, barW, barH };
+        Rectangle barFg = { itemPos.x - barW * 0.5f, itemPos.y + 10.0f, barW * pct, barH };
+        DrawRectangleRec(barBg, Fade(ui::Colors::Zinc900, 0.85f));
+        Color dCol = (pct > 0.5f) ? ui::Colors::Green400 : (pct > 0.25f ? ui::Colors::Amber400 : ui::Colors::Red500);
+        DrawRectangleRec(barFg, Fade(dCol, 0.90f));
     }
 }
 
@@ -1543,6 +1611,9 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
 
     // 4. Draw local player ship
     localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
+
+    // 4b. Draw held item following local player
+    drawHeldItem(localShip.position, localShip.angle, heldSlot, isUsingItem);
 
     // 5. Draw active laser beams (rendered on top of ships)
     float frameDt = GetFrameTime();

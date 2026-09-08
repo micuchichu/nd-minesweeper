@@ -136,10 +136,8 @@ bool ShopMenu::drawHoverMenu(
         Rectangle btnRect = { rowRect.x + rowRect.width - btnW - 6.0f, rowRect.y + (rowH - btnH) * 0.5f, btnW, btnH };
         bool isBtnHovered = CheckCollisionPointRec(mousePos, btnRect);
 
-        // Check ownership state
-        bool isOwned = false;
-        if (slot.item.id == core::ItemId::Banana && playerInv.hasBanana) isOwned = true;
-        if (slot.item.id == core::ItemId::Radar && playerInv.hasRadar) isOwned = true;
+        bool isSold = slot.isPurchased;
+        bool bagFull = !playerInv.hasFreeSlot();
 
         bool hotkeyPressed = false;
         if (i == 0 && (IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1))) hotkeyPressed = true;
@@ -147,12 +145,16 @@ bool ShopMenu::drawHoverMenu(
         if (i == 2 && (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3))) hotkeyPressed = true;
         if (i == 3 && (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4))) hotkeyPressed = true;
 
-        if (isOwned) {
-            // Already owned 1-time item
+        if (isSold) {
             DrawRectangleRec(btnRect, Fade(Colors::Zinc950, alpha));
             DrawRectangleLinesEx(btnRect, 1.0f, Fade(Colors::Zinc700, alpha));
-            int ownedW = MeasureText("OWNED", 11);
-            DrawText("OWNED", static_cast<int>(btnRect.x + (btnW - static_cast<float>(ownedW)) * 0.5f), static_cast<int>(btnRect.y + 8.0f), 11, Fade(Colors::Zinc500, alpha));
+            int soldW = MeasureText("SOLD", 11);
+            DrawText("SOLD", static_cast<int>(btnRect.x + (btnW - static_cast<float>(soldW)) * 0.5f), static_cast<int>(btnRect.y + 8.0f), 11, Fade(Colors::Zinc500, alpha));
+        } else if (bagFull) {
+            DrawRectangleRec(btnRect, Fade(Colors::Zinc950, alpha));
+            DrawRectangleLinesEx(btnRect, 1.0f, Fade(Colors::Red700, alpha * 0.7f));
+            int fullW = MeasureText("BAG FULL", 10);
+            DrawText("BAG FULL", static_cast<int>(btnRect.x + (btnW - static_cast<float>(fullW)) * 0.5f), static_cast<int>(btnRect.y + 9.0f), 10, Fade(Colors::Red400, alpha));
         } else {
             bool canAfford = (scrapCount >= slot.item.cost);
 
@@ -164,24 +166,15 @@ bool ShopMenu::drawHoverMenu(
             DrawRectangleLinesEx(btnRect, 1.0f, Fade(btnBorder, alpha));
 
             char btnLabel[32];
-            if (slot.item.id == core::ItemId::Bubbles) {
-                std::snprintf(btnLabel, sizeof(btnLabel), "[%d] %llu S", static_cast<int>(i + 1), slot.item.cost);
-            } else {
-                std::snprintf(btnLabel, sizeof(btnLabel), "[%d] %llu S", static_cast<int>(i + 1), slot.item.cost);
-            }
+            std::snprintf(btnLabel, sizeof(btnLabel), "[%d] %llu S", static_cast<int>(i + 1), slot.item.cost);
             int bTextW = MeasureText(btnLabel, 11);
             DrawText(btnLabel, static_cast<int>(btnRect.x + (btnW - static_cast<float>(bTextW)) * 0.5f), static_cast<int>(btnRect.y + 8.0f), 11, Fade(btnTextCol, alpha));
 
             // Purchase trigger
             if (canAfford && ((isBtnHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) || hotkeyPressed)) {
                 scrapCount -= slot.item.cost;
-                if (slot.item.id == core::ItemId::Banana) {
-                    playerInv.hasBanana = true;
-                } else if (slot.item.id == core::ItemId::Radar) {
-                    playerInv.hasRadar = true;
-                } else if (slot.item.id == core::ItemId::Bubbles) {
-                    playerInv.bubbleCharges += 1;
-                }
+                playerInv.addItem(slot.item);
+                slot.isPurchased = true;
                 purchasedItem = true;
             }
         }
@@ -200,82 +193,144 @@ bool ShopMenu::drawHoverMenu(
 bool ShopMenu::drawInventoryDock(
     int screenW,
     int screenH,
-    const core::PlayerInventory& playerInv,
+    core::PlayerInventory& playerInv,
     float alpha
 ) {
     (void)screenW;
     if (alpha <= 0.01f) return false;
 
-    // Render compact dock in lower left corner
-    const float slotW = 54.0f;
+    pulseTimer += GetFrameTime();
+    bool itemClicked = false;
+    Vector2 mousePos = GetMousePosition();
+
+    // Hotbar geometry: 5 slots
+    const int numSlots = core::PlayerInventory::CAPACITY;
+    const float slotW = 50.0f;
     const float slotH = 50.0f;
     const float gap = 6.0f;
     const float dockX = 20.0f;
     const float dockY = static_cast<float>(screenH) - 92.0f - slotH - 12.0f;
 
-    bool bubblesClicked = false;
-    Vector2 mousePos = GetMousePosition();
-
-    auto& catalog = core::ItemCatalog::instance();
-    const core::Item* bananaItem = catalog.getItem(core::ItemId::Banana);
-    const core::Item* radarItem = catalog.getItem(core::ItemId::Radar);
-    const core::Item* bubblesItem = catalog.getItem(core::ItemId::Bubbles);
-
-    // Slot 1: Banana
-    Rectangle r1 = { dockX, dockY, slotW, slotH };
-    DrawRectangleRec(r1, Fade(Colors::Zinc950, alpha * 0.85f));
-    DrawRectangleLinesEx(r1, 1.0f, Fade(playerInv.hasBanana ? Colors::Green500 : Colors::Zinc800, alpha));
-    if (bananaItem && bananaItem->icon.id != 0) {
-        Rectangle src = { 0.0f, 0.0f, static_cast<float>(bananaItem->icon.width), static_cast<float>(bananaItem->icon.height) };
-        Rectangle dst = { r1.x + 13.0f, r1.y + 6.0f, 28.0f, 28.0f };
-        DrawTexturePro(bananaItem->icon, src, dst, { 0, 0 }, 0.0f, Fade(WHITE, playerInv.hasBanana ? alpha : alpha * 0.25f));
+    // Draw active buff indicators above the hotbar if any buffs are running
+    float buffY = dockY - 22.0f;
+    if (playerInv.bananaBoostTimer > 0.0f) {
+        char buffBuf[32];
+        std::snprintf(buffBuf, sizeof(buffBuf), "BOOST +30%%: %.1fs", playerInv.bananaBoostTimer);
+        int bw = MeasureText(buffBuf, 10);
+        Rectangle bRect = { dockX, buffY, static_cast<float>(bw) + 12.0f, 18.0f };
+        DrawRectangleRec(bRect, Fade(Colors::Zinc950, alpha * 0.9f));
+        DrawRectangleLinesEx(bRect, 1.0f, Fade(Colors::Green400, alpha));
+        DrawText(buffBuf, static_cast<int>(bRect.x + 6.0f), static_cast<int>(bRect.y + 4.0f), 10, Fade(Colors::Green400, alpha));
+        buffY -= 22.0f;
     }
-    const char* t1 = playerInv.hasBanana ? "+30% SPD" : "LOCKED";
-    int t1W = MeasureText(t1, 8);
-    DrawText(t1, static_cast<int>(r1.x + (slotW - static_cast<float>(t1W)) * 0.5f), static_cast<int>(r1.y + 36.0f), 8, Fade(playerInv.hasBanana ? Colors::Green400 : Colors::Zinc600, alpha));
-
-    // Slot 2: Radar
-    Rectangle r2 = { dockX + slotW + gap, dockY, slotW, slotH };
-    DrawRectangleRec(r2, Fade(Colors::Zinc950, alpha * 0.85f));
-    DrawRectangleLinesEx(r2, 1.0f, Fade(playerInv.hasRadar ? Colors::Amber400 : Colors::Zinc800, alpha));
-    if (radarItem && radarItem->icon.id != 0) {
-        Rectangle src = { 0.0f, 0.0f, static_cast<float>(radarItem->icon.width), static_cast<float>(radarItem->icon.height) };
-        Rectangle dst = { r2.x + 13.0f, r2.y + 6.0f, 28.0f, 28.0f };
-        DrawTexturePro(radarItem->icon, src, dst, { 0, 0 }, 0.0f, Fade(WHITE, playerInv.hasRadar ? alpha : alpha * 0.25f));
-    }
-    const char* t2 = playerInv.hasRadar ? "RADAR ON" : "LOCKED";
-    int t2W = MeasureText(t2, 8);
-    DrawText(t2, static_cast<int>(r2.x + (slotW - static_cast<float>(t2W)) * 0.5f), static_cast<int>(r2.y + 36.0f), 8, Fade(playerInv.hasRadar ? Colors::Amber300 : Colors::Zinc600, alpha));
-
-    // Slot 3: Bubbles
-    Rectangle r3 = { dockX + (slotW + gap) * 2.0f, dockY, slotW, slotH };
-    bool isBubblesHovered = CheckCollisionPointRec(mousePos, r3);
-    DrawRectangleRec(r3, Fade(isBubblesHovered && playerInv.bubbleCharges > 0 ? Colors::Zinc850 : Colors::Zinc950, alpha * 0.85f));
-    Color bColor = (playerInv.bubbleCharges > 0) ? (isBubblesHovered ? Colors::Cyan300 : Colors::Purple400) : Colors::Zinc800;
-    DrawRectangleLinesEx(r3, 1.0f, Fade(bColor, alpha));
-
-    if (bubblesItem && bubblesItem->icon.id != 0) {
-        Rectangle src = { 0.0f, 0.0f, static_cast<float>(bubblesItem->icon.width), static_cast<float>(bubblesItem->icon.height) };
-        Rectangle dst = { r3.x + 13.0f, r3.y + 6.0f, 28.0f, 28.0f };
-        DrawTexturePro(bubblesItem->icon, src, dst, { 0, 0 }, 0.0f, Fade(WHITE, (playerInv.bubbleCharges > 0) ? alpha : alpha * 0.25f));
+    if (playerInv.radarActiveTimer > 0.0f) {
+        char buffBuf[32];
+        std::snprintf(buffBuf, sizeof(buffBuf), "RADAR SCAN: %.1fs", playerInv.radarActiveTimer);
+        int bw = MeasureText(buffBuf, 10);
+        Rectangle bRect = { dockX, buffY, static_cast<float>(bw) + 12.0f, 18.0f };
+        DrawRectangleRec(bRect, Fade(Colors::Zinc950, alpha * 0.9f));
+        DrawRectangleLinesEx(bRect, 1.0f, Fade(Colors::Amber400, alpha));
+        DrawText(buffBuf, static_cast<int>(bRect.x + 6.0f), static_cast<int>(bRect.y + 4.0f), 10, Fade(Colors::Amber300, alpha));
     }
 
-    if (playerInv.bubbleCharges > 0) {
-        char chargeBuf[16];
-        std::snprintf(chargeBuf, sizeof(chargeBuf), "[B] x%d", playerInv.bubbleCharges);
-        int chW = MeasureText(chargeBuf, 9);
-        DrawText(chargeBuf, static_cast<int>(r3.x + (slotW - static_cast<float>(chW)) * 0.5f), static_cast<int>(r3.y + 36.0f), 9, Fade(Colors::Cyan300, alpha));
+    // Draw 5 hotbar slots
+    for (int i = 0; i < numSlots; ++i) {
+        Rectangle r = { dockX + i * (slotW + gap), dockY, slotW, slotH };
+        bool isHovered = CheckCollisionPointRec(mousePos, r);
+        bool isSelected = (playerInv.selectedSlot == i);
 
-        if (isBubblesHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            bubblesClicked = true;
+        // Click to select slot
+        if (isHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            playerInv.selectedSlot = i;
+            itemClicked = true;
         }
-    } else {
-        const char* t3 = "EMPTY";
-        int t3W = MeasureText(t3, 8);
-        DrawText(t3, static_cast<int>(r3.x + (slotW - static_cast<float>(t3W)) * 0.5f), static_cast<int>(r3.y + 36.0f), 8, Fade(Colors::Zinc600, alpha));
+
+        // Slot Background
+        Color slotBg = isSelected
+            ? Fade(Colors::Zinc850, alpha * 0.95f)
+            : Fade(isHovered ? Colors::Zinc900 : Colors::Zinc950, alpha * 0.85f);
+        DrawRectangleRec(r, slotBg);
+
+        // Slot Border & Selection Highlight
+        if (isSelected) {
+            float pulse = 0.5f + 0.5f * std::sin(pulseTimer * 6.0f);
+            Color borderCol = Fade(Colors::Amber400, alpha * (0.85f + 0.15f * pulse));
+            DrawRectangleLinesEx(r, 2.0f, borderCol);
+
+            // Tech brackets for selected slot
+            float blen = 6.0f;
+            DrawLineEx({ r.x, r.y }, { r.x + blen, r.y }, 2.5f, Colors::Amber300);
+            DrawLineEx({ r.x, r.y }, { r.x, r.y + blen }, 2.5f, Colors::Amber300);
+            DrawLineEx({ r.x + slotW, r.y }, { r.x + slotW - blen, r.y }, 2.5f, Colors::Amber300);
+            DrawLineEx({ r.x + slotW, r.y }, { r.x + slotW, r.y + blen }, 2.5f, Colors::Amber300);
+            DrawLineEx({ r.x, r.y + slotH }, { r.x + blen, r.y + slotH }, 2.5f, Colors::Amber300);
+            DrawLineEx({ r.x, r.y + slotH }, { r.x, r.y + slotH - blen }, 2.5f, Colors::Amber300);
+            DrawLineEx({ r.x + slotW, r.y + slotH }, { r.x + slotW - blen, r.y + slotH }, 2.5f, Colors::Amber300);
+            DrawLineEx({ r.x + slotW, r.y + slotH }, { r.x + slotW, r.y + slotH - blen }, 2.5f, Colors::Amber300);
+        } else {
+            DrawRectangleLinesEx(r, 1.0f, Fade(isHovered ? Colors::Zinc600 : Colors::Zinc800, alpha));
+        }
+
+        // Hotkey number at top-left
+        char numStr[4];
+        std::snprintf(numStr, sizeof(numStr), "%d", i + 1);
+        DrawText(numStr, static_cast<int>(r.x + 4.0f), static_cast<int>(r.y + 3.0f), 8, Fade(isSelected ? Colors::Amber400 : Colors::Zinc600, alpha));
+
+        const auto& slot = playerInv.slots[i];
+        if (slot.occupied && slot.item.icon.id != 0) {
+            // Draw item icon
+            const float iconSz = 26.0f;
+            Rectangle src = { 0.0f, 0.0f, static_cast<float>(slot.item.icon.width), static_cast<float>(slot.item.icon.height) };
+            Rectangle dst = { r.x + (slotW - iconSz) * 0.5f, r.y + 6.0f, iconSz, iconSz };
+            DrawTexturePro(slot.item.icon, src, dst, { 0, 0 }, 0.0f, Fade(WHITE, alpha));
+
+            // Tier accent bar under the icon
+            Color tierCol = Colors::Green400;
+            if (slot.item.tier == core::ItemTier::Tier2) tierCol = Colors::Amber400;
+            else if (slot.item.tier == core::ItemTier::Tier3) tierCol = Colors::Purple400;
+            DrawRectangleRec({ r.x + 6.0f, r.y + 34.0f, slotW - 12.0f, 1.5f }, Fade(tierCol, alpha * 0.7f));
+
+            // Durability Bar (for bubbles or any continuous item)
+            if (slot.item.id == core::ItemId::Bubbles && slot.maxDurability > 0.0f) {
+                float pct = std::clamp(slot.durability / slot.maxDurability, 0.0f, 1.0f);
+                float barW = slotW - 8.0f;
+                float barH = 4.0f;
+                float barX = r.x + 4.0f;
+                float barY = r.y + slotH - 8.0f;
+                Rectangle bgBar = { barX, barY, barW, barH };
+                Rectangle fgBar = { barX, barY, barW * pct, barH };
+                DrawRectangleRec(bgBar, Fade(Colors::Zinc900, alpha * 0.9f));
+                Color durCol = (pct > 0.5f) ? Colors::Green400 : (pct > 0.25f ? Colors::Amber400 : Colors::Red500);
+                DrawRectangleRec(fgBar, Fade(durCol, alpha));
+                DrawRectangleLinesEx(bgBar, 1.0f, Fade(Colors::Zinc700, alpha * 0.8f));
+            } else {
+                // Short status label for consumables
+                const char* lbl = isSelected ? "[E] USE" : "READY";
+                int lw = MeasureText(lbl, 7);
+                DrawText(lbl, static_cast<int>(r.x + (slotW - static_cast<float>(lw)) * 0.5f), static_cast<int>(r.y + slotH - 11.0f), 7, Fade(isSelected ? Colors::Amber300 : Colors::Zinc500, alpha));
+            }
+
+            // Tooltip on hover
+            if (isHovered) {
+                float tipW = 165.0f;
+                float tipH = 38.0f;
+                float tipX = std::clamp(r.x + (slotW - tipW) * 0.5f, 10.0f, static_cast<float>(screenW) - tipW - 10.0f);
+                float tipY = r.y - tipH - 6.0f;
+                Rectangle tipRect = { tipX, tipY, tipW, tipH };
+                DrawRectangleRec(tipRect, Fade(Color{ 10, 12, 16, 250 }, alpha));
+                DrawRectangleLinesEx(tipRect, 1.0f, Fade(tierCol, alpha));
+                DrawText(slot.item.name.c_str(), static_cast<int>(tipX + 6.0f), static_cast<int>(tipY + 5.0f), 10, Fade(tierCol, alpha));
+                DrawText(slot.item.description.c_str(), static_cast<int>(tipX + 6.0f), static_cast<int>(tipY + 20.0f), 8, Fade(Colors::Zinc300, alpha));
+            }
+        } else {
+            // Empty slot label
+            const char* emp = "EMPTY";
+            int ew = MeasureText(emp, 8);
+            DrawText(emp, static_cast<int>(r.x + (slotW - static_cast<float>(ew)) * 0.5f), static_cast<int>(r.y + 20.0f), 8, Fade(Colors::Zinc700, alpha));
+        }
     }
 
-    return bubblesClicked;
+    return itemClicked;
 }
 
 } // namespace minesweeper::ui

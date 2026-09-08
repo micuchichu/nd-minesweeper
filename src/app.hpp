@@ -56,7 +56,8 @@ private:
 
     float shopProximityAlpha = 0.0f;
     int nearbyShopIndex = -1;
-    float bubbleTrailTimer = 0.0f;
+    float bubbleNetTimer = 0.0f;
+    bool isUsingHeldItem = false;
 
     void init();
     void update(float dt);

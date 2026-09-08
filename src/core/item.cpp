@@ -20,7 +20,7 @@ void ItemCatalog::init() {
     banana.id = ItemId::Banana;
     banana.strId = "banana";
     banana.name = "BANANA BOOST";
-    banana.description = "+30% Thrust & Speed";
+    banana.description = "Use [E] • +30% Speed for 20s";
     banana.tier = ItemTier::Tier1;
     banana.cost = 15;
     banana.icon = am.loadTexture("assets/items/banana.png");
@@ -31,7 +31,7 @@ void ItemCatalog::init() {
     radar.id = ItemId::Radar;
     radar.strId = "radar";
     radar.name = "MINE RADAR";
-    radar.description = "Pings unflagged mines nearby";
+    radar.description = "Use [E] • Scans 3 cells for 4s";
     radar.tier = ItemTier::Tier2;
     radar.cost = 40;
     radar.icon = am.loadTexture("assets/items/radar.png");
@@ -42,7 +42,7 @@ void ItemCatalog::init() {
     bubbles.id = ItemId::Bubbles;
     bubbles.strId = "bubbles";
     bubbles.name = "BUBBLES";
-    bubbles.description = "Emits bubbles & blurs nearby screens [B]";
+    bubbles.description = "Hold [E] • Emits bubbles & blurs";
     bubbles.tier = ItemTier::Tier3;
     bubbles.cost = 60;
     bubbles.icon = am.loadTexture("assets/items/bubbles.png");

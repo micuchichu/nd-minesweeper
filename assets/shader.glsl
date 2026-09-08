@@ -51,7 +51,7 @@ void main() {
     if (bubbleBlur > 0.01) {
         vec3 blurAcc = vec3(0.0);
         float blurWeight = 0.0;
-        float blurRad = 20.0 * bubbleBlur;
+        float blurRad = 11.0 * bubbleBlur;
 
         for (int i = 0; i < 16; ++i) {
             float a = float(i) * 2.3999632;
@@ -59,16 +59,16 @@ void main() {
             vec2 offset = vec2(cos(a), sin(a)) * rad * blurRad * texel;
             vec2 sUV = clamp(uv + offset, 0.0, 1.0);
 
-            float sR = texture(texture0, clamp(sUV - offset * 0.15, 0.0, 1.0)).r;
+            float sR = texture(texture0, clamp(sUV - offset * 0.08, 0.0, 1.0)).r;
             float sG = texture(texture0, sUV).g;
-            float sB = texture(texture0, clamp(sUV + offset * 0.15, 0.0, 1.0)).b;
+            float sB = texture(texture0, clamp(sUV + offset * 0.08, 0.0, 1.0)).b;
             blurAcc += vec3(sR, sG, sB);
             blurWeight += 1.0;
         }
 
         vec3 blurred = blurAcc / blurWeight;
-        blurred = mix(blurred, blurred * vec3(0.85, 1.08, 1.20) + vec3(0.02, 0.05, 0.09), bubbleBlur * 0.35);
-        color = mix(color, blurred, clamp(bubbleBlur * 1.35, 0.0, 1.0));
+        blurred = mix(blurred, blurred * vec3(0.92, 1.04, 1.12) + vec3(0.01, 0.03, 0.05), bubbleBlur * 0.20);
+        color = mix(color, blurred, clamp(bubbleBlur * 0.85, 0.0, 0.85));
     } else {
         vec3 bloom = vec3(0.0);
         float weight = 0.0;

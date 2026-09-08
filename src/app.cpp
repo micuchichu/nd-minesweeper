@@ -580,25 +580,13 @@ void App::broadcastBubble(Vector2 pos) {
 }
 
 void App::activateBubbleEffect(Vector2 pos, bool isLocal) {
-    // 1. Spawns bubble particles around activating player
-    renderer.emitBubbleBurst(pos, 50);
-    if (isLocal) {
-        bubbleTrailTimer = 2.5f;
-    }
-
-    // 2. Screen blur:
-    // "the bubbles item should just make bubble particles around the player and blurr the screen to nearby players for a couple seconds"
-    if (isLocal) {
-        // In offline/singleplayer, blur local screen so user can experience and test it!
-        if (net.role == net::NetRole::Offline) {
-            renderer.triggerBubbleBlur(3.0f);
-        }
+    if (!isLocal) {
+        // Remote player actively bubbling: emit scattered bubbles and apply distance-based blur
+        renderer.emitBubbles(pos, 2);
+        renderer.applyBubbleBlurSource(pos, 650.0f);
     } else {
-        // On other players' screens: if within proximity of the bubble explosion (e.g. 750px), blur screen!
-        float dist = Vector2Distance(renderer.localShip.position, pos);
-        if (dist <= 750.0f) {
-            renderer.triggerBubbleBlur(3.0f);
-        }
+        // Local player distance = 0 blur
+        renderer.applyBubbleBlurSource(pos, 650.0f);
     }
 }
 
@@ -644,11 +632,26 @@ void App::update(float dt) {
             renderer.localShip.isInitialized = true;
             renderer.camera.centerOn(renderer.shopShips[1].position);
         }
-        if (uiFrame == 30) {
-            playerInventory.bubbleCharges = 3;
-            playerInventory.hasBanana = true;
-            playerInventory.hasRadar = true;
-            broadcastBubble(renderer.localShip.position);
+        if (uiFrame == 26) {
+            auto& cat = core::ItemCatalog::instance();
+            const auto* b = cat.getItem(core::ItemId::Banana);
+            const auto* r = cat.getItem(core::ItemId::Radar);
+            const auto* bub = cat.getItem(core::ItemId::Bubbles);
+            if (b) playerInventory.addItem(*b);
+            if (r) playerInventory.addItem(*r);
+            if (bub) playerInventory.addItem(*bub);
+            playerInventory.selectedSlot = 2; // select Bubbles
+            playerInventory.radarActiveTimer = 3.5f;
+            renderer.triggerRadar(3.5f);
+        }
+        if (uiFrame >= 27 && uiFrame <= 35) {
+            auto* held = playerInventory.getSelectedSlot();
+            if (held && held->item.id == core::ItemId::Bubbles) {
+                isUsingHeldItem = true;
+                held->durability = std::max(0.0f, held->durability - 0.15f);
+                renderer.emitBubbles(renderer.localShip.position, 3);
+                renderer.applyBubbleBlurSource(renderer.localShip.position, 650.0f);
+            }
         }
     }
 
@@ -659,17 +662,86 @@ void App::update(float dt) {
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
 
-    // Active item effects & stats:
-    if (bubbleTrailTimer > 0.0f) {
-        bubbleTrailTimer -= dt;
-        renderer.emitBubbles(renderer.localShip.position, 2);
-    }
-    renderer.hasRadarActive = playerInventory.hasRadar;
+    // 1. Hotbar slot selection: keys 1-5 and mouse wheel
+    if (state == AppState::InGame) {
+        if (shopProximityAlpha < 0.2f) {
+            if (IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1)) playerInventory.selectedSlot = 0;
+            if (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2)) playerInventory.selectedSlot = 1;
+            if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) playerInventory.selectedSlot = 2;
+            if (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4)) playerInventory.selectedSlot = 3;
+            if (IsKeyPressed(KEY_FIVE) || IsKeyPressed(KEY_KP_5)) playerInventory.selectedSlot = 4;
+        }
 
-    // Banana Speed & Acceleration Boost (+30%)
+        float wheel = GetMouseWheelMove();
+        if (wheel > 0.0f) {
+            playerInventory.selectedSlot = (playerInventory.selectedSlot + core::PlayerInventory::CAPACITY - 1) % core::PlayerInventory::CAPACITY;
+        } else if (wheel < 0.0f) {
+            playerInventory.selectedSlot = (playerInventory.selectedSlot + 1) % core::PlayerInventory::CAPACITY;
+        }
+    }
+
+    // 2. Held Item Usage: hold [E] for bubbles, press [E] for radar / banana
+    if (!testShopUIMode) {
+        isUsingHeldItem = false;
+    }
+    if (state == AppState::InGame) {
+        auto* held = playerInventory.getSelectedSlot();
+        if (held) {
+            if (held->item.id == core::ItemId::Bubbles && held->durability > 0.0f) {
+                if (IsKeyDown(KEY_E) || IsKeyDown(KEY_B)) {
+                    isUsingHeldItem = true;
+                    held->durability = std::max(0.0f, held->durability - dt);
+
+                    // Scatter bubbles only while used
+                    renderer.emitBubbles(renderer.localShip.position, 2);
+
+                    // Dynamic distance blur at origin
+                    renderer.applyBubbleBlurSource(renderer.localShip.position, 650.0f);
+
+                    bubbleNetTimer += dt;
+                    if (bubbleNetTimer >= 0.12f) {
+                        bubbleNetTimer = 0.0f;
+                        broadcastBubble(renderer.localShip.position);
+                    }
+
+                    if (held->durability <= 0.0f) {
+                        renderer.emitExplosion(renderer.localShip.position, ui::Colors::Cyan400);
+                        playerInventory.clearSlot(playerInventory.selectedSlot);
+                        isUsingHeldItem = false;
+                    }
+                }
+            } else if (held->item.id == core::ItemId::Radar) {
+                if (IsKeyPressed(KEY_E)) {
+                    playerInventory.radarActiveTimer = 4.0f;
+                    renderer.triggerRadar(4.0f);
+                    playerInventory.clearSlot(playerInventory.selectedSlot);
+                }
+            } else if (held->item.id == core::ItemId::Banana) {
+                if (IsKeyPressed(KEY_E)) {
+                    playerInventory.bananaBoostTimer = 20.0f;
+                    renderer.emitExplosion(renderer.localShip.position, ui::Colors::Amber400);
+                    playerInventory.clearSlot(playerInventory.selectedSlot);
+                }
+            }
+        }
+    }
+
+    // 3. Active Buff Timers & Upgrade Stats
+    if (playerInventory.bananaBoostTimer > 0.0f) {
+        playerInventory.bananaBoostTimer = std::max(0.0f, playerInventory.bananaBoostTimer - dt);
+    }
+    if (playerInventory.radarActiveTimer > 0.0f) {
+        playerInventory.radarActiveTimer = std::max(0.0f, playerInventory.radarActiveTimer - dt);
+        renderer.radarTimer = playerInventory.radarActiveTimer;
+        renderer.hasRadarActive = (playerInventory.radarActiveTimer > 0.0f);
+    } else {
+        renderer.hasRadarActive = false;
+    }
+
+    // Speed boost upgrade (+30%) while banana buff is active
     float baseSpeed = 600.0f;
     float baseAccel = 2200.0f;
-    if (playerInventory.hasBanana) {
+    if (playerInventory.bananaBoostTimer > 0.0f) {
         renderer.localShip.speed = baseSpeed * 1.30f;
         renderer.localShip.maxAccel = baseAccel * 1.30f;
     } else {
@@ -677,15 +749,9 @@ void App::update(float dt) {
         renderer.localShip.maxAccel = baseAccel;
     }
 
-    // Bubbles hotkey trigger: [B] or [E]
-    if (state == AppState::InGame) {
-        if (IsKeyPressed(KEY_B) || IsKeyPressed(KEY_E)) {
-            if (playerInventory.bubbleCharges > 0) {
-                --playerInventory.bubbleCharges;
-                broadcastBubble(renderer.localShip.position);
-            }
-        }
-    }
+    // Provide held slot and active status to renderer for carried item rendering
+    renderer.heldSlot = playerInventory.getSelectedSlot();
+    renderer.isUsingItem = isUsingHeldItem;
 
     // Shop Proximity Check:
     if (state == AppState::InGame) {
@@ -1374,12 +1440,8 @@ void App::draw() {
                 }
             }
 
-            // Draw HUD Inventory Dock
-            bool bubbleClicked = shopMenu.drawInventoryDock(screenW, screenH, playerInventory, 1.0f);
-            if (bubbleClicked && playerInventory.bubbleCharges > 0) {
-                --playerInventory.bubbleCharges;
-                broadcastBubble(renderer.localShip.position);
-            }
+            // Draw HUD 5-Slot Hotbar Inventory Dock
+            shopMenu.drawInventoryDock(screenW, screenH, playerInventory, 1.0f);
 
             if (hudAct.returnToMenu) {
                 int leftover = scrapSystem.collectAll();

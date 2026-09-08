@@ -24,12 +24,12 @@ public:
         int screenH
     );
 
-    // Renders the player HUD inventory dock showing equipped active items & charges.
-    // Returns true if the player clicked the bubble item to use it.
+    // Renders the player HUD 5-slot hotbar dock showing equipped items, durability, and active slot.
+    // Returns true if the player clicked an item slot or triggered an action.
     bool drawInventoryDock(
         int screenW,
         int screenH,
-        const core::PlayerInventory& playerInv,
+        core::PlayerInventory& playerInv,
         float alpha
     );
 
