@@ -731,10 +731,6 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + 2), 22, ui::Colors::Red700);
                 }
                 else if (state == core::CellState::Revealed) {
-                    if (cellRevealRT.id != 0) {
-                        Rectangle src = { 0.0f, 0.0f, static_cast<float>(cellRevealRT.texture.width), -static_cast<float>(cellRevealRT.texture.height) };
-                        DrawTexturePro(cellRevealRT.texture, src, cellRect, { 0.0f, 0.0f }, 0.0f, WHITE);
-                    }
                     if (count > 0) {
                         Color tc = ui::getNeighborColor(count);
                         const char* numStr = TextFormat("%d", count);
@@ -886,12 +882,7 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                 if (state == core::CellState::Revealed && count > 0) {
                     Color overlay = ui::getNeighborColor(count);
                     overlay.a = static_cast<unsigned char>(15 + count * 2 + fade * 150.0f);
-                    if (cellRevealRT.id != 0) {
-                        Rectangle src = { 0.0f, 0.0f, static_cast<float>(cellRevealRT.texture.width), -static_cast<float>(cellRevealRT.texture.height) };
-                        DrawTexturePro(cellRevealRT.texture, src, cellRect, { 0.0f, 0.0f }, 0.0f, overlay);
-                    } else {
-                        DrawRectangleRounded(cellRect, 0.2f, 4, overlay);
-                    }
+                    DrawRectangleRounded(cellRect, 0.2f, 4, overlay);
                 }
             }
             else {
