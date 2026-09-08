@@ -26,6 +26,8 @@ set(SOURCES
     src/ui/widgets.cpp
     src/ui/hud.cpp
     src/ui/menu.cpp
+    src/ui/shop_menu.cpp
+    src/core/item.cpp
 )
 
 add_executable(minesweeper ${SOURCES})

@@ -19,6 +19,7 @@ ShopShip::ShopShip()
     color = ui::Colors::Amber400;
     setAnchor({ 0.0f, 0.0f }, 90.0f);
     setupThrusters();
+    initializeInventory();
 }
 
 ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const std::string& shipName)
@@ -29,6 +30,7 @@ ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const std::string& shipName)
     color = ui::Colors::Amber400;
     setAnchor(anchor, 90.0f);
     setupThrusters();
+    initializeInventory();
 }
 
 ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const ShipConfig& config)
@@ -38,6 +40,15 @@ ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const ShipConfig& config)
     color = ui::Colors::Amber400;
     setAnchor(anchor, 90.0f);
     applyConfig(config);
+    initializeInventory();
+}
+
+void ShopShip::initializeInventory() {
+    int cap = 2;
+    if (capsuleLength > 0.0f || name.find("big") != std::string::npos || (texture.height > 48)) {
+        cap = 4;
+    }
+    inventory = ItemCatalog::instance().createInventoryForShop(name, cap);
 }
 
 void ShopShip::setupThrusters() {

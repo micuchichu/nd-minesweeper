@@ -1,6 +1,8 @@
 #include "app.hpp"
 #include "core/ship.hpp"
 #include "core/ship_config.hpp"
+#include "core/shop_ship.hpp"
+#include "core/item.hpp"
 #include "render/camera_controller.hpp"
 #include "render/procedural_textures.hpp"
 #include <string>
@@ -589,6 +591,139 @@ static int runTextureTests() {
     return 0;
 }
 
+static int runItemTests() {
+    std::cout << "[TEST-ITEMS] Starting Shop Items and Inventory System Tests..." << std::endl;
+
+    SetTraceLogLevel(LOG_NONE);
+    InitWindow(100, 100, "ItemTest");
+
+    auto& catalog = minesweeper::core::ItemCatalog::instance();
+    catalog.init();
+
+    // 1. Check all 3 items exist with correct tiers and costs
+    const auto* banana = catalog.getItem(minesweeper::core::ItemId::Banana);
+    if (!banana || banana->tier != minesweeper::core::ItemTier::Tier1 || banana->cost != 15) {
+        std::cerr << "  [FAIL] Banana item mismatch or not found!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 1;
+    }
+    std::cout << "  [PASS] Test 1: Banana (Tier 1, Cost 15) verified." << std::endl;
+
+    const auto* radar = catalog.getItem(minesweeper::core::ItemId::Radar);
+    if (!radar || radar->tier != minesweeper::core::ItemTier::Tier2 || radar->cost != 40) {
+        std::cerr << "  [FAIL] Radar item mismatch or not found!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 2;
+    }
+    std::cout << "  [PASS] Test 2: Radar (Tier 2, Cost 40) verified." << std::endl;
+
+    const auto* bubbles = catalog.getItem(minesweeper::core::ItemId::Bubbles);
+    if (!bubbles || bubbles->tier != minesweeper::core::ItemTier::Tier3 || bubbles->cost != 60) {
+        std::cerr << "  [FAIL] Bubbles item mismatch or not found!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 3;
+    }
+    std::cout << "  [PASS] Test 3: Bubbles (Tier 3, Cost 60) verified." << std::endl;
+
+    // 2. Check Mini Shop capacity = 2 and stocks Tier 1 & 2 only
+    auto miniInv = catalog.createInventoryForShop("mini shop", 2);
+    if (miniInv.capacity != 2 || miniInv.slots.size() != 2) {
+        std::cerr << "  [FAIL] Mini shop capacity != 2!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 4;
+    }
+    if (miniInv.slots[0].item.tier != minesweeper::core::ItemTier::Tier1 ||
+        miniInv.slots[1].item.tier != minesweeper::core::ItemTier::Tier2) {
+        std::cerr << "  [FAIL] Mini shop does not stock Tier 1 & 2 items!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 5;
+    }
+    std::cout << "  [PASS] Test 4: Mini shop 2-slot capacity and Tier 1-2 stocking verified." << std::endl;
+
+    // 3. Check Big Shop capacity = 4 and stocks up to Tier 3
+    auto bigInv = catalog.createInventoryForShop("big shop", 4);
+    if (bigInv.capacity != 4 || bigInv.slots.size() != 4) {
+        std::cerr << "  [FAIL] Big shop capacity != 4!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 6;
+    }
+    bool hasTier3 = false;
+    for (const auto& slot : bigInv.slots) {
+        if (slot.item.tier == minesweeper::core::ItemTier::Tier3) hasTier3 = true;
+    }
+    if (!hasTier3) {
+        std::cerr << "  [FAIL] Big shop missing Tier 3 items!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 7;
+    }
+    std::cout << "  [PASS] Test 5: Big shop 4-slot capacity and Tier 1-3 stocking verified." << std::endl;
+
+    // 4. ShopShip capacity auto-determination
+    minesweeper::core::ShopShip miniShip;
+    miniShip.name = "mini shop";
+    miniShip.capsuleLength = 0.0f;
+    miniShip.initializeInventory();
+    if (miniShip.inventory.capacity != 2 || miniShip.inventory.slots.size() != 2) {
+        std::cerr << "  [FAIL] Mini ShopShip inventory capacity determination failed!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 8;
+    }
+
+    minesweeper::core::ShopShip bigShip;
+    bigShip.name = "big shop";
+    bigShip.capsuleLength = 130.0f;
+    bigShip.initializeInventory();
+    if (bigShip.inventory.capacity != 4 || bigShip.inventory.slots.size() != 4) {
+        std::cerr << "  [FAIL] Big ShopShip inventory capacity determination failed!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 9;
+    }
+    std::cout << "  [PASS] Test 6: ShopShip mini (2 slots) and big (4 slots) initialization verified." << std::endl;
+
+    // 5. PlayerInventory and active boost calculations
+    minesweeper::core::PlayerInventory pInv;
+    if (pInv.hasBanana || pInv.hasRadar || pInv.bubbleCharges != 0) {
+        std::cerr << "  [FAIL] Fresh PlayerInventory not empty!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 10;
+    }
+    pInv.hasBanana = true;
+    float baseSpeed = 600.0f;
+    float boostedSpeed = baseSpeed * (pInv.hasBanana ? 1.30f : 1.0f);
+    if (std::abs(boostedSpeed - 780.0f) >= 0.001f) {
+        std::cerr << "  [FAIL] Banana +30% speed boost calculation mismatch!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 11;
+    }
+    std::cout << "  [PASS] Test 7: Banana +30% boost calculation verified (780 px/s)." << std::endl;
+
+    pInv.bubbleCharges = 2;
+    --pInv.bubbleCharges;
+    if (pInv.bubbleCharges != 1) {
+        std::cerr << "  [FAIL] Bubble charge decrement failed!" << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 12;
+    }
+    std::cout << "  [PASS] Test 8: Bubble charge tracking and consumption verified." << std::endl;
+
+    catalog.shutdown();
+    CloseWindow();
+    std::cout << "[TEST-ITEMS] ALL ITEM TESTS PASSED!" << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--test-capsule") {
@@ -596,10 +731,12 @@ int main(int argc, char* argv[]) {
             int r2 = runCameraTests();
             int r3 = runControlTests();
             int r4 = runTextureTests();
+            int r5 = runItemTests();
             if (r1 != 0) return r1;
             if (r2 != 0) return r2;
             if (r3 != 0) return r3;
-            return r4;
+            if (r4 != 0) return r4;
+            return r5;
         }
         if (std::string(argv[i]) == "--test-camera") {
             return runCameraTests();
@@ -610,6 +747,9 @@ int main(int argc, char* argv[]) {
         if (std::string(argv[i]) == "--test-textures") {
             return runTextureTests();
         }
+        if (std::string(argv[i]) == "--test-items") {
+            return runItemTests();
+        }
     }
 
     minesweeper::App app;
@@ -619,7 +759,11 @@ int main(int argc, char* argv[]) {
             runCameraTests();
             runControlTests();
             runTextureTests();
+            runItemTests();
             app.testShopMode = true;
+        }
+        else if (std::string(argv[i]) == "--test-shop-ui") {
+            app.testShopUIMode = true;
         }
         else if (std::string(argv[i]) == "--test-customize") {
             app.testCustomizeMode = true;

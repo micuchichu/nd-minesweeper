@@ -2,6 +2,7 @@
 #include "net/steam_manager.hpp"
 #include "ui/widgets.hpp"
 #include "render/procedural_textures.hpp"
+#include "core/item.hpp"
 #include <fstream>
 #include <iostream>
 #include <cmath>
@@ -63,6 +64,10 @@ void App::init() {
     renderer.enableCRT = menu.crtEnabled;
     renderer.camera.enableCRT = menu.crtEnabled;
     renderer.init();
+    core::ItemCatalog::instance().init();
+    for (auto& s : renderer.shopShips) {
+        s.initializeInventory();
+    }
     if (render::RaylibRenderer::getCursorSkinCount() > 0) {
         menu.cursorSkin = std::clamp<int>(menu.cursorSkin, 0, render::RaylibRenderer::getCursorSkinCount() - 1);
     }
@@ -115,6 +120,7 @@ void App::cleanup() {
     saveSettings();
     scrapSystem.cleanup();
     voiceMgr.cleanup();
+    core::ItemCatalog::instance().shutdown();
     renderer.cleanup();
     net.cleanup();
     CloseWindow();
@@ -521,6 +527,11 @@ void App::handleNetEvents() {
                 renderer.fireLaser(from, to, laserCol);
                 break;
             }
+            case net::NetEventType::BubbleTriggered: {
+                Vector2 bubblePos = { ev.bubbleData.x, ev.bubbleData.y };
+                activateBubbleEffect(bubblePos, false);
+                break;
+            }
             default:
                 break;
         }
@@ -546,6 +557,47 @@ void App::broadcastLaser(Vector2 from, Vector2 to, uint8_t laserType) {
             net.sendToServer(&pkt, sizeof(pkt), false);
         } else if (net.role == net::NetRole::Host) {
             net.broadcast(&pkt, sizeof(pkt), false);
+        }
+    }
+}
+
+void App::broadcastBubble(Vector2 pos) {
+    activateBubbleEffect(pos, true);
+
+    if (net.role != net::NetRole::Offline) {
+        net::PacketBubble pkt;
+        pkt.type = net::PacketType::Bubble;
+        pkt.playerID = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
+        pkt.x = pos.x;
+        pkt.y = pos.y;
+
+        if (net.role == net::NetRole::Client) {
+            net.sendToServer(&pkt, sizeof(pkt), false);
+        } else if (net.role == net::NetRole::Host) {
+            net.broadcast(&pkt, sizeof(pkt), false);
+        }
+    }
+}
+
+void App::activateBubbleEffect(Vector2 pos, bool isLocal) {
+    // 1. Spawns bubble particles around activating player
+    renderer.emitBubbleBurst(pos, 50);
+    if (isLocal) {
+        bubbleTrailTimer = 2.5f;
+    }
+
+    // 2. Screen blur:
+    // "the bubbles item should just make bubble particles around the player and blurr the screen to nearby players for a couple seconds"
+    if (isLocal) {
+        // In offline/singleplayer, blur local screen so user can experience and test it!
+        if (net.role == net::NetRole::Offline) {
+            renderer.triggerBubbleBlur(3.0f);
+        }
+    } else {
+        // On other players' screens: if within proximity of the bubble explosion (e.g. 750px), blur screen!
+        float dist = Vector2Distance(renderer.localShip.position, pos);
+        if (dist <= 750.0f) {
+            renderer.triggerBubbleBlur(3.0f);
         }
     }
 }
@@ -578,12 +630,88 @@ void App::update(float dt) {
         }
     }
 
+    if (testShopUIMode && state == AppState::InGame) {
+        static int uiFrame = 0;
+        ++uiFrame;
+        if (uiFrame < 15 && !renderer.shopShips.empty()) {
+            renderer.localShip.position = { renderer.shopShips[0].position.x - 75.0f, renderer.shopShips[0].position.y };
+            renderer.localShip.velocity = { 0.0f, 0.0f };
+            renderer.localShip.isInitialized = true;
+            renderer.camera.centerOn(renderer.shopShips[0].position);
+        } else if (uiFrame >= 15 && renderer.shopShips.size() > 1) {
+            renderer.localShip.position = { renderer.shopShips[1].position.x - 85.0f, renderer.shopShips[1].position.y };
+            renderer.localShip.velocity = { 0.0f, 0.0f };
+            renderer.localShip.isInitialized = true;
+            renderer.camera.centerOn(renderer.shopShips[1].position);
+        }
+        if (uiFrame == 30) {
+            playerInventory.bubbleCharges = 3;
+            playerInventory.hasBanana = true;
+            playerInventory.hasRadar = true;
+            broadcastBubble(renderer.localShip.position);
+        }
+    }
+
     renderer.enableCRT = menu.crtEnabled;
     renderer.camera.enableCRT = menu.crtEnabled;
     renderer.activeFlagSkin = menu.flagSkin;
     renderer.activeCursorSkin = menu.cursorSkin;
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
+
+    // Active item effects & stats:
+    if (bubbleTrailTimer > 0.0f) {
+        bubbleTrailTimer -= dt;
+        renderer.emitBubbles(renderer.localShip.position, 2);
+    }
+    renderer.hasRadarActive = playerInventory.hasRadar;
+
+    // Banana Speed & Acceleration Boost (+30%)
+    float baseSpeed = 600.0f;
+    float baseAccel = 2200.0f;
+    if (playerInventory.hasBanana) {
+        renderer.localShip.speed = baseSpeed * 1.30f;
+        renderer.localShip.maxAccel = baseAccel * 1.30f;
+    } else {
+        renderer.localShip.speed = baseSpeed;
+        renderer.localShip.maxAccel = baseAccel;
+    }
+
+    // Bubbles hotkey trigger: [B] or [E]
+    if (state == AppState::InGame) {
+        if (IsKeyPressed(KEY_B) || IsKeyPressed(KEY_E)) {
+            if (playerInventory.bubbleCharges > 0) {
+                --playerInventory.bubbleCharges;
+                broadcastBubble(renderer.localShip.position);
+            }
+        }
+    }
+
+    // Shop Proximity Check:
+    if (state == AppState::InGame) {
+        nearbyShopIndex = -1;
+        float closestDist = 999999.0f;
+        for (size_t i = 0; i < renderer.shopShips.size(); ++i) {
+            const auto& s = renderer.shopShips[i];
+            Vector2 pA, pB;
+            s.getCapsuleSegment(pA, pB);
+            Vector2 ab = { pB.x - pA.x, pB.y - pA.y };
+            float lenSq = ab.x * ab.x + ab.y * ab.y;
+            float t = (lenSq > 0.0001f) ? std::clamp(((renderer.localShip.position.x - pA.x) * ab.x + (renderer.localShip.position.y - pA.y) * ab.y) / lenSq, 0.0f, 1.0f) : 0.0f;
+            Vector2 closest = { pA.x + t * ab.x, pA.y + t * ab.y };
+            float d = Vector2Distance(renderer.localShip.position, closest);
+            if (d <= 220.0f && d < closestDist) {
+                closestDist = d;
+                nearbyShopIndex = static_cast<int>(i);
+            }
+        }
+
+        float targetAlpha = (nearbyShopIndex >= 0) ? 1.0f : 0.0f;
+        shopProximityAlpha = std::lerp(shopProximityAlpha, targetAlpha, std::clamp(dt * 8.0f, 0.0f, 1.0f));
+    } else {
+        shopProximityAlpha = 0.0f;
+        nearbyShopIndex = -1;
+    }
 
     // Synchronize voice settings and live mic meter with menu
     voiceMgr.getSettings() = menu.voiceSettings;
@@ -1227,6 +1355,32 @@ void App::draw() {
             scrapSystem.drawScreen(scale);
             EndMode2D();
 
+            // Draw Hovering Shop Menu if player is in proximity
+            if (shopProximityAlpha > 0.01f && nearbyShopIndex >= 0 && nearbyShopIndex < static_cast<int>(renderer.shopShips.size())) {
+                bool bought = shopMenu.drawHoverMenu(
+                    renderer.shopShips[nearbyShopIndex],
+                    scrapCount,
+                    playerInventory,
+                    shopProximityAlpha,
+                    renderer.camera,
+                    screenW,
+                    screenH
+                );
+                if (bought) {
+                    hud.scrapCount = scrapCount;
+                    menu.scrapCount = scrapCount;
+                    renderer.emitBubbleBurst(renderer.shopShips[nearbyShopIndex].position, 20);
+                    saveCurrentSlot();
+                }
+            }
+
+            // Draw HUD Inventory Dock
+            bool bubbleClicked = shopMenu.drawInventoryDock(screenW, screenH, playerInventory, 1.0f);
+            if (bubbleClicked && playerInventory.bubbleCharges > 0) {
+                --playerInventory.bubbleCharges;
+                broadcastBubble(renderer.localShip.position);
+            }
+
             if (hudAct.returnToMenu) {
                 int leftover = scrapSystem.collectAll();
                 if (leftover > 0) {
@@ -1329,6 +1483,22 @@ void App::draw() {
             shouldQuit = true;
         }
     }
+
+    if (testShopUIMode && state == AppState::InGame) {
+        static int drawUIFrame = 0;
+        ++drawUIFrame;
+        if (drawUIFrame == 8) {
+            TakeScreenshot("screenshot_shop_menu.png");
+            std::cout << "[TEST-UI] Saved screenshot_shop_menu.png" << std::endl;
+        } else if (drawUIFrame == 22) {
+            TakeScreenshot("screenshot_big_shop.png");
+            std::cout << "[TEST-UI] Saved screenshot_big_shop.png" << std::endl;
+        } else if (drawUIFrame == 32) {
+            TakeScreenshot("screenshot_bubble_blur.png");
+            std::cout << "[TEST-UI] Saved screenshot_bubble_blur.png" << std::endl;
+            shouldQuit = true;
+        }
+    }
 }
 
 void App::run() {
@@ -1339,6 +1509,18 @@ void App::run() {
         state = AppState::InGame;
         float boardWidth = 10 * renderer.cellSize;
         renderer.camera.reset({ boardWidth - 100.0f, -40.0f }, 1.3f);
+    }
+    if (testShopUIMode) {
+        startNewGame(2, 10, 10, 12345);
+        state = AppState::InGame;
+        scrapCount = 500;
+        hud.scrapCount = 500;
+        menu.scrapCount = 500;
+        if (!renderer.shopShips.empty()) {
+            renderer.localShip.position = { renderer.shopShips[0].position.x - 75.0f, renderer.shopShips[0].position.y };
+            renderer.localShip.isInitialized = true;
+            renderer.camera.centerOn(renderer.shopShips[0].position);
+        }
     }
     if (testCustomizeMode) {
         state = AppState::Menu;

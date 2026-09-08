@@ -372,6 +372,8 @@ void RaylibRenderer::initShaders() {
         postProcessShader = LoadShader(nullptr, "assets/shader.glsl");
         ppTimeLoc = GetShaderLocation(postProcessShader, "time");
         ppResLoc = GetShaderLocation(postProcessShader, "resolution");
+        ppBubbleBlurLoc = GetShaderLocation(postProcessShader, "bubbleBlur");
+        ppCrtEnabledLoc = GetShaderLocation(postProcessShader, "crtEnabled");
     }
 
     if (FileExists("assets/grid.glsl")) {
@@ -523,7 +525,21 @@ void RaylibRenderer::endOffscreen() {
 }
 
 void RaylibRenderer::drawOffscreenToScreen() {
-    if (enableCRT && postProcessShader.id != 0) {
+    float blurVal = 0.0f;
+    if (bubbleBlurTimer > 0.0f) {
+        if (bubbleBlurTimer > BUBBLE_BLUR_DURATION - 0.3f) {
+            blurVal = (BUBBLE_BLUR_DURATION - bubbleBlurTimer) / 0.3f;
+        } else if (bubbleBlurTimer < 0.8f) {
+            blurVal = bubbleBlurTimer / 0.8f;
+        } else {
+            blurVal = 1.0f;
+        }
+        blurVal = std::clamp(blurVal, 0.0f, 1.0f);
+    }
+
+    bool useShader = (enableCRT || blurVal > 0.001f) && postProcessShader.id != 0;
+
+    if (useShader) {
         BeginShaderMode(postProcessShader);
 
         float timeVal = static_cast<float>(GetTime());
@@ -531,6 +547,14 @@ void RaylibRenderer::drawOffscreenToScreen() {
 
         float resVal[2] = { static_cast<float>(offscreenTarget.texture.width), static_cast<float>(offscreenTarget.texture.height) };
         SetShaderValue(postProcessShader, ppResLoc, resVal, SHADER_UNIFORM_VEC2);
+
+        if (ppBubbleBlurLoc >= 0) {
+            SetShaderValue(postProcessShader, ppBubbleBlurLoc, &blurVal, SHADER_UNIFORM_FLOAT);
+        }
+        if (ppCrtEnabledLoc >= 0) {
+            float crtVal = enableCRT ? 1.0f : 0.0f;
+            SetShaderValue(postProcessShader, ppCrtEnabledLoc, &crtVal, SHADER_UNIFORM_FLOAT);
+        }
 
         Rectangle source = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), -static_cast<float>(offscreenTarget.texture.height) };
         Rectangle dest = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), static_cast<float>(offscreenTarget.texture.height) };
@@ -1102,6 +1126,152 @@ void RaylibRenderer::fireLaser(Vector2 from, Vector2 to, Color color) {
     particles.emitDebris(to, 6, color);
 }
 
+void RaylibRenderer::emitBubbleBurst(Vector2 pos, int count) {
+    for (int i = 0; i < count; ++i) {
+        float angle = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 6.2831853f;
+        float speed = 40.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 180.0f;
+        float life = 1.4f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 1.6f;
+        float size = 8.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 18.0f;
+
+        Color tint = (rand() % 3 == 0)
+            ? Color{ 168, 85, 247, 255 }  // Purple
+            : (rand() % 2 == 0 ? Color{ 56, 189, 248, 255 } : Color{ 147, 197, 253, 255 }); // Sky blue / Cyan
+
+        bubbleParticles.push_back({
+            pos,
+            { std::cos(angle) * speed, std::sin(angle) * speed - 30.0f },
+            life,
+            life,
+            size,
+            (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 6.2831853f,
+            2.5f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 3.5f,
+            tint
+        });
+    }
+}
+
+void RaylibRenderer::emitBubbles(Vector2 pos, int count) {
+    for (int i = 0; i < count; ++i) {
+        float offsetAngle = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 6.2831853f;
+        float offsetDist = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 25.0f;
+        Vector2 spawnPos = { pos.x + std::cos(offsetAngle) * offsetDist, pos.y + std::sin(offsetAngle) * offsetDist };
+
+        float speedX = -30.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 60.0f;
+        float speedY = -50.0f - (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 80.0f;
+        float life = 1.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 1.4f;
+        float size = 6.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 14.0f;
+
+        Color tint = (rand() % 3 == 0)
+            ? Color{ 192, 132, 252, 255 }
+            : Color{ 103, 232, 249, 255 };
+
+        bubbleParticles.push_back({
+            spawnPos,
+            { speedX, speedY },
+            life,
+            life,
+            size,
+            (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 6.2831853f,
+            3.0f + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 4.0f,
+            tint
+        });
+    }
+}
+
+void RaylibRenderer::updateAndDrawBubbles(float dt) {
+    if (bubbleBlurTimer > 0.0f) {
+        bubbleBlurTimer = std::max(0.0f, bubbleBlurTimer - dt);
+    }
+
+    for (size_t i = 0; i < bubbleParticles.size();) {
+        BubbleParticle& bp = bubbleParticles[i];
+        bp.life -= dt;
+
+        if (bp.life <= 0.0f) {
+            DrawCircleLines(static_cast<int>(bp.position.x), static_cast<int>(bp.position.y), bp.size * 1.25f, Fade(WHITE, 0.35f));
+            bubbleParticles[i] = bubbleParticles.back();
+            bubbleParticles.pop_back();
+        } else {
+            bp.wobblePhase += bp.wobbleSpeed * dt;
+            bp.velocity.y -= 25.0f * dt;
+            bp.velocity.x *= 0.96f;
+            bp.velocity.y *= 0.98f;
+
+            float wobbleX = std::sin(bp.wobblePhase) * 18.0f * dt;
+            bp.position.x += (bp.velocity.x * dt) + wobbleX;
+            bp.position.y += bp.velocity.y * dt;
+
+            float alpha = std::clamp(bp.life / bp.maxLife, 0.0f, 1.0f);
+
+            // 1. Translucent bubble sphere body
+            DrawCircleV(bp.position, bp.size, Fade(bp.tint, alpha * 0.40f));
+            // 2. Crisp outer boundary line
+            DrawCircleLines(static_cast<int>(bp.position.x), static_cast<int>(bp.position.y), bp.size, Fade(WHITE, alpha * 0.70f));
+            // 3. Primary specular highlight (top-left)
+            Vector2 hl1 = { bp.position.x - bp.size * 0.32f, bp.position.y - bp.size * 0.32f };
+            DrawCircleV(hl1, bp.size * 0.26f, Fade(WHITE, alpha * 0.85f));
+            // 4. Secondary micro specular reflection (bottom-right)
+            Vector2 hl2 = { bp.position.x + bp.size * 0.28f, bp.position.y + bp.size * 0.28f };
+            DrawCircleV(hl2, bp.size * 0.14f, Fade(WHITE, alpha * 0.55f));
+
+            ++i;
+        }
+    }
+}
+
+void RaylibRenderer::drawRadarSweep(Vector2 shipPos, const core::Board& board, float dt) {
+    if (!hasRadarActive) return;
+
+    radarSweepAngle += 220.0f * dt;
+    if (radarSweepAngle >= 360.0f) radarSweepAngle -= 360.0f;
+
+    float sweepRad = radarSweepAngle * DEG2RAD;
+    float maxRadarDist = 180.0f;
+
+    // Expanding sonar pulse wave
+    float wavePhase = std::fmod(static_cast<float>(GetTime()) * 0.65f, 1.0f);
+    float waveRadius = wavePhase * maxRadarDist;
+    float waveAlpha = (1.0f - wavePhase) * 0.45f;
+
+    DrawCircleLines(static_cast<int>(shipPos.x), static_cast<int>(shipPos.y), waveRadius, Fade(ui::Colors::Amber400, waveAlpha));
+    DrawCircleLines(static_cast<int>(shipPos.x), static_cast<int>(shipPos.y), maxRadarDist, Fade(ui::Colors::Amber400, 0.18f));
+
+    // Sweep line
+    Vector2 sweepEnd = {
+        shipPos.x + std::cos(sweepRad) * maxRadarDist,
+        shipPos.y + std::sin(sweepRad) * maxRadarDist
+    };
+    DrawLineEx(shipPos, sweepEnd, 1.5f, Fade(ui::Colors::Amber400, 0.40f));
+
+    // Check cells within 3 cells around the player in 2D
+    if (board.config.dim == 2) {
+        int cx = static_cast<int>(shipPos.x / cellSize);
+        int cy = static_cast<int>(shipPos.y / cellSize);
+        int bSize = board.config.size;
+
+        for (int dy = -3; dy <= 3; ++dy) {
+            for (int dx = -3; dx <= 3; ++dx) {
+                int nx = cx + dx;
+                int ny = cy + dy;
+                if (nx < 0 || nx >= bSize || ny < 0 || ny >= bSize) continue;
+
+                size_t cellIdx = static_cast<size_t>(ny * bSize + nx);
+                if (board.isBomb(cellIdx) && board.getState(cellIdx) == core::CellState::Hidden) {
+                    Vector2 cellPos = getCellWorldPosition(cellIdx, board);
+                    Vector2 center = { cellPos.x + cellSize * 0.5f, cellPos.y + cellSize * 0.5f };
+                    float dist = Vector2Distance(shipPos, center);
+                    if (dist <= maxRadarDist) {
+                        float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 8.0f);
+                        // Sonar warning blip diamond
+                        DrawPoly(center, 4, 8.0f, 45.0f, Fade(ui::Colors::Red500, 0.35f + 0.45f * pulse));
+                        DrawPolyLinesEx(center, 4, 9.0f, 45.0f, 1.5f, Fade(ui::Colors::Amber400, 0.8f));
+                    }
+                }
+            }
+        }
+    }
+}
+
 Color RaylibRenderer::getLaserColorForSkin(int skinId) {
     if (skinId >= 0 && skinId < static_cast<int>(cursorSkins.size())) {
         const std::string& name = cursorSkins[skinId].name;
@@ -1489,6 +1659,12 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         Vector2 arrowP3 = { outOfReachPos.x + (cellSize * 0.5f), badgeY + badgeH + 5.0f };
         DrawTriangle(arrowP1, arrowP3, arrowP2, Fade(ui::Colors::Red500, alpha));
     }
+
+    // Draw Tactical Radar Sonar Sweep in World Space
+    drawRadarSweep(localShip.position, board, frameDt);
+
+    // Draw Bubble Particles in World Space
+    updateAndDrawBubbles(frameDt);
 
     EndMode2D();
 

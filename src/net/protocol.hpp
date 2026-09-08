@@ -21,7 +21,8 @@ enum class PacketType : uint8_t {
     Sync = 5,
     Handshake = 6,
     Voice = 7,
-    Laser = 8
+    Laser = 8,
+    Bubble = 9
 };
 
 constexpr uint32_t HOST_PLAYER_ID = 0xFFFFFFFF;
@@ -100,6 +101,13 @@ struct PacketLaser {
     uint8_t laserType = 0; // 0 = skin laser, 1 = red flag laser
 };
 
+struct PacketBubble {
+    PacketType type = PacketType::Bubble;
+    uint32_t playerID = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
 struct PacketFlagSync {
     uint64_t index = 0;
     uint32_t placerId = 0;
@@ -134,7 +142,8 @@ enum class NetEventType : uint8_t {
     PlayerClick,
     BoardResult,
     SyncBoard,
-    LaserFired
+    LaserFired,
+    BubbleTriggered
 };
 
 struct NetEvent {
@@ -146,6 +155,7 @@ struct NetEvent {
     PacketResult resultData{};
     PacketSyncData syncData{};
     PacketLaser laserData{};
+    PacketBubble bubbleData{};
 };
 
 struct RemoteCursor {

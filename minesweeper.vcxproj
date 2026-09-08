@@ -116,6 +116,8 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\ui\widgets.cpp" />
     <ClCompile Include="src\ui\hud.cpp" />
     <ClCompile Include="src\ui\menu.cpp" />
+    <ClCompile Include="src\ui\shop_menu.cpp" />
+    <ClCompile Include="src\core\item.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app.hpp" />
@@ -124,6 +126,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\core\coord.hpp" />
     <ClInclude Include="src\core\bitboard.hpp" />
     <ClInclude Include="src\core\board.hpp" />
+    <ClInclude Include="src\core\item.hpp" />
     <ClInclude Include="src\core\save_manager.hpp" />
     <ClInclude Include="src\core\ship.hpp" />
     <ClInclude Include="src\core\ship_types.hpp" />
@@ -147,6 +150,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\ui\widgets.hpp" />
     <ClInclude Include="src\ui\hud.hpp" />
     <ClInclude Include="src\ui\menu.hpp" />
+    <ClInclude Include="src\ui\shop_menu.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -145,9 +145,40 @@ public:
     void endOffscreen();
     void drawOffscreenToScreen();
 
+    struct BubbleParticle {
+        Vector2 position;
+        Vector2 velocity;
+        float life;
+        float maxLife;
+        float size;
+        float wobblePhase;
+        float wobbleSpeed;
+        Color tint;
+    };
+    std::vector<BubbleParticle> bubbleParticles;
+    void emitBubbleBurst(Vector2 pos, int count = 45);
+    void emitBubbles(Vector2 pos, int count = 2);
+    void updateAndDrawBubbles(float dt);
+
+    float bubbleBlurTimer = 0.0f;
+    static constexpr float BUBBLE_BLUR_DURATION = 3.0f;
+    void triggerBubbleBlur(float duration = BUBBLE_BLUR_DURATION) { bubbleBlurTimer = duration; }
+
+    bool hasRadarActive = false;
+    void drawRadarSweep(Vector2 shipPos, const core::Board& board, float dt);
+
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
-    void clearParticles() { particles.clear(); localShip.exhaust.clear(); shopShip.exhaust.clear(); for (auto& s : shopShips) s.exhaust.clear(); lasers.clear(); clearOutOfReach(); clearFlagDrops(); }
+    void clearParticles() {
+        particles.clear();
+        bubbleParticles.clear();
+        localShip.exhaust.clear();
+        shopShip.exhaust.clear();
+        for (auto& s : shopShips) s.exhaust.clear();
+        lasers.clear();
+        clearOutOfReach();
+        clearFlagDrops();
+    }
 
 private:
     Texture2D flagTexture = {0};
@@ -161,6 +192,9 @@ private:
     Shader postProcessShader = {0};
     int ppTimeLoc = -1;
     int ppResLoc = -1;
+    int ppBubbleBlurLoc = -1;
+    int ppCrtEnabledLoc = -1;
+    float radarSweepAngle = 0.0f;
     RenderTexture2D offscreenTarget = {0};
 
     void initShaders();
