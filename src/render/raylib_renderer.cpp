@@ -1121,6 +1121,9 @@ void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
 
     // 3. Resolve all pairwise collisions at fixed timestep
     resolveShipCollisions();
+
+    // 4. Update held item spring physics at fixed timestep
+    updateHeldItemPhysics(localShip.position, localShip.velocity, fixedDt);
 }
 
 void RaylibRenderer::updatePhysics(Vector2 targetPos, float dt) {
@@ -1289,23 +1292,78 @@ void RaylibRenderer::drawRadarSweep(Vector2 shipPos, const core::Board& board, f
     }
 }
 
+void RaylibRenderer::updateHeldItemPhysics(Vector2 shipPos, Vector2 shipVel, float dt) {
+    if (!heldSlot || !heldSlot->occupied) {
+        heldItemInit = false;
+        return;
+    }
+
+    float distToShip = Vector2Distance(heldItemPos, shipPos);
+    if (!heldItemInit || distToShip > 200.0f) {
+        float rad = (localShip.angle - 90.0f) * DEG2RAD;
+        heldItemPos = { shipPos.x - std::cos(rad) * 26.0f, shipPos.y - std::sin(rad) * 26.0f };
+        heldItemVel = shipVel;
+        heldItemInit = true;
+        return;
+    }
+
+    Vector2 toItem = { heldItemPos.x - shipPos.x, heldItemPos.y - shipPos.y };
+    float dist = std::sqrt(toItem.x * toItem.x + toItem.y * toItem.y);
+    Vector2 u = (dist > 0.001f) ? Vector2{ toItem.x / dist, toItem.y / dist } : Vector2{ 0.0f, -1.0f };
+
+    const float restLen = 26.0f;
+    const float kSpring = 85.0f;
+    const float cRad = 10.0f;
+    const float cTan = 1.8f;
+
+    // Relative velocity of item to ship
+    Vector2 vRel = { heldItemVel.x - shipVel.x, heldItemVel.y - shipVel.y };
+    float vRadial = vRel.x * u.x + vRel.y * u.y;
+    Vector2 vTan = { vRel.x - vRadial * u.x, vRel.y - vRadial * u.y };
+
+    // Radial spring force (Hooke's law + radial damping)
+    float delta = std::clamp(dist - restLen, -12.0f, 40.0f);
+    float fRadial = -kSpring * delta - cRad * vRadial;
+
+    // Soft repulsive bumper if item gets too close to ship hull
+    if (dist < 18.0f) {
+        fRadial += 150.0f * (18.0f - dist);
+    }
+
+    // Tangential drag allowing free 360-degree orbital rotation
+    Vector2 accel = {
+        fRadial * u.x - cTan * vTan.x,
+        fRadial * u.y - cTan * vTan.y
+    };
+
+    heldItemVel.x += accel.x * dt;
+    heldItemVel.y += accel.y * dt;
+
+    heldItemPos.x += heldItemVel.x * dt;
+    heldItemPos.y += heldItemVel.y * dt;
+
+    // Hard clamp minimum distance to ship hull
+    float newDist = Vector2Distance(heldItemPos, shipPos);
+    if (newDist < 14.0f && newDist > 0.001f) {
+        Vector2 n = { (heldItemPos.x - shipPos.x) / newDist, (heldItemPos.y - shipPos.y) / newDist };
+        heldItemPos = { shipPos.x + n.x * 14.0f, shipPos.y + n.y * 14.0f };
+    }
+}
+
 void RaylibRenderer::drawHeldItem(Vector2 shipPos, float shipAngle, const core::InventorySlot* slot, bool isUsing) {
     if (!slot || !slot->occupied || slot->item.icon.id == 0) return;
 
-    float rad = shipAngle * DEG2RAD;
-    // Offset slightly behind and to the side of the ship
-    Vector2 sideOffset = {
-        -std::cos(rad) * 26.0f + std::sin(rad) * 22.0f,
-        -std::sin(rad) * 26.0f - std::cos(rad) * 22.0f
-    };
-    float bob = std::sin(static_cast<float>(GetTime()) * 3.5f) * 3.0f;
-    Vector2 itemPos = { shipPos.x + sideOffset.x, shipPos.y + sideOffset.y + bob };
+    Vector2 drawPos = heldItemPos;
+    if (!heldItemInit) {
+        float rad = (shipAngle - 90.0f) * DEG2RAD;
+        drawPos = { shipPos.x - std::cos(rad) * 26.0f, shipPos.y - std::sin(rad) * 26.0f };
+    }
 
     if (isUsing) {
         float jitterX = (-1.0f + static_cast<float>(rand() % 200) / 100.0f) * 1.5f;
         float jitterY = (-1.0f + static_cast<float>(rand() % 200) / 100.0f) * 1.5f;
-        itemPos.x += jitterX;
-        itemPos.y += jitterY;
+        drawPos.x += jitterX;
+        drawPos.y += jitterY;
     }
 
     Color tierCol = ui::Colors::Green400;
@@ -1313,27 +1371,28 @@ void RaylibRenderer::drawHeldItem(Vector2 shipPos, float shipAngle, const core::
     else if (slot->item.tier == core::ItemTier::Tier3) tierCol = ui::Colors::Purple400;
 
     // 1. Holographic tractor-beam tether connecting ship hull to item
-    DrawLineEx(shipPos, itemPos, 1.2f, Fade(tierCol, 0.40f));
-    DrawCircleV(itemPos, 2.5f, Fade(tierCol, 0.75f));
+    DrawLineEx(shipPos, drawPos, 1.0f, Fade(tierCol, 0.45f));
+    DrawCircleV(shipPos, 1.8f, Fade(tierCol, 0.65f));
+    DrawCircleV(drawPos, 2.0f, Fade(tierCol, 0.75f));
 
-    // 2. Soft glowing aura / halo
-    DrawCircleV(itemPos, 13.0f, Fade(tierCol, 0.20f));
-    DrawCircleLines(static_cast<int>(itemPos.x), static_cast<int>(itemPos.y), 13.5f, Fade(tierCol, 0.55f));
+    // 2. Soft glowing aura / halo (compact size)
+    DrawCircleV(drawPos, 8.5f, Fade(tierCol, 0.22f));
+    DrawCircleLines(static_cast<int>(drawPos.x), static_cast<int>(drawPos.y), 9.0f, Fade(tierCol, 0.60f));
 
-    // 3. Item icon (18x18)
-    const float iconDrawSize = 18.0f;
+    // 3. Item icon (12x12, reduced from 18x18)
+    const float iconDrawSize = 12.0f;
     Rectangle src = { 0.0f, 0.0f, static_cast<float>(slot->item.icon.width), static_cast<float>(slot->item.icon.height) };
-    Rectangle dst = { itemPos.x, itemPos.y, iconDrawSize, iconDrawSize };
+    Rectangle dst = { drawPos.x, drawPos.y, iconDrawSize, iconDrawSize };
     Vector2 origin = { iconDrawSize * 0.5f, iconDrawSize * 0.5f };
     DrawTexturePro(slot->item.icon, src, dst, origin, 0.0f, WHITE);
 
-    // 4. Durability gauge below item if applicable
+    // 4. Durability gauge below item if applicable (compact 12x2)
     if (slot->item.id == core::ItemId::Bubbles && slot->maxDurability > 0.0f) {
         float pct = std::clamp(slot->durability / slot->maxDurability, 0.0f, 1.0f);
-        float barW = 16.0f;
-        float barH = 3.0f;
-        Rectangle barBg = { itemPos.x - barW * 0.5f, itemPos.y + 10.0f, barW, barH };
-        Rectangle barFg = { itemPos.x - barW * 0.5f, itemPos.y + 10.0f, barW * pct, barH };
+        float barW = 12.0f;
+        float barH = 2.0f;
+        Rectangle barBg = { drawPos.x - barW * 0.5f, drawPos.y + 8.0f, barW, barH };
+        Rectangle barFg = { drawPos.x - barW * 0.5f, drawPos.y + 8.0f, barW * pct, barH };
         DrawRectangleRec(barBg, Fade(ui::Colors::Zinc900, 0.85f));
         Color dCol = (pct > 0.5f) ? ui::Colors::Green400 : (pct > 0.25f ? ui::Colors::Amber400 : ui::Colors::Red500);
         DrawRectangleRec(barFg, Fade(dCol, 0.90f));

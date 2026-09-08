@@ -182,6 +182,10 @@ public:
 
     const core::InventorySlot* heldSlot = nullptr;
     bool isUsingItem = false;
+    Vector2 heldItemPos = { 0.0f, 0.0f };
+    Vector2 heldItemVel = { 0.0f, 0.0f };
+    bool heldItemInit = false;
+    void updateHeldItemPhysics(Vector2 shipPos, Vector2 shipVel, float dt);
     void drawHeldItem(Vector2 shipPos, float shipAngle, const core::InventorySlot* slot, bool isUsing);
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
@@ -195,6 +199,7 @@ public:
         lasers.clear();
         clearOutOfReach();
         clearFlagDrops();
+        heldItemInit = false;
     }
 
 private:

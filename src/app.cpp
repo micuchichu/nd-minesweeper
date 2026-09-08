@@ -662,7 +662,7 @@ void App::update(float dt) {
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
 
-    // 1. Hotbar slot selection: keys 1-5 and mouse wheel
+    // 1. Hotbar slot selection: keys 1-5
     if (state == AppState::InGame) {
         if (shopProximityAlpha < 0.2f) {
             if (IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1)) playerInventory.selectedSlot = 0;
@@ -670,13 +670,6 @@ void App::update(float dt) {
             if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) playerInventory.selectedSlot = 2;
             if (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4)) playerInventory.selectedSlot = 3;
             if (IsKeyPressed(KEY_FIVE) || IsKeyPressed(KEY_KP_5)) playerInventory.selectedSlot = 4;
-        }
-
-        float wheel = GetMouseWheelMove();
-        if (wheel > 0.0f) {
-            playerInventory.selectedSlot = (playerInventory.selectedSlot + core::PlayerInventory::CAPACITY - 1) % core::PlayerInventory::CAPACITY;
-        } else if (wheel < 0.0f) {
-            playerInventory.selectedSlot = (playerInventory.selectedSlot + 1) % core::PlayerInventory::CAPACITY;
         }
     }
 

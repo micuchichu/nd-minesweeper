@@ -781,6 +781,88 @@ static int runItemTests() {
     }
     std::cout << "  [PASS] Test 12: Radar unsafe cell exact center alignment verified." << std::endl;
 
+    // 11. Spring physics tether initialization & rest distance
+    {
+        minesweeper::render::RaylibRenderer renderer;
+        renderer.localShip.position = { 100.0f, 100.0f };
+        renderer.localShip.angle = 90.0f;
+        renderer.localShip.velocity = { 0.0f, 0.0f };
+        renderer.heldSlot = &pInv.slots[0]; // Banana
+
+        // Step physics once
+        renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 120.0f);
+        if (!renderer.heldItemInit) {
+            std::cerr << "  [FAIL] Held item spring physics failed to initialize!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 18;
+        }
+
+        float initDist = Vector2Distance(renderer.heldItemPos, renderer.localShip.position);
+        if (std::abs(initDist - 26.0f) > 0.5f) {
+            std::cerr << "  [FAIL] Held item initial spring distance mismatch! Expected ~26.0, got " << initDist << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 19;
+        }
+        std::cout << "  [PASS] Test 13: Held item spring physics initialization and 26px rest tether verified." << std::endl;
+
+        // 12. Dynamic spring extension and Hookean restoration
+        // Move ship forward along X
+        for (int step = 0; step < 30; ++step) {
+            renderer.localShip.position.x += 400.0f * (1.0f / 120.0f);
+            renderer.localShip.velocity = { 400.0f, 0.0f };
+            renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 120.0f);
+        }
+        // Spring should be extended while pulling
+        float stretchDist = Vector2Distance(renderer.heldItemPos, renderer.localShip.position);
+        if (stretchDist <= 26.0f) {
+            std::cerr << "  [FAIL] Spring failed to stretch under ship forward velocity! dist: " << stretchDist << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 20;
+        }
+
+        // Let ship come to a stop and spring damp back to rest length
+        renderer.localShip.velocity = { 0.0f, 0.0f };
+        for (int step = 0; step < 240; ++step) {
+            renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 120.0f);
+        }
+        float settledDist = Vector2Distance(renderer.heldItemPos, renderer.localShip.position);
+        if (std::abs(settledDist - 26.0f) > 1.5f) {
+            std::cerr << "  [FAIL] Spring failed to damp back to rest distance! Got " << settledDist << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 21;
+        }
+        std::cout << "  [PASS] Test 14: Dynamic spring extension and damped return to rest verified." << std::endl;
+
+        // 13. Free 360-degree orbital rotation without angular lock
+        // Apply tangential impulse (orbiting around ship)
+        renderer.heldItemVel.y += 200.0f;
+        float prevAngle = std::atan2(renderer.heldItemPos.y - renderer.localShip.position.y,
+                                     renderer.heldItemPos.x - renderer.localShip.position.x);
+        float totalAngRot = 0.0f;
+        for (int step = 0; step < 120; ++step) {
+            renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 120.0f);
+            float curAngle = std::atan2(renderer.heldItemPos.y - renderer.localShip.position.y,
+                                        renderer.heldItemPos.x - renderer.localShip.position.x);
+            float dTheta = curAngle - prevAngle;
+            while (dTheta > 3.14159265f) dTheta -= 2.0f * 3.14159265f;
+            while (dTheta < -3.14159265f) dTheta += 2.0f * 3.14159265f;
+            totalAngRot += std::abs(dTheta);
+            prevAngle = curAngle;
+        }
+        // Ship angle remained fixed, yet item orbited substantially (free spin)
+        if (totalAngRot < 1.0f) {
+            std::cerr << "  [FAIL] Held item failed to spin freely around player! Total rotation: " << totalAngRot << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 22;
+        }
+        std::cout << "  [PASS] Test 15: Free 360-degree orbital spinning around player verified (rotated " << totalAngRot << " rad)." << std::endl;
+    }
+
     catalog.shutdown();
     CloseWindow();
     std::cout << "[TEST-ITEMS] ALL ITEM TESTS PASSED!" << std::endl;
