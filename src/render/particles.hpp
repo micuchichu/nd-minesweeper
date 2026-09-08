@@ -14,20 +14,16 @@ struct Particle {
     float size;
     float rotation;
     float rotSpeed;
-    bool isSquare = false;
 };
 
 class ParticleSystem {
 public:
     std::vector<Particle> particles;
-    Texture2D particleTexture = { 0 };
 
     ParticleSystem(size_t reserveCount = 4096);
-    void setTexture(Texture2D tex) { particleTexture = tex; }
 
     void emitExplosion(Vector2 pos, int count, Color color);
     void emitDebris(Vector2 pos, int count, Color color);
-    void emitCellUncover(Vector2 pos, int count = 20, Color color = WHITE);
     void updateAndDraw(float dt);
     void clear();
 

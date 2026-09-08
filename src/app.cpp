@@ -382,14 +382,8 @@ void App::handleNetEvents() {
                             if (res == core::RevealResult::HitBomb) {
                                 renderer.emitExplosion(pos, ui::Colors::CellFlag);
                             } else {
-                                renderer.emitCellUncover(pos, 22);
-                                size_t cascadeCount = 0;
+                                renderer.emitDebris(pos, ui::Colors::Zinc400);
                                 for (size_t cIdx : newlyRevealed) {
-                                    if (cIdx != idx && cascadeCount < 35) {
-                                        Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                        renderer.emitCellUncover(cPos, 8);
-                                        ++cascadeCount;
-                                    }
                                     if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                         Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
                                         scrapSystem.spawn(cPos);
@@ -414,7 +408,7 @@ void App::handleNetEvents() {
                                     if (board.isBomb(revIdx)) {
                                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                     } else {
-                                        renderer.emitCellUncover(pos, 16);
+                                        renderer.emitDebris(pos, ui::Colors::Zinc400);
                                         if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
                                             scrapSystem.spawn(pos);
                                         }
@@ -480,14 +474,8 @@ void App::handleNetEvents() {
                     if (res == core::RevealResult::HitBomb) {
                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
                     } else {
-                        renderer.emitCellUncover(pos, 22);
-                        size_t cascadeCount = 0;
+                        renderer.emitDebris(pos, ui::Colors::Zinc400);
                         for (size_t cIdx : newlyRevealed) {
-                            if (cIdx != idx && cascadeCount < 35) {
-                                Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                renderer.emitCellUncover(cPos, 8);
-                                ++cascadeCount;
-                            }
                             if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                 Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
                                 scrapSystem.spawn(cPos);
@@ -860,14 +848,8 @@ void App::update(float dt) {
                                 if (res == core::RevealResult::HitBomb) {
                                     renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                 } else {
-                                    renderer.emitCellUncover(pos, 22);
-                                    size_t cascadeCount = 0;
+                                    renderer.emitDebris(pos, ui::Colors::Zinc400);
                                     for (size_t cIdx : newlyRevealed) {
-                                        if (cIdx != hIdx && cascadeCount < 35) {
-                                            Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                            renderer.emitCellUncover(cPos, 8);
-                                            ++cascadeCount;
-                                        }
                                         if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                             Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
                                             scrapSystem.spawn(cPos);
@@ -921,14 +903,8 @@ void App::update(float dt) {
                             if (res == core::RevealResult::HitBomb) {
                                 renderer.emitExplosion(pos, ui::Colors::CellFlag);
                             } else {
-                                renderer.emitCellUncover(pos, 22);
-                                size_t cascadeCount = 0;
+                                renderer.emitDebris(pos, ui::Colors::Zinc400);
                                 for (size_t cIdx : newlyRevealed) {
-                                    if (cIdx != pIdx && cascadeCount < 35) {
-                                        Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
-                                        renderer.emitCellUncover(cPos, 8);
-                                        ++cascadeCount;
-                                    }
                                     if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                         Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
                                         scrapSystem.spawn(cPos);
@@ -1043,7 +1019,7 @@ void App::update(float dt) {
                                         if (board.isBomb(revIdx)) {
                                             renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                         } else {
-                                            renderer.emitCellUncover(pos, 16);
+                                            renderer.emitDebris(pos, ui::Colors::Zinc400);
                                             if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
                                                 scrapSystem.spawn(pos);
                                             }

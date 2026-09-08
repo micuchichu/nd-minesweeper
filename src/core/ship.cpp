@@ -282,23 +282,12 @@ Vector2 Ship::getNosePosition() const {
 }
 
 void Ship::drawExhaust() const {
-    bool hasTex = (sharedExhaustTexture.id != 0);
-    Rectangle src = { 0.0f, 0.0f, static_cast<float>(sharedExhaustTexture.width), static_cast<float>(sharedExhaustTexture.height) };
-
     for (const auto& p : exhaust) {
         float alpha = p.life / p.maxLife;
         Color c = p.color;
-        c.a = static_cast<unsigned char>(alpha * 220.0f);
+        c.a = static_cast<unsigned char>(alpha * 200.0f);
         float sz = p.size * (0.4f + 0.6f * alpha);
-
-        if (hasTex) {
-            float drawSz = sz * 1.6f;
-            Rectangle dst = { p.pos.x, p.pos.y, drawSz, drawSz };
-            Vector2 orig = { drawSz * 0.5f, drawSz * 0.5f };
-            DrawTexturePro(sharedExhaustTexture, src, dst, orig, 45.0f, c);
-        } else {
-            DrawRectanglePro({ p.pos.x, p.pos.y, sz, sz }, { sz * 0.5f, sz * 0.5f }, 45.0f, c);
-        }
+        DrawRectanglePro({ p.pos.x, p.pos.y, sz, sz }, { sz * 0.5f, sz * 0.5f }, 45.0f, c);
     }
 }
 

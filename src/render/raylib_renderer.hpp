@@ -146,9 +146,7 @@ public:
     void drawOffscreenToScreen();
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
-    void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 12, col); }
-    void emitCellUncover(Vector2 pos, int count = 22) { particles.emitCellUncover(pos, count); }
-    void emitCellUncover(Vector2 pos, Color col, int count = 22) { particles.emitCellUncover(pos, count, col); }
+    void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
     void clearParticles() { particles.clear(); localShip.exhaust.clear(); shopShip.exhaust.clear(); for (auto& s : shopShips) s.exhaust.clear(); lasers.clear(); clearOutOfReach(); clearFlagDrops(); }
 
 private:

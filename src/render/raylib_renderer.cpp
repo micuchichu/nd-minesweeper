@@ -112,9 +112,8 @@ void RaylibRenderer::init() {
     ProceduralTextures::instance().init(cellSize, cellMargin);
     initCellTextures();
 
-    // Link shared procedural textures to Ship and ParticleSystem
+    // Link shared procedural textures to Ship
     core::Ship::setSharedTextures(ProceduralTextures::instance().particleTexture, ProceduralTextures::instance().glowTexture);
-    particles.setTexture(ProceduralTextures::instance().particleTexture);
 
     // Load custom flag skins from assets/skins/flags (or fallback to assets/flag.png)
     flagSkins.clear();
