@@ -24,6 +24,14 @@ public:
 
     float middleDragDistance = 0.0f;
     bool isMiddleDragging() const { return middleDragDistance > 5.0f; }
+
+    bool enableEdgeFollow = true;
+    bool manualPanActive = false;
+    float edgeMarginRatio = 0.22f;
+    float followSpeed = 6.5f;
+
+    void followShip(Vector2 shipWorldPos, float dt, float customScreenW = 0.0f, float customScreenH = 0.0f);
+    void centerOn(Vector2 worldPos, float customScreenW = 0.0f, float customScreenH = 0.0f);
 };
 
 } // namespace minesweeper::render

@@ -1,6 +1,7 @@
 #include "app.hpp"
 #include "core/ship.hpp"
 #include "core/ship_config.hpp"
+#include "render/camera_controller.hpp"
 #include <string>
 #include <iostream>
 #include <cassert>
@@ -137,10 +138,102 @@ static int runCapsuleTests() {
     return 0;
 }
 
+static int runCameraTests() {
+    std::cout << "[TEST-CAMERA] Starting Smooth Camera Edge Follow Tests..." << std::endl;
+
+    const float sw = 1280.0f;
+    const float sh = 720.0f;
+
+    // Test 1: Deadzone check (ship in center of screen produces no camera movement)
+    {
+        minesweeper::render::CameraController cc;
+        cc.reset({ 0.0f, 0.0f }, 1.0f);
+        Vector2 shipPos = { 640.0f, 360.0f };
+        Vector2 targetBefore = cc.camera.target;
+        cc.followShip(shipPos, 0.016f, sw, sh);
+        if (std::abs(cc.camera.target.x - targetBefore.x) > 0.0001f ||
+            std::abs(cc.camera.target.y - targetBefore.y) > 0.0001f) {
+            std::cerr << "  [FAIL] Test 1: Center deadzone caused unexpected camera movement!" << std::endl;
+            return 1;
+        }
+        std::cout << "  [PASS] Test 1: Center deadzone produces zero camera movement." << std::endl;
+    }
+
+    // Test 2: Right edge penetration causes camera to smoothly pan right
+    {
+        minesweeper::render::CameraController cc;
+        cc.reset({ 0.0f, 0.0f }, 1.0f);
+        Vector2 shipPos = { 1200.0f, 360.0f };
+        cc.followShip(shipPos, 0.016f, sw, sh);
+        if (cc.camera.target.x <= 0.0f) {
+            std::cerr << "  [FAIL] Test 2: Right edge penetration did not pan camera right!" << std::endl;
+            return 2;
+        }
+        std::cout << "  [PASS] Test 2: Right edge penetration smoothly pans camera right." << std::endl;
+    }
+
+    // Test 3: Left edge penetration causes camera to smoothly pan left
+    {
+        minesweeper::render::CameraController cc;
+        cc.reset({ 500.0f, 0.0f }, 1.0f);
+        Vector2 shipPos = { 600.0f, 360.0f };
+        cc.followShip(shipPos, 0.016f, sw, sh);
+        if (cc.camera.target.x >= 500.0f) {
+            std::cerr << "  [FAIL] Test 3: Left edge penetration did not pan camera left!" << std::endl;
+            return 3;
+        }
+        std::cout << "  [PASS] Test 3: Left edge penetration smoothly pans camera left." << std::endl;
+    }
+
+    // Test 4: centerOn precisely centers worldPos on screen
+    {
+        minesweeper::render::CameraController cc;
+        cc.reset({ 0.0f, 0.0f }, 2.0f);
+        Vector2 worldPos = { 300.0f, 400.0f };
+        cc.centerOn(worldPos, sw, sh);
+        Vector2 screenPos = cc.getWorldToScreen(worldPos);
+        if (std::abs(screenPos.x - sw * 0.5f) > 0.01f ||
+            std::abs(screenPos.y - sh * 0.5f) > 0.01f) {
+            std::cerr << "  [FAIL] Test 4: centerOn did not place worldPos at exact screen center!" << std::endl;
+            return 4;
+        }
+        std::cout << "  [PASS] Test 4: centerOn precisely centers world coordinate." << std::endl;
+    }
+
+    // Test 5: Manual pan suspension prevents follow until ship re-enters screen
+    {
+        minesweeper::render::CameraController cc;
+        cc.reset({ 0.0f, 0.0f }, 1.0f);
+        cc.manualPanActive = true;
+        Vector2 shipPos = { -500.0f, 360.0f };
+        Vector2 targetBefore = cc.camera.target;
+        cc.followShip(shipPos, 0.016f, sw, sh);
+        if (cc.camera.target.x != targetBefore.x) {
+            std::cerr << "  [FAIL] Test 5: manualPanActive allowed camera to follow off-screen ship!" << std::endl;
+            return 5;
+        }
+        Vector2 shipOnScreen = { 100.0f, 360.0f };
+        cc.followShip(shipOnScreen, 0.016f, sw, sh);
+        if (cc.manualPanActive) {
+            std::cerr << "  [FAIL] Test 5: manualPanActive did not reset after ship returned to screen!" << std::endl;
+            return 5;
+        }
+        std::cout << "  [PASS] Test 5: Manual pan suspension and viewport re-entry verified." << std::endl;
+    }
+
+    std::cout << "[TEST-CAMERA] ALL CAMERA TESTS PASSED!" << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--test-capsule") {
-            return runCapsuleTests();
+            int r1 = runCapsuleTests();
+            int r2 = runCameraTests();
+            return (r1 != 0) ? r1 : r2;
+        }
+        if (std::string(argv[i]) == "--test-camera") {
+            return runCameraTests();
         }
     }
 
@@ -148,6 +241,7 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--test-shop") {
             runCapsuleTests();
+            runCameraTests();
             app.testShopMode = true;
         }
         else if (std::string(argv[i]) == "--test-customize") {

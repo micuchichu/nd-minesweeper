@@ -594,8 +594,14 @@ void App::update(float dt) {
     renderer.isLocalSpeaking = voiceMgr.isTransmitting();
 
     if (state == AppState::InGame) {
-        // Camera input
+        // Camera input & smooth edge follow
         renderer.camera.handleInput(!hud.showLargeGridWarning);
+        if (!hud.showLargeGridWarning && IsKeyPressed(KEY_SPACE) && renderer.localShip.isInitialized) {
+            renderer.camera.centerOn(renderer.localShip.position);
+        }
+        if (!testShopMode && !hud.showLargeGridWarning && renderer.localShip.isInitialized) {
+            renderer.camera.followShip(renderer.localShip.position, dt);
+        }
 
         // Multiplayer Voice Streaming
         if (net.role != net::NetRole::Offline) {
