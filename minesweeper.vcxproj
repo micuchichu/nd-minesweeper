@@ -101,6 +101,9 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\core\board.cpp" />
     <ClCompile Include="src\core\save_manager.cpp" />
     <ClCompile Include="src\core\ship.cpp" />
+    <ClCompile Include="src\core\scout_ship.cpp" />
+    <ClCompile Include="src\core\merchant_ship.cpp" />
+    <ClCompile Include="src\core\shop_ship.cpp" />
     <ClCompile Include="src\net\network_manager.cpp" />
     <ClCompile Include="src\net\steam_manager.cpp" />
     <ClCompile Include="src\render\asset_manager.cpp" />
@@ -122,6 +125,11 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\core\board.hpp" />
     <ClInclude Include="src\core\save_manager.hpp" />
     <ClInclude Include="src\core\ship.hpp" />
+    <ClInclude Include="src\core\ship_types.hpp" />
+    <ClInclude Include="src\core\ship_base.hpp" />
+    <ClInclude Include="src\core\scout_ship.hpp" />
+    <ClInclude Include="src\core\merchant_ship.hpp" />
+    <ClInclude Include="src\core\shop_ship.hpp" />
     <ClInclude Include="src\core\ship_config.hpp" />
     <ClInclude Include="src\core\rng.hpp" />
     <ClInclude Include="src\net\protocol.hpp" />
