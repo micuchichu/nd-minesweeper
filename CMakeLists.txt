@@ -21,6 +21,7 @@ set(SOURCES
     src/render/camera_controller.cpp
     src/render/particles.cpp
     src/render/raylib_renderer.cpp
+    src/render/procedural_textures.cpp
     src/render/scrap_system.cpp
     src/ui/widgets.cpp
     src/ui/hud.cpp

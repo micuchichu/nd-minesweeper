@@ -2,6 +2,7 @@
 #include "core/ship.hpp"
 #include "core/ship_config.hpp"
 #include "render/camera_controller.hpp"
+#include "render/procedural_textures.hpp"
 #include <string>
 #include <iostream>
 #include <cassert>
@@ -534,21 +535,80 @@ static int runControlTests() {
     return 0;
 }
 
+static int runTextureTests() {
+    std::cout << "[TEST-TEXTURES] Starting Procedural Texture Unit Tests..." << std::endl;
+    SetTraceLogLevel(LOG_WARNING);
+    SetConfigFlags(FLAG_WINDOW_HIDDEN);
+    InitWindow(100, 100, "Texture Unit Test");
+
+    minesweeper::render::ProceduralTextures& pt = minesweeper::render::ProceduralTextures::instance();
+    pt.init(30.0f, 2.0f);
+
+    if (!pt.isInitialized()) {
+        std::cerr << "  [FAIL] ProceduralTextures failed to initialize!" << std::endl;
+        CloseWindow();
+        return 1;
+    }
+    if (pt.shadowTexture.id == 0 || pt.particleTexture.id == 0 || pt.glowTexture.id == 0 ||
+        pt.laserBeamTexture.id == 0 || pt.safeStartReticleRT.id == 0 || pt.panelNPatchTexture.id == 0 ||
+        pt.buttonNPatchNormal.id == 0 || pt.buttonNPatchHover.id == 0 || pt.buttonNPatchLocked.id == 0) {
+        std::cerr << "  [FAIL] One or more texture IDs are 0!" << std::endl;
+        CloseWindow();
+        return 2;
+    }
+    std::cout << "  [PASS] Test 1: All procedural textures and render textures initialized with valid GPU IDs." << std::endl;
+
+    // Check dynamic cell resize
+    pt.updateCellSize(40.0f, 3.0f);
+    if (pt.safeStartReticleRT.id == 0) {
+        std::cerr << "  [FAIL] Safe start reticle RT invalid after cell resize!" << std::endl;
+        CloseWindow();
+        return 3;
+    }
+    std::cout << "  [PASS] Test 2: Safe start reticle RT successfully updated on cell resize." << std::endl;
+
+    // Check Ship shared textures wiring
+    minesweeper::core::Ship::setSharedTextures(pt.particleTexture, pt.glowTexture);
+    if (minesweeper::core::Ship::sharedExhaustTexture.id == 0 || minesweeper::core::Ship::sharedGlowTexture.id == 0) {
+        std::cerr << "  [FAIL] Ship shared textures not set!" << std::endl;
+        CloseWindow();
+        return 4;
+    }
+    std::cout << "  [PASS] Test 3: Ship shared textures successfully assigned." << std::endl;
+
+    pt.cleanup();
+    if (pt.isInitialized()) {
+        std::cerr << "  [FAIL] ProceduralTextures still initialized after cleanup!" << std::endl;
+        CloseWindow();
+        return 5;
+    }
+    std::cout << "  [PASS] Test 4: ProceduralTextures cleanup successfully reset state." << std::endl;
+
+    CloseWindow();
+    std::cout << "[TEST-TEXTURES] ALL TEXTURE TESTS PASSED!" << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--test-capsule") {
             int r1 = runCapsuleTests();
             int r2 = runCameraTests();
             int r3 = runControlTests();
+            int r4 = runTextureTests();
             if (r1 != 0) return r1;
             if (r2 != 0) return r2;
-            return r3;
+            if (r3 != 0) return r3;
+            return r4;
         }
         if (std::string(argv[i]) == "--test-camera") {
             return runCameraTests();
         }
         if (std::string(argv[i]) == "--test-controls") {
             return runControlTests();
+        }
+        if (std::string(argv[i]) == "--test-textures") {
+            return runTextureTests();
         }
     }
 
@@ -558,6 +618,7 @@ int main(int argc, char* argv[]) {
             runCapsuleTests();
             runCameraTests();
             runControlTests();
+            runTextureTests();
             app.testShopMode = true;
         }
         else if (std::string(argv[i]) == "--test-customize") {

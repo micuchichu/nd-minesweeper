@@ -162,6 +162,10 @@ private:
     int ppTimeLoc = -1;
     int ppResLoc = -1;
     RenderTexture2D offscreenTarget = {0};
+    RenderTexture2D previewCardRTs[8] = { {0}, {0}, {0}, {0}, {0}, {0}, {0}, {0} };
+    int64_t lastPreviewHoveredIndex = -1;
+    size_t lastPreviewRevealedCount = 0;
+    size_t lastPreviewFlagCount = 0;
 
     void initShaders();
     void initCellTextures();

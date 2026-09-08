@@ -255,7 +255,14 @@ void ScrapSystem::drawWorld(const Camera2D& camera) {
         float shadowAlpha = std::clamp(0.40f - (h * 0.005f), 0.08f, 0.40f);
         float shadowW = std::max(5.0f, 15.0f - (h * 0.12f));
         float shadowH = shadowW * 0.45f;
-        DrawEllipse(static_cast<int>(it.basePos.x), static_cast<int>(it.basePos.y + 6.0f), shadowW, shadowH, Fade(BLACK, shadowAlpha));
+        if (shadowTexture.id != 0) {
+            Rectangle shSrc = { 0.0f, 0.0f, static_cast<float>(shadowTexture.width), static_cast<float>(shadowTexture.height) };
+            Rectangle shDst = { it.basePos.x, it.basePos.y + 6.0f, shadowW * 2.0f, shadowH * 2.0f };
+            Vector2 shOrig = { shadowW, shadowH };
+            DrawTexturePro(shadowTexture, shSrc, shDst, shOrig, 0.0f, Fade(BLACK, shadowAlpha));
+        } else {
+            DrawEllipse(static_cast<int>(it.basePos.x), static_cast<int>(it.basePos.y + 6.0f), shadowW, shadowH, Fade(BLACK, shadowAlpha));
+        }
 
         // Squash and stretch
         float scaleX = 1.0f;
@@ -279,8 +286,14 @@ void ScrapSystem::drawWorld(const Camera2D& camera) {
         // Subtle yellow/amber halo glow when settled
         if (it.state == ScrapState::Settled) {
             float pulse = 0.5f + 0.5f * std::sin(it.stateTimer * 9.0f);
-            DrawCircle(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 13.0f + pulse * 4.0f, Fade(ui::Colors::Amber400, 0.12f * pulse));
-            DrawCircleLines(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 14.0f + pulse * 5.0f, Fade(ui::Colors::Amber400, 0.25f * pulse));
+            if (glowTexture.id != 0) {
+                float gSize = (14.0f + pulse * 5.0f) * 2.0f;
+                Rectangle gSrc = { 0.0f, 0.0f, static_cast<float>(glowTexture.width), static_cast<float>(glowTexture.height) };
+                DrawTexturePro(glowTexture, gSrc, { it.currentPos.x, it.currentPos.y, gSize, gSize }, { gSize * 0.5f, gSize * 0.5f }, 0.0f, Fade(ui::Colors::Amber400, 0.35f * pulse));
+            } else {
+                DrawCircle(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 13.0f + pulse * 4.0f, Fade(ui::Colors::Amber400, 0.12f * pulse));
+                DrawCircleLines(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 14.0f + pulse * 5.0f, Fade(ui::Colors::Amber400, 0.25f * pulse));
+            }
         }
 
         DrawTexturePro(texture, src, dst, origin, it.rotation, WHITE);
@@ -290,7 +303,13 @@ void ScrapSystem::drawWorld(const Camera2D& camera) {
     for (const auto& s : sparks) {
         float alpha = std::clamp(s.life / s.maxLife, 0.0f, 1.0f);
         Color c = Fade(s.color, alpha);
-        DrawRectanglePro({ s.pos.x, s.pos.y, s.size, s.size }, { s.size * 0.5f, s.size * 0.5f }, 45.0f, c);
+        if (sparkTexture.id != 0) {
+            float spSz = s.size * 1.5f;
+            Rectangle spSrc = { 0.0f, 0.0f, static_cast<float>(sparkTexture.width), static_cast<float>(sparkTexture.height) };
+            DrawTexturePro(sparkTexture, spSrc, { s.pos.x, s.pos.y, spSz, spSz }, { spSz * 0.5f, spSz * 0.5f }, 45.0f, c);
+        } else {
+            DrawRectanglePro({ s.pos.x, s.pos.y, s.size, s.size }, { s.size * 0.5f, s.size * 0.5f }, 45.0f, c);
+        }
     }
 
     // 3. Draw floating "+1" text
@@ -335,7 +354,13 @@ void ScrapSystem::drawScreen(float guiScale) {
         Vector2 origin = { drawSize * 0.5f, drawSize * 0.5f };
 
         // Gold trail glow
-        DrawCircle(static_cast<int>(cur.x), static_cast<int>(cur.y), 9.0f, Fade(ui::Colors::Amber400, 0.25f * (1.0f - ease)));
+        if (glowTexture.id != 0) {
+            float gSize = 22.0f;
+            Rectangle gSrc = { 0.0f, 0.0f, static_cast<float>(glowTexture.width), static_cast<float>(glowTexture.height) };
+            DrawTexturePro(glowTexture, gSrc, { cur.x, cur.y, gSize, gSize }, { gSize * 0.5f, gSize * 0.5f }, 0.0f, Fade(ui::Colors::Amber400, 0.30f * (1.0f - ease)));
+        } else {
+            DrawCircle(static_cast<int>(cur.x), static_cast<int>(cur.y), 9.0f, Fade(ui::Colors::Amber400, 0.25f * (1.0f - ease)));
+        }
         DrawTexturePro(texture, src, dst, origin, t * 360.0f, WHITE);
     }
 }

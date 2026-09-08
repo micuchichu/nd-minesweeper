@@ -51,6 +51,14 @@ struct ScrapSpark {
 class ScrapSystem {
 public:
     Texture2D texture{};
+    Texture2D shadowTexture{};
+    Texture2D glowTexture{};
+    Texture2D sparkTexture{};
+    void setSharedTextures(Texture2D shadow, Texture2D glow, Texture2D spark) {
+        shadowTexture = shadow;
+        glowTexture = glow;
+        sparkTexture = spark;
+    }
     std::vector<ScrapItem> items;
     std::vector<FloatingText> floatingTexts;
     std::vector<ScrapSpark> sparks;

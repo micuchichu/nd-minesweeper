@@ -143,16 +143,21 @@ void Ship::updateExhaust(float dt) {
     }
 }
 
-void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
-    //if (isMoving) {
-    //    // Triangles removed as requested: only particle embers stream when moving (rendered in drawExhaust)
-    //    return;
-    //}
+Texture2D Ship::sharedExhaustTexture = { 0 };
+Texture2D Ship::sharedGlowTexture = { 0 };
 
+void Ship::setSharedTextures(Texture2D exhaustTex, Texture2D glowTex) {
+    sharedExhaustTexture = exhaustTex;
+    sharedGlowTexture = glowTex;
+}
+
+void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
     float theta = baseAngle * DEG2RAD;
     float cosA = std::cos(theta);
     float sinA = std::sin(theta);
     float t = static_cast<float>(GetTime());
+    bool hasGlow = (sharedGlowTexture.id != 0);
+    Rectangle gSrc = { 0.0f, 0.0f, static_cast<float>(sharedGlowTexture.width), static_cast<float>(sharedGlowTexture.height) };
 
     for (size_t i = 0; i < thrusters.size(); ++i) {
         const auto& th = thrusters[i];
@@ -163,12 +168,23 @@ void Ship::drawThrusters(Vector2 drawPos, float baseAngle) const {
             drawPos.y + (th.offset.x * sinA + th.offset.y * cosA) * scale
         };
 
-        // While idling: glowing circles at the back of thrusters
+        // While idling: glowing circles / radial flares at the back of thrusters
         float idlePulse = 0.4f + 0.4f * std::sin(t * 5.0f + static_cast<float>(i) * 1.5f);
         float r = (th.nozzleWidth * 0.65f * scale) + idlePulse;
         float currSpeedNorm = Vector2Length(velocity) / (speed * 0.6f);
-        DrawCircleV(worldNozzle, r, Fade(Fade(th.outerColor, 0.85f), 1.0f - currSpeedNorm));
-        DrawCircleV(worldNozzle, r * 0.5f, Fade(Fade(th.innerColor, 0.65f), 1.0f - currSpeedNorm));
+        float glowAlpha = std::clamp(1.0f - currSpeedNorm, 0.0f, 1.0f);
+
+        if (glowAlpha > 0.01f) {
+            if (hasGlow) {
+                float gSize = r * 3.2f;
+                Rectangle gDst = { worldNozzle.x, worldNozzle.y, gSize, gSize };
+                Vector2 gOrig = { gSize * 0.5f, gSize * 0.5f };
+                DrawTexturePro(sharedGlowTexture, gSrc, gDst, gOrig, 0.0f, Fade(Fade(th.outerColor, 0.95f), glowAlpha));
+            } else {
+                DrawCircleV(worldNozzle, r, Fade(Fade(th.outerColor, 0.85f), glowAlpha));
+                DrawCircleV(worldNozzle, r * 0.5f, Fade(Fade(th.innerColor, 0.65f), glowAlpha));
+            }
+        }
     }
 }
 
@@ -266,12 +282,23 @@ Vector2 Ship::getNosePosition() const {
 }
 
 void Ship::drawExhaust() const {
+    bool hasTex = (sharedExhaustTexture.id != 0);
+    Rectangle src = { 0.0f, 0.0f, static_cast<float>(sharedExhaustTexture.width), static_cast<float>(sharedExhaustTexture.height) };
+
     for (const auto& p : exhaust) {
         float alpha = p.life / p.maxLife;
         Color c = p.color;
-        c.a = static_cast<unsigned char>(alpha * 200.0f);
+        c.a = static_cast<unsigned char>(alpha * 220.0f);
         float sz = p.size * (0.4f + 0.6f * alpha);
-        DrawRectanglePro({ p.pos.x, p.pos.y, sz, sz }, { sz * 0.5f, sz * 0.5f }, 45.0f, c);
+
+        if (hasTex) {
+            float drawSz = sz * 1.6f;
+            Rectangle dst = { p.pos.x, p.pos.y, drawSz, drawSz };
+            Vector2 orig = { drawSz * 0.5f, drawSz * 0.5f };
+            DrawTexturePro(sharedExhaustTexture, src, dst, orig, 45.0f, c);
+        } else {
+            DrawRectanglePro({ p.pos.x, p.pos.y, sz, sz }, { sz * 0.5f, sz * 0.5f }, 45.0f, c);
+        }
     }
 }
 

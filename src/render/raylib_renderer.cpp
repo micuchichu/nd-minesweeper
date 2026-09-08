@@ -1,5 +1,6 @@
 #include "raylib_renderer.hpp"
 #include "asset_manager.hpp"
+#include "procedural_textures.hpp"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -108,7 +109,12 @@ RaylibRenderer::~RaylibRenderer() {
 
 void RaylibRenderer::init() {
     initShaders();
+    ProceduralTextures::instance().init(cellSize, cellMargin);
     initCellTextures();
+
+    // Link shared procedural textures to Ship and ParticleSystem
+    core::Ship::setSharedTextures(ProceduralTextures::instance().particleTexture, ProceduralTextures::instance().glowTexture);
+    particles.setTexture(ProceduralTextures::instance().particleTexture);
 
     // Load custom flag skins from assets/skins/flags (or fallback to assets/flag.png)
     flagSkins.clear();
@@ -406,6 +412,7 @@ void RaylibRenderer::initCellTextures() {
     if (gridShader.id != 0 && gridShaderCellSizeLoc >= 0) {
         SetShaderValue(gridShader, gridShaderCellSizeLoc, &cellSize, SHADER_UNIFORM_FLOAT);
     }
+    ProceduralTextures::instance().updateCellSize(cellSize, cellMargin);
 }
 
 void RaylibRenderer::cleanup() {
@@ -420,6 +427,15 @@ void RaylibRenderer::unloadAssets() {
     if (offscreenTarget.id != 0) { UnloadRenderTexture(offscreenTarget); offscreenTarget = {0}; }
     if (gridShader.id != 0) { UnloadShader(gridShader); gridShader = {0}; }
     if (postProcessShader.id != 0) { UnloadShader(postProcessShader); postProcessShader = {0}; }
+
+    for (int i = 0; i < 8; ++i) {
+        if (previewCardRTs[i].id != 0) {
+            UnloadRenderTexture(previewCardRTs[i]);
+            previewCardRTs[i] = { 0 };
+        }
+    }
+    lastPreviewHoveredIndex = -1;
+    ProceduralTextures::instance().cleanup();
 
     for (auto& s : cursorSkins) {
         if (s.texture.id != 0) {
@@ -715,6 +731,10 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + 2), 22, ui::Colors::Red700);
                 }
                 else if (state == core::CellState::Revealed) {
+                    if (cellRevealRT.id != 0) {
+                        Rectangle src = { 0.0f, 0.0f, static_cast<float>(cellRevealRT.texture.width), -static_cast<float>(cellRevealRT.texture.height) };
+                        DrawTexturePro(cellRevealRT.texture, src, cellRect, { 0.0f, 0.0f }, 0.0f, WHITE);
+                    }
                     if (count > 0) {
                         Color tc = ui::getNeighborColor(count);
                         const char* numStr = TextFormat("%d", count);
@@ -771,9 +791,18 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                             float baseX = cellRect.x + 4.0f * cellRect.width / 16.0f;
                             float baseY = cellRect.y + 12.0f * cellRect.height / 16.0f;
 
-                            // Soft ground contact shadow
+                            // Soft ground contact shadow (using procedural shadow texture)
+                            auto& procTex = ProceduralTextures::instance();
                             float shadowFactor = (cellRect.width / 30.0f);
-                            DrawEllipse(static_cast<int>(baseX + 1.0f), static_cast<int>(baseY + 1.0f), 5.0f * shadowFactor, 2.4f * shadowFactor, Fade(BLACK, 0.40f));
+                            float shW = 10.0f * shadowFactor;
+                            float shH = 4.8f * shadowFactor;
+                            if (procTex.shadowTexture.id != 0) {
+                                Rectangle shSrc = { 0.0f, 0.0f, static_cast<float>(procTex.shadowTexture.width), static_cast<float>(procTex.shadowTexture.height) };
+                                Rectangle shDst = { (baseX + 1.0f) - shW * 0.5f, (baseY + 1.0f) - shH * 0.5f, shW, shH };
+                                DrawTexturePro(procTex.shadowTexture, shSrc, shDst, { 0.0f, 0.0f }, 0.0f, Fade(BLACK, 0.40f));
+                            } else {
+                                DrawEllipse(static_cast<int>(baseX + 1.0f), static_cast<int>(baseY + 1.0f), 5.0f * shadowFactor, 2.4f * shadowFactor, Fade(BLACK, 0.40f));
+                            }
 
                             // Ground silhouette shadow
                             Rectangle shadowDest = { baseX + 2.0f, baseY + 1.5f, flagW, flagH };
@@ -817,34 +846,32 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     float t = static_cast<float>(GetTime());
                     float pulse = 0.5f + 0.5f * std::sin(t * 6.0f);
                     Color safeCol = ui::Colors::Green400;
-                    Color safeBg = ui::Colors::Green600;
 
-                    // Pulsing emerald highlight backdrop
-                    DrawRectangleRounded(cellRect, 0.2f, 4, Fade(safeBg, 0.35f + 0.25f * pulse));
+                    auto& procTex = ProceduralTextures::instance();
+                    if (procTex.safeStartReticleRT.id != 0) {
+                        Rectangle src = { 0.0f, 0.0f, static_cast<float>(procTex.safeStartReticleRT.texture.width), -static_cast<float>(procTex.safeStartReticleRT.texture.height) };
+                        DrawTexturePro(procTex.safeStartReticleRT.texture, src, cellRect, { 0.0f, 0.0f }, 0.0f, Fade(safeCol, 0.70f + 0.30f * pulse));
+                    } else {
+                        Color safeBg = ui::Colors::Green600;
+                        DrawRectangleRounded(cellRect, 0.2f, 4, Fade(safeBg, 0.35f + 0.25f * pulse));
+                        DrawRectangleLinesEx(cellRect, 2.0f, Fade(safeCol, 0.75f + 0.25f * pulse));
 
-                    // Glowing border
-                    DrawRectangleLinesEx(cellRect, 2.0f, Fade(safeCol, 0.75f + 0.25f * pulse));
+                        float bracketLen = std::clamp(cellRect.width * 0.3f, 4.0f, 9.0f);
+                        float bx = cellRect.x;
+                        float by = cellRect.y;
+                        float bw = cellRect.width;
+                        float bh = cellRect.height;
+                        Color bracketCol = WHITE;
 
-                    // Tactical Corner Brackets (Mindustry high-tech targeting reticle)
-                    float bracketLen = std::clamp(cellRect.width * 0.3f, 4.0f, 9.0f);
-                    float bx = cellRect.x;
-                    float by = cellRect.y;
-                    float bw = cellRect.width;
-                    float bh = cellRect.height;
-                    Color bracketCol = WHITE;
-
-                    // Top-Left
-                    DrawLineEx({ bx, by }, { bx + bracketLen, by }, 2.0f, bracketCol);
-                    DrawLineEx({ bx, by }, { bx, by + bracketLen }, 2.0f, bracketCol);
-                    // Top-Right
-                    DrawLineEx({ bx + bw, by }, { bx + bw - bracketLen, by }, 2.0f, bracketCol);
-                    DrawLineEx({ bx + bw, by }, { bx + bw, by + bracketLen }, 2.0f, bracketCol);
-                    // Bottom-Left
-                    DrawLineEx({ bx, by + bh }, { bx + bracketLen, by + bh }, 2.0f, bracketCol);
-                    DrawLineEx({ bx, by + bh }, { bx, by + bh - bracketLen }, 2.0f, bracketCol);
-                    // Bottom-Right
-                    DrawLineEx({ bx + bw, by + bh }, { bx + bw - bracketLen, by + bh }, 2.0f, bracketCol);
-                    DrawLineEx({ bx + bw, by + bh }, { bx + bw, by + bh - bracketLen }, 2.0f, bracketCol);
+                        DrawLineEx({ bx, by }, { bx + bracketLen, by }, 2.0f, bracketCol);
+                        DrawLineEx({ bx, by }, { bx, by + bracketLen }, 2.0f, bracketCol);
+                        DrawLineEx({ bx + bw, by }, { bx + bw - bracketLen, by }, 2.0f, bracketCol);
+                        DrawLineEx({ bx + bw, by }, { bx + bw, by + bracketLen }, 2.0f, bracketCol);
+                        DrawLineEx({ bx, by + bh }, { bx + bracketLen, by + bh }, 2.0f, bracketCol);
+                        DrawLineEx({ bx, by + bh }, { bx, by + bh - bracketLen }, 2.0f, bracketCol);
+                        DrawLineEx({ bx + bw, by + bh }, { bx + bw - bracketLen, by + bh }, 2.0f, bracketCol);
+                        DrawLineEx({ bx + bw, by + bh }, { bx + bw, by + bh - bracketLen }, 2.0f, bracketCol);
+                    }
                 }
 
                 if (isNeighbor) {
@@ -859,7 +886,12 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                 if (state == core::CellState::Revealed && count > 0) {
                     Color overlay = ui::getNeighborColor(count);
                     overlay.a = static_cast<unsigned char>(15 + count * 2 + fade * 150.0f);
-                    DrawRectangleRounded(cellRect, 0.2f, 4, overlay);
+                    if (cellRevealRT.id != 0) {
+                        Rectangle src = { 0.0f, 0.0f, static_cast<float>(cellRevealRT.texture.width), -static_cast<float>(cellRevealRT.texture.height) };
+                        DrawTexturePro(cellRevealRT.texture, src, cellRect, { 0.0f, 0.0f }, 0.0f, overlay);
+                    } else {
+                        DrawRectangleRounded(cellRect, 0.2f, 4, overlay);
+                    }
                 }
             }
             else {
@@ -1167,6 +1199,7 @@ void RaylibRenderer::clearFlagDrops() {
 
 void RaylibRenderer::drawFlyingFlags(const core::Board& /*board*/) {
     float curTime = static_cast<float>(GetTime());
+    auto& procTex = ProceduralTextures::instance();
 
     // 1. Flying Drops (Flight phase: p < 0.75f)
     for (const auto& pair : flagDropAnims) {
@@ -1186,7 +1219,15 @@ void RaylibRenderer::drawFlyingFlags(const core::Board& /*board*/) {
 
         float shadowScale = (cellSize / 30.0f) * (0.25f + 0.75f * t);
         float shadowAlpha = 0.10f + 0.30f * t;
-        DrawEllipse(static_cast<int>(curGround.x + 1.0f), static_cast<int>(curGround.y + 1.0f), 5.0f * shadowScale, 2.4f * shadowScale, Fade(BLACK, shadowAlpha));
+        float shW = 10.0f * shadowScale;
+        float shH = 4.8f * shadowScale;
+        if (procTex.shadowTexture.id != 0) {
+            Rectangle shSrc = { 0.0f, 0.0f, static_cast<float>(procTex.shadowTexture.width), static_cast<float>(procTex.shadowTexture.height) };
+            Rectangle shDst = { (curGround.x + 1.0f) - shW * 0.5f, (curGround.y + 1.0f) - shH * 0.5f, shW, shH };
+            DrawTexturePro(procTex.shadowTexture, shSrc, shDst, { 0.0f, 0.0f }, 0.0f, Fade(BLACK, shadowAlpha));
+        } else {
+            DrawEllipse(static_cast<int>(curGround.x + 1.0f), static_cast<int>(curGround.y + 1.0f), 5.0f * shadowScale, 2.4f * shadowScale, Fade(BLACK, shadowAlpha));
+        }
 
         Texture2D curFlag = getFlagTexture(anim.flagSkin);
         if (curFlag.id != 0) {
@@ -1242,7 +1283,15 @@ void RaylibRenderer::drawFlyingFlags(const core::Board& /*board*/) {
         float shadowAlpha = std::max(0.0f, 0.35f * (1.0f - p) * (1.0f - std::min(1.0f, alt / 28.0f)));
         if (shadowAlpha > 0.01f) {
             float shadowScale = (cellSize / 30.0f) * (1.0f - 0.5f * p);
-            DrawEllipse(static_cast<int>(curGround.x + 1.0f), static_cast<int>(curGround.y + 1.0f), 5.0f * shadowScale, 2.4f * shadowScale, Fade(BLACK, shadowAlpha));
+            float shW = 10.0f * shadowScale;
+            float shH = 4.8f * shadowScale;
+            if (procTex.shadowTexture.id != 0) {
+                Rectangle shSrc = { 0.0f, 0.0f, static_cast<float>(procTex.shadowTexture.width), static_cast<float>(procTex.shadowTexture.height) };
+                Rectangle shDst = { (curGround.x + 1.0f) - shW * 0.5f, (curGround.y + 1.0f) - shH * 0.5f, shW, shH };
+                DrawTexturePro(procTex.shadowTexture, shSrc, shDst, { 0.0f, 0.0f }, 0.0f, Fade(BLACK, shadowAlpha));
+            } else {
+                DrawEllipse(static_cast<int>(curGround.x + 1.0f), static_cast<int>(curGround.y + 1.0f), 5.0f * shadowScale, 2.4f * shadowScale, Fade(BLACK, shadowAlpha));
+            }
         }
 
         float flagScale = (cellSize / 30.0f) * 1.05f * (1.0f - 0.70f * p);
@@ -1351,16 +1400,36 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
             lasers.pop_back();
         } else {
             float alpha = lasers[i].life / lasers[i].maxLife;
-            // Outer glowing plasma beam
-            DrawLineEx(lasers[i].from, lasers[i].to, 4.0f, Fade(lasers[i].color, 0.55f * alpha));
-            // Inner core laser beam
-            DrawLineEx(lasers[i].from, lasers[i].to, 1.5f, Fade(WHITE, 0.95f * alpha));
-            // Muzzle flash at ship's nose
-            DrawCircleV(lasers[i].from, 3.8f, Fade(lasers[i].color, 0.8f * alpha));
-            DrawCircleV(lasers[i].from, 1.8f, Fade(WHITE, alpha));
-            // Impact flare at target cell
-            DrawCircleV(lasers[i].to, 5.5f, Fade(lasers[i].color, 0.85f * alpha));
-            DrawCircleV(lasers[i].to, 2.5f, Fade(WHITE, alpha));
+            auto& procTex = ProceduralTextures::instance();
+            Vector2 delta = { lasers[i].to.x - lasers[i].from.x, lasers[i].to.y - lasers[i].from.y };
+            float beamLen = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+            float beamAngle = std::atan2(delta.y, delta.x) * RAD2DEG;
+            float beamW = 6.0f;
+
+            if (procTex.laserBeamTexture.id != 0) {
+                Rectangle bSrc = { 0.0f, 0.0f, static_cast<float>(procTex.laserBeamTexture.width), static_cast<float>(procTex.laserBeamTexture.height) };
+                Rectangle bDst = { lasers[i].from.x, lasers[i].from.y, beamLen, beamW };
+                Vector2 bOrig = { 0.0f, beamW * 0.5f };
+                DrawTexturePro(procTex.laserBeamTexture, bSrc, bDst, bOrig, beamAngle, Fade(lasers[i].color, alpha));
+            } else {
+                DrawLineEx(lasers[i].from, lasers[i].to, 4.0f, Fade(lasers[i].color, 0.55f * alpha));
+                DrawLineEx(lasers[i].from, lasers[i].to, 1.5f, Fade(WHITE, 0.95f * alpha));
+            }
+
+            if (procTex.glowTexture.id != 0) {
+                Rectangle gSrc = { 0.0f, 0.0f, static_cast<float>(procTex.glowTexture.width), static_cast<float>(procTex.glowTexture.height) };
+                // Muzzle flash
+                float mSize = 10.0f;
+                DrawTexturePro(procTex.glowTexture, gSrc, { lasers[i].from.x, lasers[i].from.y, mSize, mSize }, { mSize * 0.5f, mSize * 0.5f }, 0.0f, Fade(lasers[i].color, 0.9f * alpha));
+                // Impact flare
+                float iSize = 14.0f;
+                DrawTexturePro(procTex.glowTexture, gSrc, { lasers[i].to.x, lasers[i].to.y, iSize, iSize }, { iSize * 0.5f, iSize * 0.5f }, 0.0f, Fade(lasers[i].color, 0.95f * alpha));
+            } else {
+                DrawCircleV(lasers[i].from, 3.8f, Fade(lasers[i].color, 0.8f * alpha));
+                DrawCircleV(lasers[i].from, 1.8f, Fade(WHITE, alpha));
+                DrawCircleV(lasers[i].to, 5.5f, Fade(lasers[i].color, 0.85f * alpha));
+                DrawCircleV(lasers[i].to, 2.5f, Fade(WHITE, alpha));
+            }
             ++i;
         }
     }
@@ -1734,7 +1803,102 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
         }
     };
 
-    for (size_t i = 0; i < activeCards.size(); ++i) {
+    // 1. Re-render cached card render textures ONLY when hovered cell or board state changes
+    bool needsCardUpdate = (hoveredIndex != lastPreviewHoveredIndex ||
+                            board.revealedCount != lastPreviewRevealedCount ||
+                            board.flaggedCount != lastPreviewFlagCount);
+
+    if (needsCardUpdate) {
+        lastPreviewHoveredIndex = hoveredIndex;
+        lastPreviewRevealedCount = board.revealedCount;
+        lastPreviewFlagCount = board.flaggedCount;
+
+        for (size_t i = 0; i < activeCards.size() && i < 8; ++i) {
+            const auto& card = activeCards[i];
+            if (previewCardRTs[i].id == 0) {
+                previewCardRTs[i] = LoadRenderTexture(static_cast<int>(cardW), static_cast<int>(cardH));
+            }
+
+            BeginTextureMode(previewCardRTs[i]);
+            ClearBackground(BLANK);
+
+            // Card background & border
+            DrawRectangleRounded({ 0.0f, 0.0f, cardW, cardH }, 0.12f, 4, ui::Colors::Zinc950);
+            DrawRectangleLinesEx({ 0.0f, 0.0f, cardW, cardH }, 1.5f, ui::Colors::Zinc700);
+
+            // Header Title
+            int titleFontSize = 10;
+            int tw = MeasureText(card.title.c_str(), titleFontSize);
+            float textStartX = (cardW - tw) * 0.5f;
+            float headerY = 5.0f;
+            DrawText(card.title.c_str(), static_cast<int>(textStartX), static_cast<int>(headerY), titleFontSize, ui::Colors::Green400);
+
+            // 3x3 Grid
+            float miniCellSize = 23.0f;
+            float miniCellMargin = 2.0f;
+            float gridStartX = (cardW - 3.0f * miniCellSize) * 0.5f;
+            float gridStartY = 19.0f;
+
+            for (int r = 0; r < 3; ++r) {
+                for (int c = 0; c < 3; ++c) {
+                    const auto& cell = card.cells[r * 3 + c];
+                    Rectangle mRect = {
+                        gridStartX + static_cast<float>(c) * miniCellSize + miniCellMargin,
+                        gridStartY + static_cast<float>(r) * miniCellSize + miniCellMargin,
+                        miniCellSize - miniCellMargin * 2.0f,
+                        miniCellSize - miniCellMargin * 2.0f
+                    };
+
+                    if (!cell.valid) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Zinc900, 0.6f));
+                        continue;
+                    }
+
+                    if (cell.state == core::CellState::Revealed) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::CellRevealed);
+                        if (cell.count > 0) {
+                            Color tc = ui::getNeighborColor(cell.count);
+                            int fs = 12;
+                            const char* num = TextFormat("%d", cell.count);
+                            int nw = MeasureText(num, fs);
+                            DrawText(num, static_cast<int>(mRect.x + (mRect.width - nw) * 0.5f), static_cast<int>(mRect.y + (mRect.height - fs) * 0.5f), fs, tc);
+                        }
+                    }
+                    else if (cell.state == core::CellState::Flagged) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::CellHidden);
+                        DrawRectangleRounded({ mRect.x + 2, mRect.y + 2, mRect.width - 4, mRect.height - 4 }, 0.2f, 2, ui::Colors::Red500);
+                        int fs = 11;
+                        int fw = MeasureText("F", fs);
+                        DrawText("F", static_cast<int>(mRect.x + (mRect.width - fw) * 0.5f), static_cast<int>(mRect.y + 2), fs, WHITE);
+                    }
+                    else {
+                        DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::CellHidden);
+                        if (board.isGameOver && cell.isBomb) {
+                            DrawRectangleRounded(mRect, 0.2f, 2, ui::Colors::Red500);
+                            int fs = 12;
+                            int bw = MeasureText("*", fs);
+                            DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, ui::Colors::Red700);
+                        }
+                    }
+
+                    if (cell.isCenter) {
+                        DrawRectangleLinesEx(mRect, 1.5f, Fade(WHITE, 0.95f));
+                    }
+                }
+            }
+
+            // Footer
+            std::string footer = TextFormat("FLAGS: %d  HIDDEN: %d", card.flags, card.hidden);
+            int footerFs = 9;
+            int ftw = MeasureText(footer.c_str(), footerFs);
+            DrawText(footer.c_str(), static_cast<int>((cardW - ftw) * 0.5f), static_cast<int>(cardH - 18.0f), footerFs, ui::Colors::Zinc400);
+
+            EndTextureMode();
+        }
+    }
+
+    // 2. Draw cached cards to screen
+    for (size_t i = 0; i < activeCards.size() && i < 8; ++i) {
         const auto& card = activeCards[i];
         Rectangle cardRect = getSlotRect(card.slot);
 
@@ -1744,80 +1908,19 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
 
         // Drop shadow
         DrawRectangleRounded({ cardRect.x + 2.0f, cardRect.y + 2.0f, cardW, cardH }, 0.12f, 4, Fade(BLACK, 0.40f * alpha));
-        // Card background
-        DrawRectangleRounded(cardRect, 0.12f, 4, Fade(ui::Colors::Zinc950, alpha));
-        // Border
-        DrawRectangleLinesEx(cardRect, 1.5f, Fade(ui::Colors::Zinc700, alpha));
 
-        // Header Title with Directional Chevron Indicator
+        // Draw cached card texture
+        if (previewCardRTs[i].id != 0) {
+            Rectangle srcRec = { 0.0f, 0.0f, cardW, -cardH };
+            DrawTextureRec(previewCardRTs[i].texture, srcRec, { cardRect.x, cardRect.y }, Fade(WHITE, alpha));
+        }
+
+        // Header Title Directional Chevron Indicator
         int titleFontSize = 10;
         int tw = MeasureText(card.title.c_str(), titleFontSize);
         float textStartX = cardRect.x + (cardW - tw) * 0.5f;
         float headerY = cardRect.y + 5.0f;
         drawSlotArrow(card.slot, textStartX - 7.0f, headerY + 5.0f, Fade(ui::Colors::Green400, alpha));
-        DrawText(card.title.c_str(), static_cast<int>(textStartX), static_cast<int>(headerY), titleFontSize, Fade(ui::Colors::Green400, alpha));
-
-        // 3x3 Grid
-        float miniCellSize = 23.0f;
-        float miniCellMargin = 2.0f;
-        float gridStartX = cardRect.x + (cardW - 3.0f * miniCellSize) * 0.5f;
-        float gridStartY = cardRect.y + 19.0f;
-
-        for (int r = 0; r < 3; ++r) {
-            for (int c = 0; c < 3; ++c) {
-                const auto& cell = card.cells[r * 3 + c];
-                Rectangle mRect = {
-                    gridStartX + static_cast<float>(c) * miniCellSize + miniCellMargin,
-                    gridStartY + static_cast<float>(r) * miniCellSize + miniCellMargin,
-                    miniCellSize - miniCellMargin * 2.0f,
-                    miniCellSize - miniCellMargin * 2.0f
-                };
-
-                if (!cell.valid) {
-                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Zinc900, 0.6f * alpha));
-                    continue;
-                }
-
-                if (cell.state == core::CellState::Revealed) {
-                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellRevealed, alpha));
-                    if (cell.count > 0) {
-                        Color tc = ui::getNeighborColor(cell.count);
-                        tc.a = static_cast<unsigned char>(255 * alpha);
-                        int fs = 12;
-                        const char* num = TextFormat("%d", cell.count);
-                        int nw = MeasureText(num, fs);
-                        DrawText(num, static_cast<int>(mRect.x + (mRect.width - nw) * 0.5f), static_cast<int>(mRect.y + (mRect.height - fs) * 0.5f), fs, tc);
-                    }
-                }
-                else if (cell.state == core::CellState::Flagged) {
-                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
-                    DrawRectangleRounded({ mRect.x + 2, mRect.y + 2, mRect.width - 4, mRect.height - 4 }, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
-                    int fs = 11;
-                    int fw = MeasureText("F", fs);
-                    DrawText("F", static_cast<int>(mRect.x + (mRect.width - fw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(WHITE, alpha));
-                }
-                else {
-                    DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
-                    if (board.isGameOver && cell.isBomb) {
-                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
-                        int fs = 12;
-                        int bw = MeasureText("*", fs);
-                        DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(ui::Colors::Red700, alpha));
-                    }
-                }
-
-                // Direct projected center neighbor receives a distinct white border
-                if (cell.isCenter) {
-                    DrawRectangleLinesEx(mRect, 1.5f, Fade(WHITE, 0.95f * alpha));
-                }
-            }
-        }
-
-        // Footer showing flag and hidden totals in that slice's 3x3
-        std::string footer = TextFormat("FLAGS: %d  HIDDEN: %d", card.flags, card.hidden);
-        int footerFs = 9;
-        int ftw = MeasureText(footer.c_str(), footerFs);
-        DrawText(footer.c_str(), static_cast<int>(cardRect.x + (cardW - ftw) * 0.5f), static_cast<int>(cardRect.y + cardH - 18.0f), footerFs, Fade(ui::Colors::Zinc400, alpha));
     }
 }
 

@@ -62,6 +62,11 @@ public:
     // Draw trailing exhaust particle embers in world space
     void drawExhaust() const;
 
+    // Shared procedural textures for batched exhaust and thruster glow
+    static Texture2D sharedExhaustTexture;
+    static Texture2D sharedGlowTexture;
+    static void setSharedTextures(Texture2D exhaustTex, Texture2D glowTex);
+
     // Reset position and clear velocity/exhaust
     void reset(Vector2 newPos, float newAngle = 0.0f);
 

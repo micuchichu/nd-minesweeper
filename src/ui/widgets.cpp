@@ -1,4 +1,5 @@
 #include "widgets.hpp"
+#include "render/procedural_textures.hpp"
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
@@ -404,22 +405,30 @@ bool Widgets::mindustryButton(const char* label, const char* sublabel, Rectangle
         r.y += 1.0f;
     }
 
-    // Base background plate
-    Color bg = locked ? Colors::Zinc900 : (hover ? Colors::MetalLight : Colors::MetalDark);
-    DrawRectangleRec(r, bg);
+    // Base background plate & border
+    auto& procTex = render::ProceduralTextures::instance();
+    if (procTex.buttonNPatchNormal.id != 0 && procTex.buttonNPatchHover.id != 0 && procTex.buttonNPatchLocked.id != 0) {
+        if (locked) {
+            DrawTextureNPatch(procTex.buttonNPatchLocked, procTex.buttonNPatchInfo, r, { 0.0f, 0.0f }, 0.0f, WHITE);
+        } else if (hover) {
+            DrawTextureNPatch(procTex.buttonNPatchHover, procTex.buttonNPatchInfo, r, { 0.0f, 0.0f }, 0.0f, accentCol);
+        } else {
+            DrawTextureNPatch(procTex.buttonNPatchNormal, procTex.buttonNPatchInfo, r, { 0.0f, 0.0f }, 0.0f, WHITE);
+        }
+    } else {
+        Color bg = locked ? Colors::Zinc900 : (hover ? Colors::MetalLight : Colors::MetalDark);
+        DrawRectangleRec(r, bg);
 
-    // Border: metallic by default, highlighted with accent on hover
-    Color borderCol = locked ? Colors::Zinc800 : (hover ? accentCol : Colors::PanelBorder);
-    DrawRectangleLinesEx(r, 1.5f, borderCol);
+        Color borderCol = locked ? Colors::Zinc800 : (hover ? accentCol : Colors::PanelBorder);
+        DrawRectangleLinesEx(r, 1.5f, borderCol);
 
-    // Left indicator stripe (Mindustry signature tech detail)
-    if (hover && !locked) {
-        DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y), 4, static_cast<int>(r.height), accentCol);
-        // Subtle corner accents
-        DrawRectangle(static_cast<int>(r.x + r.width - 6.0f), static_cast<int>(r.y), 6, 2, accentCol);
-        DrawRectangle(static_cast<int>(r.x + r.width - 2.0f), static_cast<int>(r.y), 2, 6, accentCol);
-        DrawRectangle(static_cast<int>(r.x + r.width - 6.0f), static_cast<int>(r.y + r.height - 2.0f), 6, 2, accentCol);
-        DrawRectangle(static_cast<int>(r.x + r.width - 2.0f), static_cast<int>(r.y + r.height - 6.0f), 2, 6, accentCol);
+        if (hover && !locked) {
+            DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y), 4, static_cast<int>(r.height), accentCol);
+            DrawRectangle(static_cast<int>(r.x + r.width - 6.0f), static_cast<int>(r.y), 6, 2, accentCol);
+            DrawRectangle(static_cast<int>(r.x + r.width - 2.0f), static_cast<int>(r.y), 2, 6, accentCol);
+            DrawRectangle(static_cast<int>(r.x + r.width - 6.0f), static_cast<int>(r.y + r.height - 2.0f), 6, 2, accentCol);
+            DrawRectangle(static_cast<int>(r.x + r.width - 2.0f), static_cast<int>(r.y + r.height - 6.0f), 2, 6, accentCol);
+        }
     }
 
     // Text rendering
@@ -441,25 +450,26 @@ bool Widgets::mindustryButton(const char* label, const char* sublabel, Rectangle
 }
 
 void Widgets::mindustryPanel(Rectangle rect, const char* headerTitle, Color accentCol) {
-    // Backdrop
-    DrawRectangleRec(rect, Colors::PanelBg);
-    DrawRectangleLinesEx(rect, 1.5f, Colors::PanelBorder);
+    auto& procTex = render::ProceduralTextures::instance();
+    if (procTex.panelNPatchTexture.id != 0) {
+        DrawTextureNPatch(procTex.panelNPatchTexture, procTex.panelNPatchInfo, rect, { 0.0f, 0.0f }, 0.0f, WHITE);
+    } else {
+        // Backdrop
+        DrawRectangleRec(rect, Colors::PanelBg);
+        DrawRectangleLinesEx(rect, 1.5f, Colors::PanelBorder);
 
-    // Tech corner markers
-    float markLen = 8.0f;
-    Color markCol = Fade(accentCol, 0.70f);
-    // Top-left
-    DrawLineEx({ rect.x, rect.y }, { rect.x + markLen, rect.y }, 2.0f, markCol);
-    DrawLineEx({ rect.x, rect.y }, { rect.x, rect.y + markLen }, 2.0f, markCol);
-    // Top-right
-    DrawLineEx({ rect.x + rect.width - markLen, rect.y }, { rect.x + rect.width, rect.y }, 2.0f, markCol);
-    DrawLineEx({ rect.x + rect.width, rect.y }, { rect.x + rect.width, rect.y + markLen }, 2.0f, markCol);
-    // Bottom-left
-    DrawLineEx({ rect.x, rect.y + rect.height - markLen }, { rect.x, rect.y + rect.height }, 2.0f, markCol);
-    DrawLineEx({ rect.x, rect.y + rect.height }, { rect.x + markLen, rect.y + rect.height }, 2.0f, markCol);
-    // Bottom-right
-    DrawLineEx({ rect.x + rect.width - markLen, rect.y + rect.height }, { rect.x + rect.width, rect.y + rect.height }, 2.0f, markCol);
-    DrawLineEx({ rect.x + rect.width, rect.y + rect.height - markLen }, { rect.x + rect.width, rect.y + rect.height }, 2.0f, markCol);
+        // Tech corner markers
+        float markLen = 8.0f;
+        Color markCol = Fade(accentCol, 0.70f);
+        DrawLineEx({ rect.x, rect.y }, { rect.x + markLen, rect.y }, 2.0f, markCol);
+        DrawLineEx({ rect.x, rect.y }, { rect.x, rect.y + markLen }, 2.0f, markCol);
+        DrawLineEx({ rect.x + rect.width - markLen, rect.y }, { rect.x + rect.width, rect.y }, 2.0f, markCol);
+        DrawLineEx({ rect.x + rect.width, rect.y }, { rect.x + rect.width, rect.y + markLen }, 2.0f, markCol);
+        DrawLineEx({ rect.x, rect.y + rect.height - markLen }, { rect.x, rect.y + rect.height }, 2.0f, markCol);
+        DrawLineEx({ rect.x, rect.y + rect.height }, { rect.x + markLen, rect.y + rect.height }, 2.0f, markCol);
+        DrawLineEx({ rect.x + rect.width - markLen, rect.y + rect.height }, { rect.x + rect.width, rect.y + rect.height }, 2.0f, markCol);
+        DrawLineEx({ rect.x + rect.width, rect.y + rect.height - markLen }, { rect.x + rect.width, rect.y + rect.height }, 2.0f, markCol);
+    }
 
     if (headerTitle && headerTitle[0] != '\0') {
         float hH = 36.0f;

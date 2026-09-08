@@ -110,6 +110,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\render\camera_controller.cpp" />
     <ClCompile Include="src\render\particles.cpp" />
     <ClCompile Include="src\render\raylib_renderer.cpp" />
+    <ClCompile Include="src\render\procedural_textures.cpp" />
     <ClCompile Include="src\render\scrap_system.cpp" />
     <ClCompile Include="src\audio\voice_manager.cpp" />
     <ClCompile Include="src\ui\widgets.cpp" />
@@ -140,6 +141,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\render\camera_controller.hpp" />
     <ClInclude Include="src\render\particles.hpp" />
     <ClInclude Include="src\render\raylib_renderer.hpp" />
+    <ClInclude Include="src\render\procedural_textures.hpp" />
     <ClInclude Include="src\render\scrap_system.hpp" />
     <ClInclude Include="src\ui\theme.hpp" />
     <ClInclude Include="src\ui\widgets.hpp" />

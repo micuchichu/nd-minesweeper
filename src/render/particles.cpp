@@ -68,9 +68,14 @@ void ParticleSystem::updateAndDraw(float dt) {
             Color drawCol = p.color;
             drawCol.a = static_cast<unsigned char>(alpha * 255.0f);
 
-            Rectangle rect = { p.position.x, p.position.y, p.size, p.size };
-            Vector2 origin = { p.size * 0.5f, p.size * 0.5f };
-            DrawRectanglePro(rect, origin, p.rotation, drawCol);
+            Rectangle rect = { p.position.x, p.position.y, p.size * (particleTexture.id != 0 ? 1.4f : 1.0f), p.size * (particleTexture.id != 0 ? 1.4f : 1.0f) };
+            Vector2 origin = { rect.width * 0.5f, rect.height * 0.5f };
+            if (particleTexture.id != 0) {
+                Rectangle src = { 0.0f, 0.0f, static_cast<float>(particleTexture.width), static_cast<float>(particleTexture.height) };
+                DrawTexturePro(particleTexture, src, rect, origin, p.rotation, drawCol);
+            } else {
+                DrawRectanglePro(rect, origin, p.rotation, drawCol);
+            }
 
             ++i;
         }

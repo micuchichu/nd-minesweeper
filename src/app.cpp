@@ -1,6 +1,7 @@
 #include "app.hpp"
 #include "net/steam_manager.hpp"
 #include "ui/widgets.hpp"
+#include "render/procedural_textures.hpp"
 #include <fstream>
 #include <iostream>
 #include <cmath>
@@ -98,6 +99,11 @@ void App::init() {
     };
 
     scrapSystem.init();
+    scrapSystem.setSharedTextures(
+        render::ProceduralTextures::instance().shadowTexture,
+        render::ProceduralTextures::instance().glowTexture,
+        render::ProceduralTextures::instance().particleTexture
+    );
     hud.scrapTexture = scrapSystem.texture;
     menu.scrapTexture = scrapSystem.texture;
     hud.scrapCount = scrapCount;
