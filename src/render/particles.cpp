@@ -25,7 +25,8 @@ void ParticleSystem::emitExplosion(Vector2 pos, int count, Color color) {
             1.2f,
             randomFloat(3.0f, 8.0f),
             randomFloat(0.0f, 360.0f),
-            randomFloat(-300.0f, 300.0f)
+            randomFloat(-300.0f, 300.0f),
+            false // textured glow ember
         });
     }
 }
@@ -33,51 +34,44 @@ void ParticleSystem::emitExplosion(Vector2 pos, int count, Color color) {
 void ParticleSystem::emitDebris(Vector2 pos, int count, Color color) {
     for (int i = 0; i < count; ++i) {
         float angle = randomFloat(0.0f, 6.2831853f);
-        float speed = randomFloat(80.0f, 360.0f);
-        float life = randomFloat(0.35f, 0.75f);
+        float speed = randomFloat(80.0f, 320.0f);
+        float life = randomFloat(0.30f, 0.60f);
         particles.push_back({
             pos,
-            { std::cos(angle) * speed, std::sin(angle) * speed - randomFloat(20.0f, 60.0f) },
+            { std::cos(angle) * speed, std::sin(angle) * speed - randomFloat(25.0f, 75.0f) },
             color,
             life,
             life,
-            randomFloat(4.0f, 8.5f),
+            randomFloat(3.0f, 7.5f),
             randomFloat(0.0f, 360.0f),
-            randomFloat(-200.0f, 200.0f)
+            randomFloat(-400.0f, 400.0f),
+            true // solid square debris
         });
     }
 }
 
-void ParticleSystem::emitCellUncover(Vector2 pos, int count, Color color) {
+void ParticleSystem::emitCellUncover(Vector2 pos, int count, Color /*color*/) {
+    // Solid square gray debris palette: varying shades of rock/slate/metal tile rubble
+    static const Color debrisGrays[] = {
+        Color{ 180, 183, 190, 255 }, // Light stone gray
+        Color{ 145, 148, 155, 255 }, // Medium slate gray
+        Color{ 215, 218, 224, 255 }, // Bright chipped rock gray
+        Color{ 110, 113, 120, 255 }, // Dark concrete gray
+        Color{ 160, 163, 170, 255 }, // Neutral tile zinc gray
+        Color{ 85,  88,  95,  255 }  // Deep granite gray
+    };
+
     for (int i = 0; i < count; ++i) {
         float angle = randomFloat(0.0f, 6.2831853f);
-        float speed = randomFloat(70.0f, 320.0f);
+        float speed = randomFloat(90.0f, 400.0f);
         Vector2 vel = {
             std::cos(angle) * speed,
-            std::sin(angle) * speed - randomFloat(30.0f, 110.0f)
+            std::sin(angle) * speed - randomFloat(40.0f, 160.0f) // snappy upward/outward ejection
         };
 
-        float life = randomFloat(0.5f, 0.95f);
-        float size = randomFloat(5.5f, 12.0f);
-
-        // High-visibility palette: sparkling white, electric cyan, bright silver zinc, and boosted cell tint
-        Color pCol;
-        int variant = rand() % 4;
-        if (variant == 0) {
-            pCol = Color{ 255, 255, 255, 255 }; // Pure white glint
-        } else if (variant == 1) {
-            pCol = Color{ 145, 242, 255, 255 }; // Electric neon cyan
-        } else if (variant == 2) {
-            pCol = Color{ 235, 240, 248, 255 }; // Crisp metallic silver
-        } else {
-            // Brightened version of the cell/number color
-            pCol = Color{
-                static_cast<unsigned char>(std::min(255, static_cast<int>(color.r) + 85)),
-                static_cast<unsigned char>(std::min(255, static_cast<int>(color.g) + 85)),
-                static_cast<unsigned char>(std::min(255, static_cast<int>(color.b) + 85)),
-                255
-            };
-        }
+        float life = randomFloat(0.35f, 0.70f);
+        float size = randomFloat(3.5f, 9.0f);
+        Color pCol = debrisGrays[rand() % 6];
 
         particles.push_back({
             pos,
@@ -87,7 +81,8 @@ void ParticleSystem::emitCellUncover(Vector2 pos, int count, Color color) {
             life,
             size,
             randomFloat(0.0f, 360.0f),
-            randomFloat(-260.0f, 260.0f)
+            randomFloat(-500.0f, 500.0f), // fast tumbling angular velocity
+            true // solid square shaped debris
         });
     }
 }
@@ -101,24 +96,40 @@ void ParticleSystem::updateAndDraw(float dt) {
             particles[i] = particles.back();
             particles.pop_back();
         } else {
-            p.velocity.y += 480.0f * dt;
-            p.velocity.x *= 0.94f;
-            p.velocity.y *= 0.96f;
+            if (p.isSquare) {
+                // Ballistic debris physics: heavy downward gravity arc and natural air drag
+                p.velocity.y += 880.0f * dt;
+                p.velocity.x *= 0.97f;
+                p.velocity.y *= 0.98f;
+            } else {
+                // Soft particle physics (explosions, embers)
+                p.velocity.y += 480.0f * dt;
+                p.velocity.x *= 0.94f;
+                p.velocity.y *= 0.96f;
+            }
 
             p.position.x += p.velocity.x * dt;
             p.position.y += p.velocity.y * dt;
             p.rotation += p.rotSpeed * dt;
 
-            float alpha = std::clamp(p.life / p.maxLife, 0.0f, 1.0f);
+            // Keep solid opacity for majority of flight, then quickly fade upon landing
+            float lifeFrac = p.life / p.maxLife;
+            float alpha = p.isSquare ? std::clamp(lifeFrac * 3.33f, 0.0f, 1.0f) : std::clamp(lifeFrac, 0.0f, 1.0f);
             Color drawCol = p.color;
             drawCol.a = static_cast<unsigned char>(alpha * 255.0f);
 
-            Rectangle rect = { p.position.x, p.position.y, p.size * (particleTexture.id != 0 ? 1.4f : 1.0f), p.size * (particleTexture.id != 0 ? 1.4f : 1.0f) };
+            Rectangle rect = { p.position.x, p.position.y, p.size, p.size };
             Vector2 origin = { rect.width * 0.5f, rect.height * 0.5f };
-            if (particleTexture.id != 0) {
+
+            if (!p.isSquare && particleTexture.id != 0) {
+                rect.width *= 1.4f;
+                rect.height *= 1.4f;
+                origin.x = rect.width * 0.5f;
+                origin.y = rect.height * 0.5f;
                 Rectangle src = { 0.0f, 0.0f, static_cast<float>(particleTexture.width), static_cast<float>(particleTexture.height) };
                 DrawTexturePro(particleTexture, src, rect, origin, p.rotation, drawCol);
             } else {
+                // Crisp, solid square quad
                 DrawRectanglePro(rect, origin, p.rotation, drawCol);
             }
 
