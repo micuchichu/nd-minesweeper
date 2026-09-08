@@ -83,6 +83,7 @@ public:
     Vector2 moveInput = { 0.0f, 0.0f };
     bool hasAim = false;
     float aimAngle = 0.0f;
+    bool isMouseActive = true;
 
     std::vector<LaserBeam> lasers;
     void fireLaser(Vector2 from, Vector2 to, Color color = { 0, 229, 255, 255 });

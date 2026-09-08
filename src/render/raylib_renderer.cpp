@@ -1030,7 +1030,18 @@ void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
     // 1. Update player / local ship physics at fixed timestep
     localShip.skinId = activeCursorSkin;
     localShip.texture = getCursorSkinTexture(activeCursorSkin);
-    localShip.update(targetPos, fixedDt);
+    if (controlMode == 1) {
+        float inputLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
+        if (inputLen > 0.05f) {
+            localShip.updateDirect(moveInput, fixedDt, hasAim, aimAngle);
+        } else if (isMouseActive) {
+            localShip.update(targetPos, fixedDt);
+        } else {
+            localShip.updateDirect({ 0.0f, 0.0f }, fixedDt, hasAim, aimAngle);
+        }
+    } else {
+        localShip.update(targetPos, fixedDt);
+    }
 
     // 2. Update shop freighters at fixed timestep
     for (auto& s : shopShips) {

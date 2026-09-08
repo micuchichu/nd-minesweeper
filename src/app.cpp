@@ -588,90 +588,103 @@ void App::update(float dt) {
     }
 
     bool padAvailable = IsGamepadAvailable(0);
+    Vector2 moveInput = { 0.0f, 0.0f };
 
-    // Grid selection navigation via Left Stick, D-Pad, and WASD/Arrows
-    int dirX = 0;
-    int dirY = 0;
+    // 1. Movement: WASD / Arrows (Keyboard) and Left Stick / D-Pad (Gamepad)
+    if (menu.controlMode == 1) {
+        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) moveInput.y -= 1.0f;
+        if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) moveInput.y += 1.0f;
+        if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) moveInput.x -= 1.0f;
+        if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) moveInput.x += 1.0f;
+    }
 
     if (padAvailable) {
         float stickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
         float stickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
-        if (stickX < -0.45f) dirX = -1;
-        else if (stickX > 0.45f) dirX = 1;
-        if (stickY < -0.45f) dirY = -1;
-        else if (stickY > 0.45f) dirY = 1;
+        if (std::abs(stickX) < 0.15f) stickX = 0.0f;
+        if (std::abs(stickY) < 0.15f) stickY = 0.0f;
+        moveInput.x += stickX;
+        moveInput.y += stickY;
 
-        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) dirX = -1;
-        else if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) dirX = 1;
-        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) dirY = -1;
-        else if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) dirY = 1;
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) moveInput.y -= 1.0f;
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) moveInput.y += 1.0f;
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) moveInput.x -= 1.0f;
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) moveInput.x += 1.0f;
     }
 
-    if (menu.controlMode == 1) {
-        if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) dirX = -1;
-        else if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) dirX = 1;
-        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) dirY = -1;
-        else if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) dirY = 1;
+    float moveInputLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
+    if (moveInputLen > 1.0f) {
+        moveInput.x /= moveInputLen;
+        moveInput.y /= moveInputLen;
     }
 
-    bool shouldStep = false;
-    if (dirX != 0 || dirY != 0) {
-        if (dirX != navLastDirX || dirY != navLastDirY) {
-            shouldStep = true;
-            navLastDirX = dirX;
-            navLastDirY = dirY;
-            navHoldTimer = 0.0f;
-            navRepeatTimer = 0.0f;
-        } else {
-            navHoldTimer += dt;
-            if (navHoldTimer >= 0.22f) {
-                navRepeatTimer += dt;
-                if (navRepeatTimer >= 0.08f) {
-                    navRepeatTimer -= 0.08f;
-                    shouldStep = true;
+    // 2. Mouse tracking state
+    Vector2 curMouse = GetMousePosition();
+    if (Vector2Distance(curMouse, prevMousePos) > 3.0f || IsMouseButtonDown(MOUSE_LEFT_BUTTON) || IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+        mouseAimTimer = 2.0f;
+        prevMousePos = curMouse;
+        renderer.isMouseActive = true;
+    }
+    if (moveInputLen > 0.05f) {
+        renderer.isMouseActive = false;
+        mouseAimTimer = 0.0f;
+    }
+
+    // 3. Right Stick: Used for selecting a cell & aiming laser
+    bool hasAim = false;
+    float aimAngle = 0.0f;
+    int64_t rightStickCell = -1;
+
+    if (padAvailable) {
+        float rx = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
+        float ry = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
+        float rLen = std::sqrt(rx * rx + ry * ry);
+
+        if (rLen > 0.22f) {
+            Vector2 rDir = { rx / rLen, ry / rLen };
+            hasAim = true;
+            aimAngle = std::atan2(rDir.y, rDir.x) * RAD2DEG + 90.0f;
+
+            float maxReach = renderer.cellSize * (1.2f + (rLen - 0.22f) / 0.78f * 5.0f);
+            for (float d = maxReach; d >= renderer.cellSize * 0.5f; d -= renderer.cellSize * 0.35f) {
+                Vector2 testPt = { renderer.localShip.position.x + rDir.x * d, renderer.localShip.position.y + rDir.y * d };
+                int64_t idx = renderer.getCellIndexAtWorldPos(testPt, board);
+                if (idx >= 0) {
+                    rightStickCell = idx;
+                    break;
                 }
             }
         }
-    } else {
-        navLastDirX = 0;
-        navLastDirY = 0;
-        navHoldTimer = 0.0f;
-        navRepeatTimer = 0.0f;
     }
 
-    // Mouse movement updates selected cell if hovering over board
-    Vector2 curMouse = GetMousePosition();
-    if (Vector2Distance(curMouse, prevMousePos) > 4.0f) {
-        prevMousePos = curMouse;
+    // 4. Update cell selection
+    if (rightStickCell >= 0) {
+        currentHoveredCell = rightStickCell;
+    } else if (renderer.isMouseActive) {
         int64_t mCell = renderer.getHoveredCellIndex(board);
         if (mCell >= 0) {
             currentHoveredCell = mCell;
         } else if (menu.controlMode == 0) {
             currentHoveredCell = -1;
         }
-    }
-
-    // Step cell if navigation active
-    if (shouldStep && board.coord.totalCells > 0) {
-        if (currentHoveredCell < 0) {
-            int64_t mCell = renderer.getHoveredCellIndex(board);
-            if (mCell >= 0) currentHoveredCell = mCell;
-            else if (board.startingCell >= 0) currentHoveredCell = board.startingCell;
-            else currentHoveredCell = 0;
-        } else {
-            currentHoveredCell = board.coord.stepCell(currentHoveredCell, dirX, dirY);
+    } else if (moveInputLen > 0.05f) {
+        int64_t cellUnder = renderer.getCellIndexAtWorldPos(renderer.localShip.position, board);
+        if (cellUnder < 0) {
+            cellUnder = renderer.getCellIndexAtWorldPos(renderer.localShip.getNosePosition(), board);
+        }
+        if (cellUnder >= 0) {
+            currentHoveredCell = cellUnder;
         }
     }
 
-    // Ensure valid selection in keyboard mode
     if (menu.controlMode == 1 && currentHoveredCell < 0 && board.coord.totalCells > 0) {
         currentHoveredCell = (board.startingCell >= 0) ? board.startingCell : 0;
     }
 
     renderer.controlMode = menu.controlMode;
-    renderer.moveInput = { static_cast<float>(dirX), static_cast<float>(dirY) };
-    renderer.hasAim = false;
-    renderer.aimAngle = 0.0f;
+    renderer.moveInput = moveInput;
+    renderer.hasAim = hasAim;
+    renderer.aimAngle = aimAngle;
 
     renderer.syncRemoteShips(net.remoteCursors);
     renderer.updatePhysics(worldMouse, dt);
@@ -766,7 +779,7 @@ void App::update(float dt) {
         if (menu.controlMode == 1) {
             hovered = currentHoveredCell;
         } else {
-            if (currentHoveredCell >= 0 && (padAvailable || dirX != 0 || dirY != 0)) {
+            if (currentHoveredCell >= 0 && padAvailable && !renderer.isMouseActive) {
                 hovered = currentHoveredCell;
             } else {
                 hovered = renderer.getHoveredCellIndex(board);
