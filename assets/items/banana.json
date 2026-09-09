@@ -1,0 +1,11 @@
+{
+  "id": "banana",
+  "name": "BANANA BOOST",
+  "description": "Use [E] • +30% Speed for 20s",
+  "tier": 1,
+  "cost": 15,
+  "icon": "assets/items/banana.png",
+  "durability": 1.0,
+  "speedBoost": 0.30,
+  "duration": 20.0
+}

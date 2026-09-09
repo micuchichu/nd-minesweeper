@@ -40,15 +40,24 @@ ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const ShipConfig& config)
     color = ui::Colors::Amber400;
     setAnchor(anchor, 90.0f);
     applyConfig(config);
+    shopTier = config.shopTier;
+    itemCapacity = config.itemCapacity;
     initializeInventory();
 }
 
 void ShopShip::initializeInventory() {
-    int cap = 2;
+    int cap = itemCapacity;
+    int tier = shopTier;
     if (capsuleLength > 0.0f || name.find("big") != std::string::npos || (texture.height > 48)) {
-        cap = 4;
+        if (cap <= 2) cap = 4;
+        if (tier <= 1) tier = 2;
+    } else {
+        if (cap <= 0) cap = 2;
+        if (tier <= 0) tier = 1;
     }
-    inventory = ItemCatalog::instance().createInventoryForShop(name, cap);
+    shopTier = tier;
+    itemCapacity = cap;
+    inventory = ItemCatalog::instance().createInventoryForShop(shopTier, itemCapacity);
 }
 
 void ShopShip::setupThrusters() {

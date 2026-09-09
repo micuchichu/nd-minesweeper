@@ -180,8 +180,18 @@ public:
     }
     void drawRadarSweep(Vector2 shipPos, const core::Board& board, float dt);
 
+    enum class HeldItemState {
+        Hidden,
+        Deploying,
+        Deployed,
+        Retracting
+    };
+
     const core::InventorySlot* heldSlot = nullptr;
     bool isUsingItem = false;
+    HeldItemState heldState = HeldItemState::Hidden;
+    float heldAnimProgress = 0.0f; // 0.0f (inside ship) to 1.0f (fully deployed)
+    core::InventorySlot activeHeldSlot;
     Vector2 heldItemPos = { 0.0f, 0.0f };
     Vector2 heldItemVel = { 0.0f, 0.0f };
     bool heldItemInit = false;
@@ -200,6 +210,8 @@ public:
         clearOutOfReach();
         clearFlagDrops();
         heldItemInit = false;
+        heldState = HeldItemState::Hidden;
+        heldAnimProgress = 0.0f;
     }
 
 private:

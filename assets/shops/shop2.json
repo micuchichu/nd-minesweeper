@@ -1,5 +1,7 @@
 {
   "name": "big shop",
+  "tier": 2,
+  "itemCapacity": 4,
   "scale": 1.8,
   "mass": 40.0,
   "speed": 130.0,

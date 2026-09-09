@@ -781,7 +781,7 @@ static int runItemTests() {
     }
     std::cout << "  [PASS] Test 12: Radar unsafe cell exact center alignment verified." << std::endl;
 
-    // 11. Spring physics tether initialization & rest distance
+    // 11. Spring physics & deployment from inside the player ship
     {
         minesweeper::render::RaylibRenderer renderer;
         renderer.localShip.position = { 100.0f, 100.0f };
@@ -789,23 +789,43 @@ static int runItemTests() {
         renderer.localShip.velocity = { 0.0f, 0.0f };
         renderer.heldSlot = &pInv.slots[0]; // Banana
 
-        // Step physics once
+        // Step physics once: should start deploying directly from INSIDE the ship
         renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 120.0f);
-        if (!renderer.heldItemInit) {
-            std::cerr << "  [FAIL] Held item spring physics failed to initialize!" << std::endl;
+        if (!renderer.heldItemInit || renderer.heldState != minesweeper::render::RaylibRenderer::HeldItemState::Deploying) {
+            std::cerr << "  [FAIL] Held item failed to enter Deploying state from inside ship!" << std::endl;
             catalog.shutdown();
             CloseWindow();
             return 18;
         }
 
         float initDist = Vector2Distance(renderer.heldItemPos, renderer.localShip.position);
-        if (std::abs(initDist - 26.0f) > 0.5f) {
-            std::cerr << "  [FAIL] Held item initial spring distance mismatch! Expected ~26.0, got " << initDist << std::endl;
+        if (initDist > 2.0f) {
+            std::cerr << "  [FAIL] Held item did not emerge from inside ship center! initDist: " << initDist << std::endl;
             catalog.shutdown();
             CloseWindow();
             return 19;
         }
-        std::cout << "  [PASS] Test 13: Held item spring physics initialization and 26px rest tether verified." << std::endl;
+        std::cout << "  [PASS] Test 13: Held item deployment begins inside player ship center (dist: " << initDist << " px)." << std::endl;
+
+        // Step physics until deployment animation completes (~0.25s)
+        for (int step = 0; step < 60; ++step) {
+            renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 60.0f);
+        }
+        if (renderer.heldState != minesweeper::render::RaylibRenderer::HeldItemState::Deployed) {
+            std::cerr << "  [FAIL] Held item failed to complete deployment to Deployed state!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 20;
+        }
+
+        float deployedDist = Vector2Distance(renderer.heldItemPos, renderer.localShip.position);
+        if (std::abs(deployedDist - 26.0f) > 1.5f) {
+            std::cerr << "  [FAIL] Deployed rest tether distance mismatch! Expected ~26.0, got " << deployedDist << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 21;
+        }
+        std::cout << "  [PASS] Test 14: Held item successfully deployed outward to 26px tether distance." << std::endl;
 
         // 12. Dynamic spring extension and Hookean restoration
         // Move ship forward along X
@@ -820,7 +840,7 @@ static int runItemTests() {
             std::cerr << "  [FAIL] Spring failed to stretch under ship forward velocity! dist: " << stretchDist << std::endl;
             catalog.shutdown();
             CloseWindow();
-            return 20;
+            return 22;
         }
 
         // Let ship come to a stop and spring damp back to rest length
@@ -833,12 +853,11 @@ static int runItemTests() {
             std::cerr << "  [FAIL] Spring failed to damp back to rest distance! Got " << settledDist << std::endl;
             catalog.shutdown();
             CloseWindow();
-            return 21;
+            return 23;
         }
-        std::cout << "  [PASS] Test 14: Dynamic spring extension and damped return to rest verified." << std::endl;
+        std::cout << "  [PASS] Test 15: Dynamic spring extension and damped return to rest verified." << std::endl;
 
         // 13. Free 360-degree orbital rotation without angular lock
-        // Apply tangential impulse (orbiting around ship)
         renderer.heldItemVel.y += 200.0f;
         float prevAngle = std::atan2(renderer.heldItemPos.y - renderer.localShip.position.y,
                                      renderer.heldItemPos.x - renderer.localShip.position.x);
@@ -853,15 +872,70 @@ static int runItemTests() {
             totalAngRot += std::abs(dTheta);
             prevAngle = curAngle;
         }
-        // Ship angle remained fixed, yet item orbited substantially (free spin)
         if (totalAngRot < 1.0f) {
             std::cerr << "  [FAIL] Held item failed to spin freely around player! Total rotation: " << totalAngRot << std::endl;
             catalog.shutdown();
             CloseWindow();
-            return 22;
+            return 24;
         }
-        std::cout << "  [PASS] Test 15: Free 360-degree orbital spinning around player verified (rotated " << totalAngRot << " rad)." << std::endl;
+        std::cout << "  [PASS] Test 16: Free 360-degree orbital spinning around player verified (rotated " << totalAngRot << " rad)." << std::endl;
+
+        // 14. Retraction back into the ship when unheld
+        renderer.heldSlot = nullptr; // Unheld
+        renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 60.0f);
+        if (renderer.heldState != minesweeper::render::RaylibRenderer::HeldItemState::Retracting) {
+            std::cerr << "  [FAIL] Held item failed to transition to Retracting state!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 25;
+        }
+
+        // Step retraction until item is reeled completely back into the ship
+        for (int step = 0; step < 60; ++step) {
+            renderer.updateHeldItemPhysics(renderer.localShip.position, renderer.localShip.velocity, 1.0f / 60.0f);
+        }
+        if (renderer.heldState != minesweeper::render::RaylibRenderer::HeldItemState::Hidden) {
+            std::cerr << "  [FAIL] Held item failed to retract back into ship (expected Hidden)!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 26;
+        }
+        float retractedDist = Vector2Distance(renderer.heldItemPos, renderer.localShip.position);
+        if (retractedDist > 3.5f) {
+            std::cerr << "  [FAIL] Retracted item position not inside player ship! Dist: " << retractedDist << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 27;
+        }
+        std::cout << "  [PASS] Test 17: Held item smoothly retracts back into player ship and becomes Hidden." << std::endl;
     }
+
+    // 15. Verify JSON loading for shop ships
+    minesweeper::core::ShipConfig shop1Cfg;
+    if (!minesweeper::core::ShipConfig::loadFromFile("assets/shops/shop1.json", shop1Cfg) || shop1Cfg.shopTier != 1 || shop1Cfg.itemCapacity != 2) {
+        std::cerr << "  [FAIL] shop1.json tier or itemCapacity parsing failed! tier: " << shop1Cfg.shopTier << ", cap: " << shop1Cfg.itemCapacity << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 28;
+    }
+    minesweeper::core::ShipConfig shop2Cfg;
+    if (!minesweeper::core::ShipConfig::loadFromFile("assets/shops/shop2.json", shop2Cfg) || shop2Cfg.shopTier != 2 || shop2Cfg.itemCapacity != 4) {
+        std::cerr << "  [FAIL] shop2.json tier or itemCapacity parsing failed! tier: " << shop2Cfg.shopTier << ", cap: " << shop2Cfg.itemCapacity << std::endl;
+        catalog.shutdown();
+        CloseWindow();
+        return 29;
+    }
+
+    minesweeper::core::ShipConfig shop3Cfg;
+    if (minesweeper::core::ShipConfig::loadFromFile("assets/shops/shop3.json", shop3Cfg)) {
+        if (shop3Cfg.shopTier != 3 || shop3Cfg.itemCapacity != 8) {
+            std::cerr << "  [FAIL] shop3.json tier or itemCapacity parsing failed! tier: " << shop3Cfg.shopTier << ", cap: " << shop3Cfg.itemCapacity << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 30;
+        }
+    }
+    std::cout << "  [PASS] Test 18: Shop ship JSON tiers and item capacity parsing (shop1, shop2, shop3) verified." << std::endl;
 
     catalog.shutdown();
     CloseWindow();

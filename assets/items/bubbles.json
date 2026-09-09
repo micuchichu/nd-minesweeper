@@ -1,0 +1,10 @@
+{
+  "id": "bubbles",
+  "name": "BUBBLES",
+  "description": "Hold [E] • Emits bubbles & blurs",
+  "tier": 3,
+  "cost": 60,
+  "icon": "assets/items/bubbles.png",
+  "durability": 6.0,
+  "blurRadius": 650.0
+}

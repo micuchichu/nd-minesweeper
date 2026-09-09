@@ -1,0 +1,16 @@
+{
+  "name": "great shop",
+  "tier": 3,
+  "itemCapacity": 8,
+  "scale": 1.8,
+  "mass": 100.0,
+  "speed": 100.0,
+  "range": 160.0,
+  "collisionRadius": 28.0,
+  "capsuleLength": 200.0,
+  "bumpable": false,
+  "thrusterColor": [255, 179, 0, 255],
+  "thrusters": [
+    { "x": -97.0, "y": 3.0, "size": 40 }
+  ]
+}

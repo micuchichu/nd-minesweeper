@@ -44,6 +44,7 @@ savegame.dat
 settings.dat
 saves/
 *.zip
+screenshot_*.png
 
 
 # Steam SDK non-redistributable tools (saving repo space)

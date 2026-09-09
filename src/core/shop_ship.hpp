@@ -13,6 +13,8 @@ struct ShipConfig;
 class ShopShip : public MerchantShip {
 public:
     ShopInventory inventory;
+    int shopTier = 0;
+    int itemCapacity = 0;
 
     ShopShip();
     ShopShip(Texture2D texture, Vector2 anchor, const std::string& shipName = "SHOP");

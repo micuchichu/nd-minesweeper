@@ -76,10 +76,12 @@ bool ShopMenu::drawHoverMenu(
         return static_cast<char>(std::toupper(c));
     });
 
-    const char* tierCapStr = (shop.inventory.capacity > 2) ? "TIER 1-3 • 4 SLOTS" : "TIER 1-2 • 2 SLOTS";
+    std::string tierCapStr = (shop.shopTier >= 2)
+        ? "TIER 1-3 • " + std::to_string(shop.inventory.capacity) + " SLOTS"
+        : "TIER 1-2 • " + std::to_string(shop.inventory.capacity) + " SLOTS";
 
     DrawText(titleStr.c_str(), static_cast<int>(cardX + 12.0f), static_cast<int>(cardY + 8.0f), 15, Fade(Colors::Amber400, alpha));
-    DrawText(tierCapStr, static_cast<int>(cardX + 12.0f), static_cast<int>(cardY + 25.0f), 10, Fade(Colors::Zinc400, alpha));
+    DrawText(tierCapStr.c_str(), static_cast<int>(cardX + 12.0f), static_cast<int>(cardY + 25.0f), 10, Fade(Colors::Zinc400, alpha));
 
     // Scrap counter in header
     char scrapBuf[32];
@@ -140,10 +142,11 @@ bool ShopMenu::drawHoverMenu(
         bool bagFull = !playerInv.hasFreeSlot();
 
         bool hotkeyPressed = false;
-        if (i == 0 && (IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1))) hotkeyPressed = true;
-        if (i == 1 && (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2))) hotkeyPressed = true;
-        if (i == 2 && (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3))) hotkeyPressed = true;
-        if (i == 3 && (IsKeyPressed(KEY_FOUR) || IsKeyPressed(KEY_KP_4))) hotkeyPressed = true;
+        if (i < 9) {
+            int keyNum = KEY_ONE + static_cast<int>(i);
+            int keyKp = KEY_KP_1 + static_cast<int>(i);
+            if (IsKeyPressed(keyNum) || IsKeyPressed(keyKp)) hotkeyPressed = true;
+        }
 
         if (isSold) {
             DrawRectangleRec(btnRect, Fade(Colors::Zinc950, alpha));
@@ -183,9 +186,11 @@ bool ShopMenu::drawHoverMenu(
     }
 
     // 5. Footer hint
-    const char* hint = "HOTKEYS [1] - [4] TO BUY • ESC CLOSE";
-    int hintW = MeasureText(hint, 9);
-    DrawText(hint, static_cast<int>(cardX + (cardW - static_cast<float>(hintW)) * 0.5f), static_cast<int>(cardY + cardH - 16.0f), 9, Fade(Colors::Zinc500, alpha));
+    std::string hint = (shop.inventory.slots.size() > 1)
+        ? "HOTKEYS [1] - [" + std::to_string(std::min<size_t>(shop.inventory.slots.size(), 9)) + "] TO BUY • ESC CLOSE"
+        : "HOTKEY [1] TO BUY • ESC CLOSE";
+    int hintW = MeasureText(hint.c_str(), 9);
+    DrawText(hint.c_str(), static_cast<int>(cardX + (cardW - static_cast<float>(hintW)) * 0.5f), static_cast<int>(cardY + cardH - 16.0f), 9, Fade(Colors::Zinc500, alpha));
 
     return purchasedItem;
 }

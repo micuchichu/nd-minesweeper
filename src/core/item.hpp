@@ -28,6 +28,8 @@ struct Item {
     std::string description;
     ItemTier tier = ItemTier::Tier1;
     uint64_t cost = 15;
+    float defaultDurability = 1.0f;
+    float maxDurability = 1.0f;
     Texture2D icon = { 0 };
 };
 
@@ -77,13 +79,8 @@ struct PlayerInventory {
         if (idx == -1) return false;
         slots[idx].item = item;
         slots[idx].occupied = true;
-        if (item.id == ItemId::Bubbles) {
-            slots[idx].durability = 6.0f;
-            slots[idx].maxDurability = 6.0f;
-        } else {
-            slots[idx].durability = 1.0f;
-            slots[idx].maxDurability = 1.0f;
-        }
+        slots[idx].durability = item.defaultDurability > 0.0f ? item.defaultDurability : 1.0f;
+        slots[idx].maxDurability = item.maxDurability > 0.0f ? item.maxDurability : 1.0f;
         return true;
     }
 
@@ -142,7 +139,8 @@ public:
     const Item* getItem(const std::string& strId) const;
     const std::vector<Item>& getAllItems() const { return items; }
 
-    // Generates inventory for shops based on capacity and tier constraints
+    // Generates inventory for shops based on shop tier and capacity constraints
+    ShopInventory createInventoryForShop(int shopTier, int capacity) const;
     ShopInventory createInventoryForShop(const std::string& shopName, int capacity) const;
 
 private:

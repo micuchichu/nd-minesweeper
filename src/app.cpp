@@ -640,11 +640,14 @@ void App::update(float dt) {
             if (b) playerInventory.addItem(*b);
             if (r) playerInventory.addItem(*r);
             if (bub) playerInventory.addItem(*bub);
-            playerInventory.selectedSlot = 2; // select Bubbles
+            playerInventory.selectedSlot = 0; // select Banana (emerges from ship)
+        }
+        if (uiFrame == 31) {
+            playerInventory.selectedSlot = 2; // switch to Bubbles
             playerInventory.radarActiveTimer = 3.5f;
             renderer.triggerRadar(3.5f);
         }
-        if (uiFrame >= 27 && uiFrame <= 35) {
+        if (uiFrame >= 32 && uiFrame <= 35) {
             auto* held = playerInventory.getSelectedSlot();
             if (held && held->item.id == core::ItemId::Bubbles) {
                 isUsingHeldItem = true;
@@ -652,6 +655,10 @@ void App::update(float dt) {
                 renderer.emitBubbles(renderer.localShip.position, 3);
                 renderer.applyBubbleBlurSource(renderer.localShip.position, 650.0f);
             }
+        }
+        if (uiFrame == 36) {
+            isUsingHeldItem = false;
+            playerInventory.selectedSlot = -1; // unselect item -> triggers retract back into ship
         }
     }
 
@@ -1548,9 +1555,15 @@ void App::draw() {
         } else if (drawUIFrame == 22) {
             TakeScreenshot("screenshot_big_shop.png");
             std::cout << "[TEST-UI] Saved screenshot_big_shop.png" << std::endl;
-        } else if (drawUIFrame == 32) {
+        } else if (drawUIFrame == 29) {
+            TakeScreenshot("screenshot_held_item_deploy.png");
+            std::cout << "[TEST-UI] Saved screenshot_held_item_deploy.png" << std::endl;
+        } else if (drawUIFrame == 34) {
             TakeScreenshot("screenshot_bubble_blur.png");
             std::cout << "[TEST-UI] Saved screenshot_bubble_blur.png" << std::endl;
+        } else if (drawUIFrame == 38) {
+            TakeScreenshot("screenshot_held_item_retract.png");
+            std::cout << "[TEST-UI] Saved screenshot_held_item_retract.png" << std::endl;
             shouldQuit = true;
         }
     }

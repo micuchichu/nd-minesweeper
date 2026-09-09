@@ -1,0 +1,11 @@
+{
+  "id": "radar",
+  "name": "MINE RADAR",
+  "description": "Use [E] • Scans 3 cells for 4s",
+  "tier": 2,
+  "cost": 40,
+  "icon": "assets/items/radar.png",
+  "durability": 1.0,
+  "scanRadius": 3,
+  "duration": 4.0
+}

@@ -1293,73 +1293,148 @@ void RaylibRenderer::drawRadarSweep(Vector2 shipPos, const core::Board& board, f
 }
 
 void RaylibRenderer::updateHeldItemPhysics(Vector2 shipPos, Vector2 shipVel, float dt) {
-    if (!heldSlot || !heldSlot->occupied) {
-        heldItemInit = false;
-        return;
+    bool hasTarget = (heldSlot && heldSlot->occupied && heldSlot->item.id != core::ItemId::None);
+
+    if (hasTarget) {
+        if (heldState == HeldItemState::Hidden) {
+            // Deploy from INSIDE the player ship!
+            activeHeldSlot = *heldSlot;
+            heldItemPos = shipPos;
+            heldItemVel = shipVel;
+            heldAnimProgress = 0.0f;
+            heldState = HeldItemState::Deploying;
+            heldItemInit = true;
+        } else if (heldState == HeldItemState::Retracting) {
+            if (heldSlot->item.id == activeHeldSlot.item.id) {
+                // Reverse back to deploying
+                activeHeldSlot = *heldSlot;
+                heldState = HeldItemState::Deploying;
+            }
+            // Otherwise finish retracting old item before deploying new one
+        } else {
+            // Deploying or Deployed
+            if (heldSlot->item.id != activeHeldSlot.item.id) {
+                // Item switched: retract old item into ship
+                heldState = HeldItemState::Retracting;
+            } else {
+                activeHeldSlot = *heldSlot;
+            }
+        }
+    } else {
+        // No item held anymore: retract back into the ship
+        if (heldState == HeldItemState::Deployed || heldState == HeldItemState::Deploying) {
+            heldState = HeldItemState::Retracting;
+        }
     }
 
-    float distToShip = Vector2Distance(heldItemPos, shipPos);
-    if (!heldItemInit || distToShip > 200.0f) {
-        float rad = (localShip.angle - 90.0f) * DEG2RAD;
-        heldItemPos = { shipPos.x - std::cos(rad) * 26.0f, shipPos.y - std::sin(rad) * 26.0f };
+    if (heldState == HeldItemState::Hidden) {
+        heldAnimProgress = 0.0f;
+        heldItemPos = shipPos;
         heldItemVel = shipVel;
-        heldItemInit = true;
         return;
     }
 
-    Vector2 toItem = { heldItemPos.x - shipPos.x, heldItemPos.y - shipPos.y };
-    float dist = std::sqrt(toItem.x * toItem.x + toItem.y * toItem.y);
-    Vector2 u = (dist > 0.001f) ? Vector2{ toItem.x / dist, toItem.y / dist } : Vector2{ 0.0f, -1.0f };
+    if (heldState == HeldItemState::Deploying) {
+        heldAnimProgress = std::min(1.0f, heldAnimProgress + dt * 4.2f);
 
-    const float restLen = 26.0f;
-    const float kSpring = 85.0f;
-    const float cRad = 10.0f;
-    const float cTan = 1.8f;
+        // Move smoothly outward from inside ship to rest distance (26px)
+        float rad = (localShip.angle - 90.0f) * DEG2RAD;
+        Vector2 deployDir = { -std::cos(rad), -std::sin(rad) };
+        Vector2 targetDeployPos = {
+            shipPos.x + deployDir.x * (26.0f * heldAnimProgress),
+            shipPos.y + deployDir.y * (26.0f * heldAnimProgress)
+        };
 
-    // Relative velocity of item to ship
-    Vector2 vRel = { heldItemVel.x - shipVel.x, heldItemVel.y - shipVel.y };
-    float vRadial = vRel.x * u.x + vRel.y * u.y;
-    Vector2 vTan = { vRel.x - vRadial * u.x, vRel.y - vRadial * u.y };
+        heldItemPos.x += (targetDeployPos.x - heldItemPos.x) * std::min(1.0f, dt * 18.0f);
+        heldItemPos.y += (targetDeployPos.y - heldItemPos.y) * std::min(1.0f, dt * 18.0f);
+        heldItemVel = shipVel;
 
-    // Radial spring force (Hooke's law + radial damping)
-    float delta = std::clamp(dist - restLen, -12.0f, 40.0f);
-    float fRadial = -kSpring * delta - cRad * vRadial;
+        if (heldAnimProgress >= 1.0f) {
+            heldAnimProgress = 1.0f;
+            heldState = HeldItemState::Deployed;
+        }
+    } else if (heldState == HeldItemState::Retracting) {
+        heldAnimProgress = std::max(0.0f, heldAnimProgress - dt * 5.0f);
 
-    // Soft repulsive bumper if item gets too close to ship hull
-    if (dist < 18.0f) {
-        fRadial += 150.0f * (18.0f - dist);
-    }
+        // Reel directly back into the player ship center
+        float reelRate = std::min(1.0f, dt * 16.0f);
+        heldItemPos.x += (shipPos.x - heldItemPos.x) * reelRate;
+        heldItemPos.y += (shipPos.y - heldItemPos.y) * reelRate;
+        heldItemVel = shipVel;
 
-    // Tangential drag allowing free 360-degree orbital rotation
-    Vector2 accel = {
-        fRadial * u.x - cTan * vTan.x,
-        fRadial * u.y - cTan * vTan.y
-    };
+        float distToShip = Vector2Distance(heldItemPos, shipPos);
+        if (heldAnimProgress <= 0.02f || distToShip < 3.0f) {
+            heldState = HeldItemState::Hidden;
+            heldAnimProgress = 0.0f;
+            heldItemPos = shipPos;
+            heldItemInit = false;
+        }
+    } else if (heldState == HeldItemState::Deployed) {
+        heldAnimProgress = 1.0f;
 
-    heldItemVel.x += accel.x * dt;
-    heldItemVel.y += accel.y * dt;
+        float distToShip = Vector2Distance(heldItemPos, shipPos);
+        if (distToShip > 200.0f) {
+            float rad = (localShip.angle - 90.0f) * DEG2RAD;
+            heldItemPos = { shipPos.x - std::cos(rad) * 26.0f, shipPos.y - std::sin(rad) * 26.0f };
+            heldItemVel = shipVel;
+            return;
+        }
 
-    heldItemPos.x += heldItemVel.x * dt;
-    heldItemPos.y += heldItemVel.y * dt;
+        Vector2 toItem = { heldItemPos.x - shipPos.x, heldItemPos.y - shipPos.y };
+        float dist = std::sqrt(toItem.x * toItem.x + toItem.y * toItem.y);
+        Vector2 u = (dist > 0.001f) ? Vector2{ toItem.x / dist, toItem.y / dist } : Vector2{ 0.0f, -1.0f };
 
-    // Hard clamp minimum distance to ship hull
-    float newDist = Vector2Distance(heldItemPos, shipPos);
-    if (newDist < 14.0f && newDist > 0.001f) {
-        Vector2 n = { (heldItemPos.x - shipPos.x) / newDist, (heldItemPos.y - shipPos.y) / newDist };
-        heldItemPos = { shipPos.x + n.x * 14.0f, shipPos.y + n.y * 14.0f };
+        const float restLen = 26.0f;
+        const float kSpring = 85.0f;
+        const float cRad = 10.0f;
+        const float cTan = 1.8f;
+
+        // Relative velocity of item to ship
+        Vector2 vRel = { heldItemVel.x - shipVel.x, heldItemVel.y - shipVel.y };
+        float vRadial = vRel.x * u.x + vRel.y * u.y;
+        Vector2 vTan = { vRel.x - vRadial * u.x, vRel.y - vRadial * u.y };
+
+        // Radial spring force (Hooke's law + radial damping)
+        float delta = std::clamp(dist - restLen, -12.0f, 40.0f);
+        float fRadial = -kSpring * delta - cRad * vRadial;
+
+        // Soft repulsive bumper if item gets too close to ship hull
+        if (dist < 18.0f) {
+            fRadial += 150.0f * (18.0f - dist);
+        }
+
+        // Tangential drag allowing free 360-degree orbital rotation
+        Vector2 accel = {
+            fRadial * u.x - cTan * vTan.x,
+            fRadial * u.y - cTan * vTan.y
+        };
+
+        heldItemVel.x += accel.x * dt;
+        heldItemVel.y += accel.y * dt;
+
+        heldItemPos.x += heldItemVel.x * dt;
+        heldItemPos.y += heldItemVel.y * dt;
+
+        // Hard clamp minimum distance to ship hull
+        float newDist = Vector2Distance(heldItemPos, shipPos);
+        if (newDist < 14.0f && newDist > 0.001f) {
+            Vector2 n = { (heldItemPos.x - shipPos.x) / newDist, (heldItemPos.y - shipPos.y) / newDist };
+            heldItemPos = { shipPos.x + n.x * 14.0f, shipPos.y + n.y * 14.0f };
+        }
     }
 }
 
 void RaylibRenderer::drawHeldItem(Vector2 shipPos, float shipAngle, const core::InventorySlot* slot, bool isUsing) {
-    if (!slot || !slot->occupied || slot->item.icon.id == 0) return;
+    (void)shipAngle;
+    if (heldState == HeldItemState::Hidden || heldAnimProgress <= 0.01f) return;
 
+    const core::InventorySlot* drawSlot = (slot && slot->occupied) ? slot : &activeHeldSlot;
+    if (!drawSlot || !drawSlot->occupied || drawSlot->item.icon.id == 0) return;
+
+    float animScale = std::clamp(heldAnimProgress, 0.0f, 1.0f);
     Vector2 drawPos = heldItemPos;
-    if (!heldItemInit) {
-        float rad = (shipAngle - 90.0f) * DEG2RAD;
-        drawPos = { shipPos.x - std::cos(rad) * 26.0f, shipPos.y - std::sin(rad) * 26.0f };
-    }
 
-    if (isUsing) {
+    if (isUsing && heldState == HeldItemState::Deployed) {
         float jitterX = (-1.0f + static_cast<float>(rand() % 200) / 100.0f) * 1.5f;
         float jitterY = (-1.0f + static_cast<float>(rand() % 200) / 100.0f) * 1.5f;
         drawPos.x += jitterX;
@@ -1367,35 +1442,35 @@ void RaylibRenderer::drawHeldItem(Vector2 shipPos, float shipAngle, const core::
     }
 
     Color tierCol = ui::Colors::Green400;
-    if (slot->item.tier == core::ItemTier::Tier2) tierCol = ui::Colors::Amber400;
-    else if (slot->item.tier == core::ItemTier::Tier3) tierCol = ui::Colors::Purple400;
+    if (drawSlot->item.tier == core::ItemTier::Tier2) tierCol = ui::Colors::Amber400;
+    else if (drawSlot->item.tier == core::ItemTier::Tier3) tierCol = ui::Colors::Purple400;
 
-    // 1. Holographic tractor-beam tether connecting ship hull to item
-    DrawLineEx(shipPos, drawPos, 1.0f, Fade(tierCol, 0.45f));
-    DrawCircleV(shipPos, 1.8f, Fade(tierCol, 0.65f));
-    DrawCircleV(drawPos, 2.0f, Fade(tierCol, 0.75f));
+    // 1. Holographic tractor-beam tether connecting ship hull to item (emerging from ship)
+    DrawLineEx(shipPos, drawPos, 1.0f * animScale, Fade(tierCol, 0.45f * animScale));
+    DrawCircleV(shipPos, 1.8f * animScale, Fade(tierCol, 0.65f * animScale));
+    DrawCircleV(drawPos, 2.0f * animScale, Fade(tierCol, 0.75f * animScale));
 
-    // 2. Soft glowing aura / halo (compact size)
-    DrawCircleV(drawPos, 8.5f, Fade(tierCol, 0.22f));
-    DrawCircleLines(static_cast<int>(drawPos.x), static_cast<int>(drawPos.y), 9.0f, Fade(tierCol, 0.60f));
+    // 2. Soft glowing aura / halo (scaled from inside ship)
+    DrawCircleV(drawPos, 8.5f * animScale, Fade(tierCol, 0.22f * animScale));
+    DrawCircleLinesV(drawPos, 9.0f * animScale, Fade(tierCol, 0.60f * animScale));
 
-    // 3. Item icon (12x12, reduced from 18x18)
-    const float iconDrawSize = 12.0f;
-    Rectangle src = { 0.0f, 0.0f, static_cast<float>(slot->item.icon.width), static_cast<float>(slot->item.icon.height) };
+    // 3. Item icon (scaled from 0 inside ship to 12 outside)
+    const float iconDrawSize = 12.0f * animScale;
+    Rectangle src = { 0.0f, 0.0f, static_cast<float>(drawSlot->item.icon.width), static_cast<float>(drawSlot->item.icon.height) };
     Rectangle dst = { drawPos.x, drawPos.y, iconDrawSize, iconDrawSize };
     Vector2 origin = { iconDrawSize * 0.5f, iconDrawSize * 0.5f };
-    DrawTexturePro(slot->item.icon, src, dst, origin, 0.0f, WHITE);
+    DrawTexturePro(drawSlot->item.icon, src, dst, origin, 0.0f, Fade(WHITE, animScale));
 
-    // 4. Durability gauge below item if applicable (compact 12x2)
-    if (slot->item.id == core::ItemId::Bubbles && slot->maxDurability > 0.0f) {
-        float pct = std::clamp(slot->durability / slot->maxDurability, 0.0f, 1.0f);
-        float barW = 12.0f;
-        float barH = 2.0f;
-        Rectangle barBg = { drawPos.x - barW * 0.5f, drawPos.y + 8.0f, barW, barH };
-        Rectangle barFg = { drawPos.x - barW * 0.5f, drawPos.y + 8.0f, barW * pct, barH };
-        DrawRectangleRec(barBg, Fade(ui::Colors::Zinc900, 0.85f));
+    // 4. Durability gauge below item if applicable
+    if (drawSlot->item.id == core::ItemId::Bubbles && drawSlot->maxDurability > 0.0f && animScale > 0.3f) {
+        float pct = std::clamp(drawSlot->durability / drawSlot->maxDurability, 0.0f, 1.0f);
+        float barW = 12.0f * animScale;
+        float barH = 2.0f * animScale;
+        Rectangle barBg = { drawPos.x - barW * 0.5f, drawPos.y + 8.0f * animScale, barW, barH };
+        Rectangle barFg = { drawPos.x - barW * 0.5f, drawPos.y + 8.0f * animScale, barW * pct, barH };
+        DrawRectangleRec(barBg, Fade(ui::Colors::Zinc900, 0.85f * animScale));
         Color dCol = (pct > 0.5f) ? ui::Colors::Green400 : (pct > 0.25f ? ui::Colors::Amber400 : ui::Colors::Red500);
-        DrawRectangleRec(barFg, Fade(dCol, 0.90f));
+        DrawRectangleRec(barFg, Fade(dCol, 0.90f * animScale));
     }
 }
 

@@ -1,5 +1,7 @@
 {
   "name": "mini shop",
+  "tier": 1,
+  "itemCapacity": 2,
   "scale": 1.8,
   "mass": 8.0,
   "speed": 140.0,
