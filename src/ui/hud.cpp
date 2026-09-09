@@ -399,4 +399,52 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
     return actions;
 }
 
+bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale) const {
+    return isMouseOver(screenW, screenH, guiScale, GetMousePosition());
+}
+
+bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale, Vector2 mousePos) const {
+    float s = (guiScale > 0.01f) ? guiScale : 1.0f;
+
+    // 1. Top Header Bar (height is 70px in UI space)
+    float topBarH = 70.0f * s;
+    if (mousePos.y >= 0.0f && mousePos.y <= topBarH &&
+        mousePos.x >= 0.0f && mousePos.x <= static_cast<float>(screenW)) {
+        return true;
+    }
+
+    // 2. Scrap Currency tooltip area (extends below top bar when hovering scrap badge)
+    if (mousePos.y > topBarH && mousePos.y <= (topBarH + 28.0f * s) &&
+        mousePos.x >= 120.0f * s && mousePos.x <= 460.0f * s) {
+        return true;
+    }
+
+    // 3. Bottom Footer Control Bar (height is 92px in UI space)
+    float footerH = 92.0f * s;
+    float footerY = static_cast<float>(screenH) - footerH;
+    if (mousePos.y >= footerY && mousePos.y <= static_cast<float>(screenH) &&
+        mousePos.x >= 0.0f && mousePos.x <= static_cast<float>(screenW)) {
+        return true;
+    }
+
+    // 4. Large Grid Warning Modal dialog
+    if (showLargeGridWarning) {
+        return true;
+    }
+
+    // 5. Minimized Victory / Game Over stats banner
+    if (endModalDismissed) {
+        float bW = 440.0f * s;
+        float bH = 36.0f * s;
+        float bX = (static_cast<float>(screenW) - bW) * 0.5f;
+        float bY = 76.0f * s;
+        Rectangle bannerRect = { bX, bY, bW, bH };
+        if (CheckCollisionPointRec(mousePos, bannerRect)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 } // namespace minesweeper::ui

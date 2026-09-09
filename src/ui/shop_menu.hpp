@@ -34,9 +34,20 @@ public:
     );
 
     Rectangle lastCardRect = { 0.0f, 0.0f, 0.0f, 0.0f };
+    Rectangle lastHotbarRect = { 0.0f, 0.0f, 0.0f, 0.0f };
+
     bool isMouseOverCard() const {
         return (lastCardRect.width > 0.0f && CheckCollisionPointRec(GetMousePosition(), lastCardRect));
     }
+    bool isMouseOverCard(Vector2 pos) const {
+        return (lastCardRect.width > 0.0f && CheckCollisionPointRec(pos, lastCardRect));
+    }
+
+    bool isMouseOverHotbar(int screenW, int screenH, const core::PlayerInventory& playerInv) const;
+    bool isMouseOverHotbar(int screenW, int screenH, const core::PlayerInventory& playerInv, Vector2 pos) const;
+
+    bool isMouseOverUI(int screenW, int screenH, const core::PlayerInventory& playerInv, float shopAlpha) const;
+    bool isMouseOverUI(int screenW, int screenH, const core::PlayerInventory& playerInv, float shopAlpha, Vector2 pos) const;
 
 private:
     float pulseTimer = 0.0f;

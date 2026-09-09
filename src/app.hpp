@@ -29,6 +29,8 @@ public:
     ~App();
 
     void run();
+    bool isMouseOverUI() const;
+    bool isMouseOverUI(Vector2 mousePos) const;
 
 private:
     AppState state = AppState::Menu;

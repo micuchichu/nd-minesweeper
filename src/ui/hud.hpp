@@ -41,6 +41,9 @@ public:
 
     void init(const core::BoardConfig& cfg);
     HUDActions drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net, bool isTransmitting = false, bool voiceEnabled = true, bool isPushToTalk = true);
+
+    bool isMouseOver(int screenW, int screenH, float guiScale) const;
+    bool isMouseOver(int screenW, int screenH, float guiScale, Vector2 mousePos) const;
 };
 
 

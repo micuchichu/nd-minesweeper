@@ -219,6 +219,7 @@ bool ShopMenu::drawInventoryDock(
     const float gap = 6.0f;
     const float dockX = 20.0f;
     const float dockY = static_cast<float>(screenH) - 92.0f - slotH - 12.0f;
+    const float totalW = numSlots * slotW + (numSlots - 1) * gap;
 
     // Draw active buff indicators above the hotbar if any buffs are running
     float buffY = dockY - 22.0f;
@@ -242,15 +243,24 @@ bool ShopMenu::drawInventoryDock(
         DrawText(buffBuf, static_cast<int>(bRect.x + 6.0f), static_cast<int>(bRect.y + 4.0f), 10, Fade(Colors::Amber300, alpha));
     }
 
+    float topY = dockY;
+    if (playerInv.bananaBoostTimer > 0.0f) topY -= 22.0f;
+    if (playerInv.radarActiveTimer > 0.0f) topY -= 22.0f;
+    lastHotbarRect = { dockX - 6.0f, topY - 4.0f, totalW + 12.0f, (dockY + slotH + 6.0f) - (topY - 4.0f) };
+
     // Draw 5 hotbar slots
     for (int i = 0; i < numSlots; ++i) {
         Rectangle r = { dockX + i * (slotW + gap), dockY, slotW, slotH };
         bool isHovered = CheckCollisionPointRec(mousePos, r);
         bool isSelected = (playerInv.selectedSlot == i);
 
-        // Click to select slot
+        // Click to select or toggle slot
         if (isHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            playerInv.selectedSlot = i;
+            if (playerInv.selectedSlot == i) {
+                playerInv.selectedSlot = -1;
+            } else {
+                playerInv.selectedSlot = i;
+            }
             itemClicked = true;
         }
 
@@ -340,6 +350,42 @@ bool ShopMenu::drawInventoryDock(
     }
 
     return itemClicked;
+}
+
+bool ShopMenu::isMouseOverHotbar(int screenW, int screenH, const core::PlayerInventory& playerInv, Vector2 pos) const {
+    (void)screenW;
+    const int numSlots = core::PlayerInventory::CAPACITY;
+    const float slotW = 50.0f;
+    const float slotH = 50.0f;
+    const float gap = 6.0f;
+    const float dockX = 20.0f;
+    const float dockY = static_cast<float>(screenH) - 92.0f - slotH - 12.0f;
+    const float totalW = numSlots * slotW + (numSlots - 1) * gap;
+
+    float topY = dockY;
+    if (playerInv.bananaBoostTimer > 0.0f) topY -= 22.0f;
+    if (playerInv.radarActiveTimer > 0.0f) topY -= 22.0f;
+
+    Rectangle hotbarRect = { dockX - 6.0f, topY - 4.0f, totalW + 12.0f, (dockY + slotH + 6.0f) - (topY - 4.0f) };
+    return CheckCollisionPointRec(pos, hotbarRect);
+}
+
+bool ShopMenu::isMouseOverHotbar(int screenW, int screenH, const core::PlayerInventory& playerInv) const {
+    return isMouseOverHotbar(screenW, screenH, playerInv, GetMousePosition());
+}
+
+bool ShopMenu::isMouseOverUI(int screenW, int screenH, const core::PlayerInventory& playerInv, float shopAlpha, Vector2 pos) const {
+    if (isMouseOverHotbar(screenW, screenH, playerInv, pos)) {
+        return true;
+    }
+    if (shopAlpha > 0.01f && isMouseOverCard(pos)) {
+        return true;
+    }
+    return false;
+}
+
+bool ShopMenu::isMouseOverUI(int screenW, int screenH, const core::PlayerInventory& playerInv, float shopAlpha) const {
+    return isMouseOverUI(screenW, screenH, playerInv, shopAlpha, GetMousePosition());
 }
 
 } // namespace minesweeper::ui

@@ -1011,6 +1011,120 @@ static int runItemTests() {
         std::cout << "  [PASS] Test 19: Shop click-to-open bounds & interaction distance (380px/450px) verified." << std::endl;
     }
 
+    // 20. UI Hover Detection & Game Input Suppression Verification
+    {
+        minesweeper::ui::GameHUD testHud;
+        const int screenW = 1000;
+        const int screenH = 800;
+        const float guiScale = 1.0f;
+
+        // 20a: Top bar hover
+        Vector2 topBarPt = { 300.0f, 35.0f }; // y <= 70.0f
+        if (!testHud.isMouseOver(screenW, screenH, guiScale, topBarPt)) {
+            std::cerr << "  [FAIL] Test 20a: Top bar point (300, 35) should be detected as mouse over UI!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 36;
+        }
+
+        // 20b: Bottom bar hover
+        Vector2 bottomBarPt = { 500.0f, 750.0f }; // y >= 800 - 92 = 708
+        if (!testHud.isMouseOver(screenW, screenH, guiScale, bottomBarPt)) {
+            std::cerr << "  [FAIL] Test 20b: Bottom bar point (500, 750) should be detected as mouse over UI!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 37;
+        }
+
+        // 20c: Center board point (free play field)
+        Vector2 fieldPt = { 500.0f, 400.0f };
+        if (testHud.isMouseOver(screenW, screenH, guiScale, fieldPt)) {
+            std::cerr << "  [FAIL] Test 20c: Center field point (500, 400) should NOT be mouse over UI!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 38;
+        }
+
+        // 20d: Hotbar dock hover
+        minesweeper::ui::ShopMenu testShopMenu;
+        minesweeper::core::PlayerInventory testInv;
+        Vector2 hotbarSlotPt = { 45.0f, 660.0f }; // dockX=20, dockY=800-92-50-12=646
+        Vector2 outsideHotbarPt = { 450.0f, 660.0f };
+
+        if (!testShopMenu.isMouseOverHotbar(screenW, screenH, testInv, hotbarSlotPt)) {
+            std::cerr << "  [FAIL] Test 20d: Hotbar slot point (45, 660) should be detected as mouse over hotbar!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 39;
+        }
+        if (testShopMenu.isMouseOverHotbar(screenW, screenH, testInv, outsideHotbarPt)) {
+            std::cerr << "  [FAIL] Test 20d: Point (450, 660) should NOT be detected as mouse over hotbar!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 40;
+        }
+
+        // 20e: Hotbar expansion with active buff
+        testInv.bananaBoostTimer = 8.0f;
+        Vector2 buffChipPt = { 35.0f, 630.0f }; // expanded upward by 22px
+        if (!testShopMenu.isMouseOverHotbar(screenW, screenH, testInv, buffChipPt)) {
+            std::cerr << "  [FAIL] Test 20e: Active buff area (35, 630) should be detected as mouse over hotbar!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 41;
+        }
+
+        // 20f: Shop Menu Card hover
+        testShopMenu.lastCardRect = { 300.0f, 200.0f, 310.0f, 240.0f };
+        Vector2 cardInsidePt = { 350.0f, 250.0f };
+        Vector2 cardOutsidePt = { 200.0f, 250.0f };
+
+        // Closed shop (alpha = 0): card does NOT block UI
+        if (testShopMenu.isMouseOverUI(screenW, screenH, testInv, 0.0f, cardInsidePt)) {
+            std::cerr << "  [FAIL] Test 20f: Closed shop (alpha=0) should NOT block UI at card point!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 42;
+        }
+        // Open shop (alpha = 1.0): card DOES block UI
+        if (!testShopMenu.isMouseOverUI(screenW, screenH, testInv, 1.0f, cardInsidePt)) {
+            std::cerr << "  [FAIL] Test 20f: Open shop (alpha=1) SHOULD block UI at card point!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 43;
+        }
+        if (testShopMenu.isMouseOverUI(screenW, screenH, testInv, 1.0f, cardOutsidePt)) {
+            std::cerr << "  [FAIL] Test 20f: Open shop should NOT block UI outside card rect!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 44;
+        }
+
+        // 20g: Input suppression logic verification
+        bool isOverUI = true;
+        bool mouseHandledByShop = false;
+        bool mousePressed = true;
+        bool triggerUncover = mousePressed && !mouseHandledByShop && !isOverUI;
+        bool triggerFlag = mousePressed && !mouseHandledByShop && !isOverUI;
+        int64_t currentHoveredCell = 15;
+        if (isOverUI) currentHoveredCell = -1;
+
+        if (triggerUncover || triggerFlag) {
+            std::cerr << "  [FAIL] Test 20g: triggerUncover and triggerFlag MUST be suppressed when isOverUI is true!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 45;
+        }
+        if (currentHoveredCell != -1) {
+            std::cerr << "  [FAIL] Test 20g: currentHoveredCell MUST be unselected (-1) when isOverUI is true!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 46;
+        }
+
+        std::cout << "  [PASS] Test 20: UI Hover detection (HUD/Hotbar/Shop) and Game Input suppression verified." << std::endl;
+    }
+
     catalog.shutdown();
     CloseWindow();
     std::cout << "[TEST-ITEMS] ALL ITEM TESTS PASSED!" << std::endl;

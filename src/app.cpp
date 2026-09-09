@@ -795,6 +795,8 @@ void App::update(float dt) {
     const float maxShopInteractionDist = 380.0f; // Increased interaction radius
     const float maxShopCloseDist = 450.0f;       // Distance at which an open shop automatically closes
 
+    bool isOverUI = (state == AppState::InGame) && isMouseOverUI();
+
     hoveredShopIndex = -1;
     isHoveredShopInRange = false;
     int clickedShopIndex = -1;
@@ -824,7 +826,7 @@ void App::update(float dt) {
                 36.0f
             });
 
-            if (mouseDist <= clickRadius) {
+            if (mouseDist <= clickRadius && !isOverUI) {
                 hoveredShopIndex = static_cast<int>(i);
                 if (playerDist <= maxShopInteractionDist) {
                     isHoveredShopInRange = true;
@@ -978,7 +980,11 @@ void App::update(float dt) {
     } else if (hasAim) {
         currentHoveredCell = -1;
     } else if (renderer.isMouseActive) {
-        currentHoveredCell = renderer.getHoveredCellIndex(board);
+        if (isOverUI) {
+            currentHoveredCell = -1;
+        } else {
+            currentHoveredCell = renderer.getHoveredCellIndex(board);
+        }
     }
 
     renderer.controlMode = menu.controlMode;
@@ -1003,7 +1009,7 @@ void App::update(float dt) {
         }
 
         // Camera input & smooth edge follow
-        renderer.camera.handleInput(!hud.showLargeGridWarning);
+        renderer.camera.handleInput(!hud.showLargeGridWarning && !isOverUI);
 
         // Gamepad camera zoom & center
         if (padAvailable && !hud.showLargeGridWarning) {
@@ -1079,11 +1085,16 @@ void App::update(float dt) {
 
         // In-game Input Handling
         if (!board.isGameOver && !board.isVictory && !hud.showLargeGridWarning) {
-            bool triggerUncover = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !mouseHandledByShop;
-            bool triggerFlag = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !mouseHandledByShop;
+            bool triggerUncover = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !mouseHandledByShop && !isOverUI;
+            bool triggerFlag = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !mouseHandledByShop && !isOverUI;
             bool triggerChord = IsKeyPressed(KEY_C);
-            if (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON) && !renderer.camera.isMiddleDragging()) {
+            if (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON) && !renderer.camera.isMiddleDragging() && !isOverUI) {
                 triggerChord = true;
+            }
+
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && isOverUI) {
+                pendingUncoverCell = -1;
+                renderer.clearOutOfReach();
             }
 
             if (padAvailable) {
@@ -1104,9 +1115,9 @@ void App::update(float dt) {
                 triggerUncover = false;
             }
 
-            bool isMouseAction = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) ||
+            bool isMouseAction = (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) ||
                                  IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) ||
-                                 (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON) && !renderer.camera.isMiddleDragging());
+                                 (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON) && !renderer.camera.isMiddleDragging())) && !isOverUI;
 
             Vector2 actionTarget = worldMouse;
             if (isMouseAction || (renderer.isMouseActive && menu.controlMode == 0)) {
@@ -1391,7 +1402,7 @@ void App::update(float dt) {
 
         // Update Scrap System
         Vector2 hudScrapPos = hud.getScrapBadgeScreenPos();
-        bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+        bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop;
         scrapSystem.update(dt, hudScrapPos, renderer.camera.camera, worldMouse, mouseClicked);
 
         int collected = scrapSystem.collectPending();
@@ -1416,6 +1427,40 @@ void App::update(float dt) {
             }
         }
     }
+}
+
+bool App::isMouseOverUI() const {
+    return isMouseOverUI(GetMousePosition());
+}
+
+bool App::isMouseOverUI(Vector2 mousePos) const {
+    int screenW = GetScreenWidth();
+    int screenH = GetScreenHeight();
+    float scale = std::clamp(menu.guiScale, 0.75f, 1.50f);
+
+    // 1. Game HUD (top bar, bottom bar, modals, banners)
+    if (hud.isMouseOver(screenW, screenH, scale, mousePos)) {
+        return true;
+    }
+
+    // 2. Shop and Inventory Hotbar Dock
+    if (shopMenu.isMouseOverUI(screenW, screenH, playerInventory, shopProximityAlpha, mousePos)) {
+        return true;
+    }
+
+    // 3. FPS counter overlay badge if active
+    if (menu.showFPS) {
+        float fpsW = 120.0f;
+        float fpsH = 26.0f;
+        float fpsX = static_cast<float>(screenW) - fpsW - 10.0f;
+        float fpsY = 74.0f * scale + 4.0f;
+        Rectangle fpsRect = { fpsX, fpsY, fpsW, fpsH };
+        if (CheckCollisionPointRec(mousePos, fpsRect)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void App::draw() {
