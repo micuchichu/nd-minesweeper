@@ -33,6 +33,11 @@ public:
         float alpha
     );
 
+    Rectangle lastCardRect = { 0.0f, 0.0f, 0.0f, 0.0f };
+    bool isMouseOverCard() const {
+        return (lastCardRect.width > 0.0f && CheckCollisionPointRec(GetMousePosition(), lastCardRect));
+    }
+
 private:
     float pulseTimer = 0.0f;
 };

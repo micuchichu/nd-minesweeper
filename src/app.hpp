@@ -56,6 +56,9 @@ private:
 
     float shopProximityAlpha = 0.0f;
     int nearbyShopIndex = -1;
+    int openedShopIndex = -1;
+    int hoveredShopIndex = -1;
+    bool isHoveredShopInRange = false;
     float bubbleNetTimer = 0.0f;
     bool isUsingHeldItem = false;
 

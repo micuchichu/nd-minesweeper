@@ -247,6 +247,11 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     timePlayed = 0.0f;
     hud.endModalDismissed = false;
     saveCurrentSlot();
+    openedShopIndex = -1;
+    nearbyShopIndex = -1;
+    hoveredShopIndex = -1;
+    isHoveredShopInRange = false;
+    shopProximityAlpha = 0.0f;
 
     // Center camera on safe starting cell
     float boardWidth = size * renderer.cellSize;
@@ -621,18 +626,34 @@ void App::update(float dt) {
     if (testShopUIMode && state == AppState::InGame) {
         static int uiFrame = 0;
         ++uiFrame;
-        if (uiFrame < 15 && !renderer.shopShips.empty()) {
+        if (uiFrame < 8 && !renderer.shopShips.empty()) {
+            openedShopIndex = -1;
+            nearbyShopIndex = -1;
+            hoveredShopIndex = 0;
+            isHoveredShopInRange = true;
+            shopProximityAlpha = 0.0f;
             renderer.localShip.position = { renderer.shopShips[0].position.x - 75.0f, renderer.shopShips[0].position.y };
             renderer.localShip.velocity = { 0.0f, 0.0f };
             renderer.localShip.isInitialized = true;
             renderer.camera.centerOn(renderer.shopShips[0].position);
-        } else if (uiFrame >= 15 && renderer.shopShips.size() > 1) {
+        } else if (uiFrame < 18 && !renderer.shopShips.empty()) {
+            openedShopIndex = 0;
+            nearbyShopIndex = 0;
+            shopProximityAlpha = 1.0f;
+            renderer.localShip.position = { renderer.shopShips[0].position.x - 75.0f, renderer.shopShips[0].position.y };
+            renderer.localShip.velocity = { 0.0f, 0.0f };
+            renderer.localShip.isInitialized = true;
+            renderer.camera.centerOn(renderer.shopShips[0].position);
+        } else if (uiFrame >= 18 && renderer.shopShips.size() > 1) {
+            openedShopIndex = 1;
+            nearbyShopIndex = 1;
+            shopProximityAlpha = 1.0f;
             renderer.localShip.position = { renderer.shopShips[1].position.x - 85.0f, renderer.shopShips[1].position.y };
             renderer.localShip.velocity = { 0.0f, 0.0f };
             renderer.localShip.isInitialized = true;
             renderer.camera.centerOn(renderer.shopShips[1].position);
         }
-        if (uiFrame == 26) {
+        if (uiFrame == 28) {
             auto& cat = core::ItemCatalog::instance();
             const auto* b = cat.getItem(core::ItemId::Banana);
             const auto* r = cat.getItem(core::ItemId::Radar);
@@ -642,12 +663,12 @@ void App::update(float dt) {
             if (bub) playerInventory.addItem(*bub);
             playerInventory.selectedSlot = 0; // select Banana (emerges from ship)
         }
-        if (uiFrame == 31) {
+        if (uiFrame == 33) {
             playerInventory.selectedSlot = 2; // switch to Bubbles
             playerInventory.radarActiveTimer = 3.5f;
             renderer.triggerRadar(3.5f);
         }
-        if (uiFrame >= 32 && uiFrame <= 35) {
+        if (uiFrame >= 34 && uiFrame <= 37) {
             auto* held = playerInventory.getSelectedSlot();
             if (held && held->item.id == core::ItemId::Bubbles) {
                 isUsingHeldItem = true;
@@ -656,8 +677,9 @@ void App::update(float dt) {
                 renderer.applyBubbleBlurSource(renderer.localShip.position, 650.0f);
             }
         }
-        if (uiFrame == 36) {
+        if (uiFrame == 38) {
             isUsingHeldItem = false;
+            openedShopIndex = -1;
             playerInventory.selectedSlot = -1; // unselect item -> triggers retract back into ship
         }
     }
@@ -753,32 +775,6 @@ void App::update(float dt) {
     renderer.heldSlot = playerInventory.getSelectedSlot();
     renderer.isUsingItem = isUsingHeldItem;
 
-    // Shop Proximity Check:
-    if (state == AppState::InGame) {
-        nearbyShopIndex = -1;
-        float closestDist = 999999.0f;
-        for (size_t i = 0; i < renderer.shopShips.size(); ++i) {
-            const auto& s = renderer.shopShips[i];
-            Vector2 pA, pB;
-            s.getCapsuleSegment(pA, pB);
-            Vector2 ab = { pB.x - pA.x, pB.y - pA.y };
-            float lenSq = ab.x * ab.x + ab.y * ab.y;
-            float t = (lenSq > 0.0001f) ? std::clamp(((renderer.localShip.position.x - pA.x) * ab.x + (renderer.localShip.position.y - pA.y) * ab.y) / lenSq, 0.0f, 1.0f) : 0.0f;
-            Vector2 closest = { pA.x + t * ab.x, pA.y + t * ab.y };
-            float d = Vector2Distance(renderer.localShip.position, closest);
-            if (d <= 220.0f && d < closestDist) {
-                closestDist = d;
-                nearbyShopIndex = static_cast<int>(i);
-            }
-        }
-
-        float targetAlpha = (nearbyShopIndex >= 0) ? 1.0f : 0.0f;
-        shopProximityAlpha = std::lerp(shopProximityAlpha, targetAlpha, std::clamp(dt * 8.0f, 0.0f, 1.0f));
-    } else {
-        shopProximityAlpha = 0.0f;
-        nearbyShopIndex = -1;
-    }
-
     // Synchronize voice settings and live mic meter with menu
     voiceMgr.getSettings() = menu.voiceSettings;
     menu.micInputLevel = voiceMgr.getMicLevel();
@@ -786,6 +782,125 @@ void App::update(float dt) {
     Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
     if (testShopMode) {
         worldMouse = { 250.0f, 250.0f };
+    } else if (testShopUIMode && !renderer.shopShips.empty()) {
+        static int simFrame = 0;
+        ++simFrame;
+        if (simFrame < 8) {
+            worldMouse = renderer.shopShips[0].position;
+        }
+    }
+
+    // Shop Interaction & Proximity Check:
+    // The shop menu is displayed if the player clicks the ship and is close enough.
+    const float maxShopInteractionDist = 380.0f; // Increased interaction radius
+    const float maxShopCloseDist = 450.0f;       // Distance at which an open shop automatically closes
+
+    hoveredShopIndex = -1;
+    isHoveredShopInRange = false;
+    int clickedShopIndex = -1;
+    bool mouseHandledByShop = false;
+
+    if (state == AppState::InGame) {
+        for (size_t i = 0; i < renderer.shopShips.size(); ++i) {
+            const auto& s = renderer.shopShips[i];
+            Vector2 pA, pB;
+            s.getCapsuleSegment(pA, pB);
+            Vector2 ab = { pB.x - pA.x, pB.y - pA.y };
+            float lenSq = ab.x * ab.x + ab.y * ab.y;
+
+            // Player distance to shop
+            float tPlayer = (lenSq > 0.0001f) ? std::clamp(((renderer.localShip.position.x - pA.x) * ab.x + (renderer.localShip.position.y - pA.y) * ab.y) / lenSq, 0.0f, 1.0f) : 0.0f;
+            Vector2 closestPlayer = { pA.x + tPlayer * ab.x, pA.y + tPlayer * ab.y };
+            float playerDist = Vector2Distance(renderer.localShip.position, closestPlayer);
+
+            // Mouse distance to shop
+            float tMouse = (lenSq > 0.0001f) ? std::clamp(((worldMouse.x - pA.x) * ab.x + (worldMouse.y - pA.y) * ab.y) / lenSq, 0.0f, 1.0f) : 0.0f;
+            Vector2 closestMouse = { pA.x + tMouse * ab.x, pA.y + tMouse * ab.y };
+            float mouseDist = Vector2Distance(worldMouse, closestMouse);
+
+            float clickRadius = std::max({
+                s.collisionRadius * s.scale + 16.0f,
+                static_cast<float>(s.texture.height) * 0.5f * s.scale + 12.0f,
+                36.0f
+            });
+
+            if (mouseDist <= clickRadius) {
+                hoveredShopIndex = static_cast<int>(i);
+                if (playerDist <= maxShopInteractionDist) {
+                    isHoveredShopInRange = true;
+                }
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    clickedShopIndex = static_cast<int>(i);
+                }
+                break;
+            }
+        }
+
+        // Handle clicks on shops or shop UI
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (clickedShopIndex >= 0) {
+                // Clicked on a shop ship
+                const auto& s = renderer.shopShips[clickedShopIndex];
+                Vector2 pA, pB;
+                s.getCapsuleSegment(pA, pB);
+                Vector2 ab = { pB.x - pA.x, pB.y - pA.y };
+                float lenSq = ab.x * ab.x + ab.y * ab.y;
+                float tPlayer = (lenSq > 0.0001f) ? std::clamp(((renderer.localShip.position.x - pA.x) * ab.x + (renderer.localShip.position.y - pA.y) * ab.y) / lenSq, 0.0f, 1.0f) : 0.0f;
+                Vector2 closestPlayer = { pA.x + tPlayer * ab.x, pA.y + tPlayer * ab.y };
+                float playerDist = Vector2Distance(renderer.localShip.position, closestPlayer);
+
+                if (playerDist <= maxShopInteractionDist) {
+                    openedShopIndex = clickedShopIndex;
+                    nearbyShopIndex = clickedShopIndex;
+                }
+                mouseHandledByShop = true;
+            } else if (openedShopIndex >= 0 && shopProximityAlpha > 0.2f) {
+                if (shopMenu.isMouseOverCard()) {
+                    mouseHandledByShop = true;
+                } else {
+                    // Clicked outside open menu and outside ship: dismiss menu
+                    openedShopIndex = -1;
+                    mouseHandledByShop = true;
+                }
+            }
+        }
+
+        // Pressing ESC closes open shop
+        if (openedShopIndex >= 0 && IsKeyPressed(KEY_ESCAPE)) {
+            openedShopIndex = -1;
+        }
+
+        // Check if player drifted too far from the opened shop
+        if (openedShopIndex >= 0 && openedShopIndex < static_cast<int>(renderer.shopShips.size())) {
+            const auto& s = renderer.shopShips[openedShopIndex];
+            Vector2 pA, pB;
+            s.getCapsuleSegment(pA, pB);
+            Vector2 ab = { pB.x - pA.x, pB.y - pA.y };
+            float lenSq = ab.x * ab.x + ab.y * ab.y;
+            float tPlayer = (lenSq > 0.0001f) ? std::clamp(((renderer.localShip.position.x - pA.x) * ab.x + (renderer.localShip.position.y - pA.y) * ab.y) / lenSq, 0.0f, 1.0f) : 0.0f;
+            Vector2 closestPlayer = { pA.x + tPlayer * ab.x, pA.y + tPlayer * ab.y };
+            float playerDist = Vector2Distance(renderer.localShip.position, closestPlayer);
+
+            if (playerDist > maxShopCloseDist) {
+                openedShopIndex = -1;
+            }
+        } else {
+            openedShopIndex = -1;
+        }
+
+        float targetAlpha = (openedShopIndex >= 0) ? 1.0f : 0.0f;
+        shopProximityAlpha = std::lerp(shopProximityAlpha, targetAlpha, std::clamp(dt * 10.0f, 0.0f, 1.0f));
+        if (shopProximityAlpha < 0.01f && openedShopIndex < 0) {
+            nearbyShopIndex = -1;
+        } else if (openedShopIndex >= 0) {
+            nearbyShopIndex = openedShopIndex;
+        }
+    } else {
+        shopProximityAlpha = 0.0f;
+        nearbyShopIndex = -1;
+        openedShopIndex = -1;
+        hoveredShopIndex = -1;
+        isHoveredShopInRange = false;
     }
 
     bool padAvailable = IsGamepadAvailable(0);
@@ -964,8 +1079,8 @@ void App::update(float dt) {
 
         // In-game Input Handling
         if (!board.isGameOver && !board.isVictory && !hud.showLargeGridWarning) {
-            bool triggerUncover = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
-            bool triggerFlag = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+            bool triggerUncover = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !mouseHandledByShop;
+            bool triggerFlag = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !mouseHandledByShop;
             bool triggerChord = IsKeyPressed(KEY_C);
             if (IsMouseButtonReleased(MOUSE_MIDDLE_BUTTON) && !renderer.camera.isMiddleDragging()) {
                 triggerChord = true;
@@ -1414,6 +1529,37 @@ void App::draw() {
 
             BeginMode2D(renderer.camera.camera);
             scrapSystem.drawWorld(renderer.camera.camera);
+
+            // Draw interaction reticle and prompt when hovering over a shop ship
+            if (hoveredShopIndex >= 0 && hoveredShopIndex < static_cast<int>(renderer.shopShips.size()) && openedShopIndex != hoveredShopIndex) {
+                const auto& s = renderer.shopShips[hoveredShopIndex];
+                float t = static_cast<float>(GetTime());
+                float pulse = (std::sin(t * 8.0f) + 1.0f) * 0.5f;
+
+                Vector2 pA, pB;
+                s.getCapsuleSegment(pA, pB);
+
+                Color ringCol = isHoveredShopInRange ? ui::Colors::Amber400 : ui::Colors::Zinc500;
+                float r = (s.collisionRadius * s.scale + 6.0f) + pulse * 3.0f;
+
+                // Draw interaction bracket / rings around shop
+                DrawCircleLines(static_cast<int>(pA.x), static_cast<int>(pA.y), r, Fade(ringCol, 0.70f));
+                if (s.capsuleLength > 0.0f) {
+                    DrawCircleLines(static_cast<int>(pB.x), static_cast<int>(pB.y), r, Fade(ringCol, 0.70f));
+                }
+
+                // Floating prompt above the ship
+                const char* prompt = isHoveredShopInRange ? "[L-CLICK] OPEN SHOP" : "[TOO FAR]";
+                int pW = MeasureText(prompt, 11);
+                float topY = std::min({ pA.y, pB.y, s.position.y });
+                float promptX = s.position.x - pW * 0.5f;
+                float promptY = topY - (s.collisionRadius * s.scale + 16.0f);
+                Rectangle pBg = { promptX - 6.0f, promptY - 2.0f, static_cast<float>(pW + 12), 16.0f };
+                DrawRectangleRec(pBg, Fade(ui::Colors::Zinc950, 0.85f));
+                DrawRectangleLinesEx(pBg, 1.0f, Fade(ringCol, 0.80f));
+                DrawText(prompt, static_cast<int>(promptX), static_cast<int>(promptY), 11, ringCol);
+            }
+
             EndMode2D();
 
             BeginMode2D(uiCam);
@@ -1549,19 +1695,22 @@ void App::draw() {
     if (testShopUIMode && state == AppState::InGame) {
         static int drawUIFrame = 0;
         ++drawUIFrame;
-        if (drawUIFrame == 8) {
+        if (drawUIFrame == 5) {
+            TakeScreenshot("screenshot_shop_hover.png");
+            std::cout << "[TEST-UI] Saved screenshot_shop_hover.png" << std::endl;
+        } else if (drawUIFrame == 13) {
             TakeScreenshot("screenshot_shop_menu.png");
             std::cout << "[TEST-UI] Saved screenshot_shop_menu.png" << std::endl;
-        } else if (drawUIFrame == 22) {
+        } else if (drawUIFrame == 23) {
             TakeScreenshot("screenshot_big_shop.png");
             std::cout << "[TEST-UI] Saved screenshot_big_shop.png" << std::endl;
-        } else if (drawUIFrame == 29) {
+        } else if (drawUIFrame == 30) {
             TakeScreenshot("screenshot_held_item_deploy.png");
             std::cout << "[TEST-UI] Saved screenshot_held_item_deploy.png" << std::endl;
-        } else if (drawUIFrame == 34) {
+        } else if (drawUIFrame == 35) {
             TakeScreenshot("screenshot_bubble_blur.png");
             std::cout << "[TEST-UI] Saved screenshot_bubble_blur.png" << std::endl;
-        } else if (drawUIFrame == 38) {
+        } else if (drawUIFrame == 40) {
             TakeScreenshot("screenshot_held_item_retract.png");
             std::cout << "[TEST-UI] Saved screenshot_held_item_retract.png" << std::endl;
             shouldQuit = true;

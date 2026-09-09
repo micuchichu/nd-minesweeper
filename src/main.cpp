@@ -937,6 +937,80 @@ static int runItemTests() {
     }
     std::cout << "  [PASS] Test 18: Shop ship JSON tiers and item capacity parsing (shop1, shop2, shop3) verified." << std::endl;
 
+    // 16. Shop click-to-open interaction & distance verification
+    {
+        minesweeper::core::ShopShip testShop;
+        testShop.position = { 400.0f, 100.0f };
+        testShop.collisionRadius = 28.0f;
+        testShop.scale = 1.8f;
+        testShop.capsuleLength = 130.0f;
+
+        const float maxInteractionDist = 380.0f;
+        const float maxCloseDist = 450.0f;
+
+        Vector2 pA, pB;
+        testShop.getCapsuleSegment(pA, pB);
+        Vector2 ab = { pB.x - pA.x, pB.y - pA.y };
+        float lenSq = ab.x * ab.x + ab.y * ab.y;
+
+        auto getDistToShop = [&](Vector2 pt) {
+            float t = (lenSq > 0.0001f) ? std::clamp(((pt.x - pA.x) * ab.x + (pt.y - pA.y) * ab.y) / lenSq, 0.0f, 1.0f) : 0.0f;
+            Vector2 closest = { pA.x + t * ab.x, pA.y + t * ab.y };
+            return Vector2Distance(pt, closest);
+        };
+
+        // Test player in range (300px from capsule) vs out of range (410px from capsule)
+        Vector2 playerInRange = { 400.0f, pB.y + 300.0f };
+        Vector2 playerOutOfRange = { 400.0f, pB.y + 410.0f };
+        Vector2 playerBeyondClose = { 400.0f, pB.y + 480.0f };
+
+        float distIn = getDistToShop(playerInRange);
+        float distOut = getDistToShop(playerOutOfRange);
+        float distBeyond = getDistToShop(playerBeyondClose);
+
+        if (distIn > maxInteractionDist) {
+            std::cerr << "  [FAIL] Player in range should be <= 380px, got " << distIn << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 31;
+        }
+        if (distOut <= maxInteractionDist) {
+            std::cerr << "  [FAIL] Player out of range should be > 380px, got " << distOut << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 32;
+        }
+        if (distBeyond <= maxCloseDist) {
+            std::cerr << "  [FAIL] Player beyond close distance should be > 450px, got " << distBeyond << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 33;
+        }
+
+        // Mouse click bounds
+        float clickRadius = std::max({
+            testShop.collisionRadius * testShop.scale + 16.0f,
+            36.0f
+        });
+        Vector2 mouseDirectHit = testShop.position;
+        Vector2 mouseMiss = { testShop.position.x + 200.0f, testShop.position.y };
+
+        if (getDistToShop(mouseDirectHit) > clickRadius) {
+            std::cerr << "  [FAIL] Direct hit mouse should be within click radius!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 34;
+        }
+        if (getDistToShop(mouseMiss) <= clickRadius) {
+            std::cerr << "  [FAIL] Miss mouse should be outside click radius!" << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 35;
+        }
+
+        std::cout << "  [PASS] Test 19: Shop click-to-open bounds & interaction distance (380px/450px) verified." << std::endl;
+    }
+
     catalog.shutdown();
     CloseWindow();
     std::cout << "[TEST-ITEMS] ALL ITEM TESTS PASSED!" << std::endl;

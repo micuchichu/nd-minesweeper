@@ -15,7 +15,10 @@ bool ShopMenu::drawHoverMenu(
     int screenW,
     int screenH
 ) {
-    if (alpha <= 0.01f) return false;
+    if (alpha <= 0.01f) {
+        lastCardRect = { 0.0f, 0.0f, 0.0f, 0.0f };
+        return false;
+    }
 
     pulseTimer += GetFrameTime();
     bool purchasedItem = false;
@@ -51,6 +54,7 @@ bool ShopMenu::drawHoverMenu(
 
     // 2. Card Background & Mindustry sci-fi frame
     Rectangle cardRect = { cardX, cardY, cardW, cardH };
+    lastCardRect = cardRect;
     DrawRectangleRec(cardRect, Fade(Color{ 14, 15, 19, 248 }, alpha));
     DrawRectangleLinesEx(cardRect, 1.5f, Fade(Colors::Zinc700, alpha));
 
