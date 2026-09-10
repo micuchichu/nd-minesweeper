@@ -1,0 +1,18 @@
+{
+  "name": "roulette",
+  "tier": 1,
+  "itemCapacity": 2,
+  "scale": 1.8,
+  "mass": 180.0,
+  "speed": 140.0,
+  "range": 160.0,
+  "collisionRadius": 58.0,
+  "bumpable": false,
+  "thrusterColor": [106, 75, 191, 255],
+  "thrusters": [
+    { "x": -49.5, "y": -49.5, "size": 12.0 },
+    { "x": -49.5, "y":  49.5, "size": 12.0 },
+    { "x":  49.5, "y": -49.5, "size": 12.0 },
+    { "x":  49.5, "y":  49.5, "size": 12.0 }
+  ]
+}

@@ -2,7 +2,10 @@
 #include "core/ship.hpp"
 #include "core/ship_config.hpp"
 #include "core/shop_ship.hpp"
+#include "core/roulette_ship.hpp"
 #include "core/item.hpp"
+#include "core/roulette_types.hpp"
+#include "ui/roulette_ui.hpp"
 #include "render/camera_controller.hpp"
 #include "render/procedural_textures.hpp"
 #include <string>
@@ -1131,6 +1134,208 @@ static int runItemTests() {
     return 0;
 }
 
+static int runRouletteTests() {
+    std::cout << "[TEST-ROULETTE] Starting Roulette Wheel & Casino Mechanics Unit Tests..." << std::endl;
+
+    // Test 1: European Wheel Layout & Pockets
+    {
+        static_assert(minesweeper::core::ROULETTE_POCKET_COUNT == 37, "Expected 37 pockets");
+        if (minesweeper::core::ROULETTE_NUMBERS[0] != 0) {
+            std::cerr << "  [FAIL] Test 1: Pocket 0 should be number 0, got " << minesweeper::core::ROULETTE_NUMBERS[0] << std::endl;
+            return 2;
+        }
+        if (minesweeper::core::ROULETTE_NUMBERS[1] != 32 || minesweeper::core::ROULETTE_NUMBERS[2] != 15) {
+            std::cerr << "  [FAIL] Test 1: Expected 32 then 15 after pocket 0" << std::endl;
+            return 3;
+        }
+        if (minesweeper::core::ROULETTE_NUMBERS[36] != 26) {
+            std::cerr << "  [FAIL] Test 1: Expected pocket 36 to be number 26, got " << minesweeper::core::ROULETTE_NUMBERS[36] << std::endl;
+            return 4;
+        }
+        std::cout << "  [PASS] Test 1: European wheel pocket sequence verified." << std::endl;
+    }
+
+    // Test 2: Color Classifications
+    {
+        int redCount = 0;
+        int blackCount = 0;
+        for (int i = 0; i <= 36; ++i) {
+            if (minesweeper::core::isRouletteRed(i)) redCount++;
+            if (minesweeper::core::isRouletteBlack(i)) blackCount++;
+        }
+        if (redCount != 18 || blackCount != 18) {
+            std::cerr << "  [FAIL] Test 2: Expected 18 red and 18 black numbers, got " << redCount << " red, " << blackCount << " black" << std::endl;
+            return 5;
+        }
+        if (minesweeper::core::isRouletteRed(0) || minesweeper::core::isRouletteBlack(0)) {
+            std::cerr << "  [FAIL] Test 2: Pocket 0 should be green (neither red nor black)" << std::endl;
+            return 6;
+        }
+        std::cout << "  [PASS] Test 2: Red/Black/Green classifications verified." << std::endl;
+    }
+
+    // Test 3: 12 O'Clock Pointer Angle Alignment for all 37 numbers
+    {
+        for (int n = 0; n <= 36; ++n) {
+            float targetAng = minesweeper::core::getTargetAngleForNumber(n);
+            int pocketIdx = minesweeper::core::getPocketUnderPointer(targetAng);
+            int numberFound = minesweeper::core::getNumberForPocketIndex(pocketIdx);
+            if (numberFound != n) {
+                std::cerr << "  [FAIL] Test 3: Expected number " << n << " at target angle " << targetAng << ", but found " << numberFound << " (pocket " << pocketIdx << ")" << std::endl;
+                return 7;
+            }
+        }
+        std::cout << "  [PASS] Test 3: 12 o'clock needle pointer alignment verified for all 37 numbers." << std::endl;
+    }
+
+    // Test 4: Payout Calculations
+    {
+        using namespace minesweeper::core;
+        // Red win
+        if (evaluateRoulettePayout(RouletteBetType::Red, 0, 50, 32) != 100) return 8;
+        // Red loss
+        if (evaluateRoulettePayout(RouletteBetType::Red, 0, 50, 15) != 0) return 9;
+        // Black win
+        if (evaluateRoulettePayout(RouletteBetType::Black, 0, 50, 15) != 100) return 10;
+        // Even win / loss / zero
+        if (evaluateRoulettePayout(RouletteBetType::Even, 0, 50, 14) != 100) return 11;
+        if (evaluateRoulettePayout(RouletteBetType::Even, 0, 50, 15) != 0) return 12;
+        if (evaluateRoulettePayout(RouletteBetType::Even, 0, 50, 0) != 0) return 13;
+        // Odd win
+        if (evaluateRoulettePayout(RouletteBetType::Odd, 0, 50, 15) != 100) return 14;
+        // Green 0 Jackpot (36x)
+        if (evaluateRoulettePayout(RouletteBetType::GreenZero, 0, 10, 0) != 360) return 15;
+        if (evaluateRoulettePayout(RouletteBetType::GreenZero, 0, 10, 32) != 0) return 16;
+        // Dozen 1 (1-12) (3x)
+        if (evaluateRoulettePayout(RouletteBetType::Dozen1, 0, 20, 7) != 60) return 17;
+        if (evaluateRoulettePayout(RouletteBetType::Dozen1, 0, 20, 15) != 0) return 18;
+        // Single Number (36x)
+        if (evaluateRoulettePayout(RouletteBetType::SingleNumber, 17, 25, 17) != 900) return 19;
+        if (evaluateRoulettePayout(RouletteBetType::SingleNumber, 17, 25, 18) != 0) return 20;
+
+        std::cout << "  [PASS] Test 4: All payout multipliers (2x, 3x, 36x jackpot) verified." << std::endl;
+    }
+
+    // Test 5: Dedicated RouletteShip Spin Acceleration Mechanics
+    {
+        using namespace minesweeper::core;
+        RouletteShip ship;
+        if (ship.name != "roulette") {
+            std::cerr << "  [FAIL] Test 5: ship.name should be 'roulette'" << std::endl;
+            return 21;
+        }
+
+        ship.roulette.activeBet.type = RouletteBetType::Red;
+        ship.roulette.activeBet.amount = 50;
+        ship.startSpin(32, 1.0f); // Winning number 32 (Red)
+
+        if (ship.roulette.spinState != RouletteSpinState::Spinning) {
+            std::cerr << "  [FAIL] Test 5: Spin state should be Spinning immediately after startSpin" << std::endl;
+            return 22;
+        }
+
+        // Advance spin slightly (acceleration phase: p = 0.05 / 1.0 = 0.05 < 0.20)
+        float angleBefore = ship.angle;
+        ship.update(0.05f);
+        if (ship.roulette.spinState != RouletteSpinState::Spinning) {
+            std::cerr << "  [FAIL] Test 5: Spin state should still be Spinning at t=0.05" << std::endl;
+            return 23;
+        }
+        float deltaAngle1 = std::abs(ship.angle - angleBefore);
+
+        // Advance another 0.05s (acceleration phase: velocity should increase, delta2 > delta1)
+        angleBefore = ship.angle;
+        ship.update(0.05f);
+        float deltaAngle2 = std::abs(ship.angle - angleBefore);
+        if (deltaAngle2 <= deltaAngle1) {
+            std::cerr << "  [FAIL] Test 5: Ship should accelerate in the initial phase (delta2=" << deltaAngle2 << " <= delta1=" << deltaAngle1 << ")" << std::endl;
+            return 24;
+        }
+
+        // Advance to completion
+        ship.update(0.95f);
+        if (ship.roulette.spinState != RouletteSpinState::Result) {
+            std::cerr << "  [FAIL] Test 5: Spin state should be Result after completion" << std::endl;
+            return 25;
+        }
+        if (!ship.roulette.lastWon || ship.roulette.lastPayout != 100) {
+            std::cerr << "  [FAIL] Test 5: Expected win with payout 100, got won=" << ship.roulette.lastWon << ", payout=" << ship.roulette.lastPayout << std::endl;
+            return 26;
+        }
+        // Verify ship settled on target angle
+        float diff = std::abs(ship.angle - ship.roulette.targetAngle);
+        while (diff > 180.0f) diff = std::abs(diff - 360.0f);
+        if (diff > 0.05f) {
+            std::cerr << "  [FAIL] Test 5: Ship angle (" << ship.angle << ") did not match target angle (" << ship.roulette.targetAngle << ")" << std::endl;
+            return 27;
+        }
+
+        std::cout << "  [PASS] Test 5: Dedicated RouletteShip spin acceleration physics and winning pocket lock verified." << std::endl;
+    }
+
+    // Test 6: Roulette UI Mouse Shielding
+    {
+        minesweeper::ui::RouletteUI rUI;
+        rUI.lastCardRect = { 100.0f, 100.0f, 380.0f, 390.0f };
+        if (!rUI.isMouseOverCard({ 200.0f, 200.0f })) {
+            std::cerr << "  [FAIL] Test 6: Inside point (200, 200) should be detected as mouse over card" << std::endl;
+            return 28;
+        }
+        if (rUI.isMouseOverCard({ 50.0f, 50.0f })) {
+            std::cerr << "  [FAIL] Test 6: Outside point (50, 50) should NOT be detected as mouse over card" << std::endl;
+            return 29;
+        }
+        std::cout << "  [PASS] Test 6: Roulette UI mouse shielding verified." << std::endl;
+    }
+
+    // Test 7: Post-Spin Auto-Alignment Back to Rest Dock (90 deg)
+    {
+        using namespace minesweeper::core;
+        RouletteShip ship;
+        ship.startSpin(7, 0.5f);
+        ship.update(0.6f); // Finish spin
+        if (ship.roulette.spinState != RouletteSpinState::Result) {
+            std::cerr << "  [FAIL] Test 7: Expected Result state after spin" << std::endl;
+            return 30;
+        }
+
+        // Wait past result display duration (2.5s) to trigger auto-alignment
+        ship.update(2.6f);
+        if (!ship.isAligning) {
+            std::cerr << "  [FAIL] Test 7: Ship should start auto-aligning after result display timeout" << std::endl;
+            return 31;
+        }
+
+        // Advance through alignment duration (1.2s)
+        ship.update(1.3f);
+        if (ship.isAligning || ship.roulette.spinState != RouletteSpinState::Idle) {
+            std::cerr << "  [FAIL] Test 7: Ship should finish aligning and return to Idle" << std::endl;
+            return 32;
+        }
+
+        float restDiff = std::abs(ship.angle - 90.0f);
+        while (restDiff > 180.0f) restDiff = std::abs(restDiff - 360.0f);
+        if (restDiff > 0.05f) {
+            std::cerr << "  [FAIL] Test 7: Ship should be aligned back to 90 degrees, got " << ship.angle << std::endl;
+            return 33;
+        }
+
+        // Verify ball stayed in pocket 7
+        float expectedBallAngle = ship.angle + getPocketTextureAngle(ship.roulette.winningPocketIndex);
+        float ballDiff = std::abs(ship.roulette.ball.angle - expectedBallAngle);
+        while (ballDiff > 180.0f) ballDiff = std::abs(ballDiff - 360.0f);
+        if (ballDiff > 0.05f) {
+            std::cerr << "  [FAIL] Test 7: Ball should remain nestled in winning pocket during alignment" << std::endl;
+            return 34;
+        }
+
+        std::cout << "  [PASS] Test 7: Post-spin auto-alignment back to 90-degree dock orientation verified." << std::endl;
+    }
+
+    std::cout << "[TEST-ROULETTE] ALL ROULETTE TESTS PASSED!" << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--test-capsule") {
@@ -1139,11 +1344,13 @@ int main(int argc, char* argv[]) {
             int r3 = runControlTests();
             int r4 = runTextureTests();
             int r5 = runItemTests();
+            int r6 = runRouletteTests();
             if (r1 != 0) return r1;
             if (r2 != 0) return r2;
             if (r3 != 0) return r3;
             if (r4 != 0) return r4;
-            return r5;
+            if (r5 != 0) return r5;
+            return r6;
         }
         if (std::string(argv[i]) == "--test-camera") {
             return runCameraTests();
@@ -1157,6 +1364,9 @@ int main(int argc, char* argv[]) {
         if (std::string(argv[i]) == "--test-items") {
             return runItemTests();
         }
+        if (std::string(argv[i]) == "--test-roulette") {
+            return runRouletteTests();
+        }
     }
 
     minesweeper::App app;
@@ -1167,6 +1377,7 @@ int main(int argc, char* argv[]) {
             runControlTests();
             runTextureTests();
             runItemTests();
+            runRouletteTests();
             app.testShopMode = true;
         }
         else if (std::string(argv[i]) == "--test-shop-ui") {

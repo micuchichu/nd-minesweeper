@@ -104,6 +104,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\core\scout_ship.cpp" />
     <ClCompile Include="src\core\merchant_ship.cpp" />
     <ClCompile Include="src\core\shop_ship.cpp" />
+    <ClCompile Include="src\core\roulette_ship.cpp" />
     <ClCompile Include="src\net\network_manager.cpp" />
     <ClCompile Include="src\net\steam_manager.cpp" />
     <ClCompile Include="src\render\asset_manager.cpp" />
@@ -117,6 +118,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\ui\hud.cpp" />
     <ClCompile Include="src\ui\menu.cpp" />
     <ClCompile Include="src\ui\shop_menu.cpp" />
+    <ClCompile Include="src\ui\roulette_ui.cpp" />
     <ClCompile Include="src\core\item.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -134,6 +136,8 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\core\scout_ship.hpp" />
     <ClInclude Include="src\core\merchant_ship.hpp" />
     <ClInclude Include="src\core\shop_ship.hpp" />
+    <ClInclude Include="src\core\roulette_ship.hpp" />
+    <ClInclude Include="src\core\roulette_types.hpp" />
     <ClInclude Include="src\core\ship_config.hpp" />
     <ClInclude Include="src\core\rng.hpp" />
     <ClInclude Include="src\net\protocol.hpp" />
@@ -151,6 +155,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\ui\hud.hpp" />
     <ClInclude Include="src\ui\menu.hpp" />
     <ClInclude Include="src\ui\shop_menu.hpp" />
+    <ClInclude Include="src\ui\roulette_ui.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

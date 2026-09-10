@@ -145,6 +145,11 @@ std::vector<ShopShipAsset> AssetManager::loadShopShipAssets() {
         std::string sB = b.stem().string();
         std::transform(sA.begin(), sA.end(), sA.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         std::transform(sB.begin(), sB.end(), sB.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        bool aIsShop = (sA.rfind("shop", 0) == 0);
+        bool bIsShop = (sB.rfind("shop", 0) == 0);
+        if (aIsShop != bIsShop) {
+            return aIsShop > bIsShop; // shop* prefixes precede other shops
+        }
         return sA < sB;
     });
 

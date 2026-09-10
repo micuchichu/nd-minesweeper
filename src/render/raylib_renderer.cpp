@@ -348,13 +348,23 @@ void RaylibRenderer::init() {
 
     // Load all shop ships from assets/shops/ using AssetManager
     shopShips.clear();
+    hasRouletteShip = false;
     auto shopAssets = AssetManager::instance().loadShopShipAssets();
     for (size_t i = 0; i < shopAssets.size(); ++i) {
-        Vector2 initAnchor = { 400.0f, 100.0f + static_cast<float>(i) * 240.0f };
-        shopShips.emplace_back(shopAssets[i].texture, initAnchor, shopAssets[i].config);
-        shopShips.back().setAnchor(initAnchor, 90.0f);
-        shopShips.back().angle = 90.0f;
-        shopShips.back().isInitialized = false;
+        if (shopAssets[i].config.name == "roulette") {
+            Vector2 initAnchor = { 400.0f, 100.0f + static_cast<float>(shopShips.size()) * 240.0f };
+            rouletteShip = core::RouletteShip(shopAssets[i].texture, initAnchor, shopAssets[i].config);
+            rouletteShip.setAnchor(initAnchor, 90.0f);
+            rouletteShip.angle = 90.0f;
+            rouletteShip.isInitialized = false;
+            hasRouletteShip = true;
+        } else {
+            Vector2 initAnchor = { 400.0f, 100.0f + static_cast<float>(shopShips.size()) * 240.0f };
+            shopShips.emplace_back(shopAssets[i].texture, initAnchor, shopAssets[i].config);
+            shopShips.back().setAnchor(initAnchor, 90.0f);
+            shopShips.back().angle = 90.0f;
+            shopShips.back().isInitialized = false;
+        }
     }
     if (!shopShips.empty()) {
         shopShip = shopShips.front();
@@ -458,9 +468,17 @@ void RaylibRenderer::unloadAssets() {
 
     AssetManager::instance().shutdown();
     shopShips.clear();
+    hasRouletteShip = false;
 }
 
 void RaylibRenderer::update(float dt) {
+    for (auto& s : shopShips) {
+        s.update(dt);
+    }
+    if (hasRouletteShip) {
+        rouletteShip.update(dt);
+    }
+
     if (outOfReachTimer > 0.0f) {
         outOfReachTimer -= dt;
         if (outOfReachTimer <= 0.0f) {
@@ -1010,7 +1028,7 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
         totalW = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
         totalH = static_cast<float>(board.config.size - 1) * sliceStride + boardWidth;
     }
-    if (shopShips.empty()) return;
+    if (shopShips.empty() && !hasRouletteShip) return;
 
     // Calculate dynamic vertical spacing along the right side of the board facing down
     const float gap = 45.0f;
@@ -1020,7 +1038,7 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
         float halfLenCurr = ((shopShips[i].texture.width > 0 ? static_cast<float>(shopShips[i].texture.width) : 64.0f) * shopShips[i].scale) * 0.5f;
         relY[i] = relY[i - 1] + halfLenPrev + 24.0f + gap + halfLenCurr;
     }
-    float totalSpan = relY.back() - relY.front();
+    float totalSpan = shopShips.empty() ? 0.0f : (relY.back() - relY.front());
     float startY = totalH * 0.5f - totalSpan * 0.5f;
 
     for (size_t i = 0; i < shopShips.size(); ++i) {
@@ -1035,18 +1053,44 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
             shopShips[i].angle = 90.0f;
             shopShips[i].velocity = { 0.0f, 0.0f };
             shopShips[i].isInitialized = true;
-        } else if (std::abs(shopShips[i].anchorPosition.x - newAnchor.x) > 1.0f ||
-                   std::abs(shopShips[i].anchorPosition.y - newAnchor.y) > 1.0f ||
-                   std::abs(shopShips[i].restAngle - 90.0f) > 0.1f) {
-            Vector2 diff = { shopShips[i].position.x - shopShips[i].anchorPosition.x,
-                             shopShips[i].position.y - shopShips[i].anchorPosition.y };
-            shopShips[i].setAnchor(newAnchor, 90.0f);
-            shopShips[i].position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
-            shopShips[i].angle = 90.0f;
+        } else {
+            bool anchorMoved = (std::abs(shopShips[i].anchorPosition.x - newAnchor.x) > 1.0f ||
+                                std::abs(shopShips[i].anchorPosition.y - newAnchor.y) > 1.0f);
+            if (anchorMoved || std::abs(shopShips[i].restAngle - 90.0f) > 0.1f) {
+                Vector2 diff = { shopShips[i].position.x - shopShips[i].anchorPosition.x,
+                                 shopShips[i].position.y - shopShips[i].anchorPosition.y };
+                shopShips[i].setAnchor(newAnchor, 90.0f);
+                shopShips[i].position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+                shopShips[i].angle = 90.0f;
+            }
         }
     }
     if (!shopShips.empty()) {
         shopShip = shopShips.front();
+    }
+
+    if (hasRouletteShip) {
+        float lastY = shopShips.empty() ? (totalH * 0.5f) : (startY + relY.back());
+        float halfLenPrev = shopShips.empty() ? 40.0f : (((shopShips.back().texture.width > 0 ? static_cast<float>(shopShips.back().texture.width) : 64.0f) * shopShips.back().scale) * 0.5f);
+        float halfLenRoulette = ((rouletteShip.texture.width > 0 ? static_cast<float>(rouletteShip.texture.width) : 128.0f) * rouletteShip.scale) * 0.5f;
+        float rY = lastY + halfLenPrev + 24.0f + gap + halfLenRoulette;
+        Vector2 newAnchor = { totalW + 90.0f, rY };
+
+        if (!rouletteShip.isInitialized) {
+            rouletteShip.setAnchor(newAnchor, rouletteShip.angle);
+            rouletteShip.position = newAnchor;
+            rouletteShip.velocity = { 0.0f, 0.0f };
+            rouletteShip.isInitialized = true;
+        } else {
+            bool anchorMoved = (std::abs(rouletteShip.anchorPosition.x - newAnchor.x) > 1.0f ||
+                                std::abs(rouletteShip.anchorPosition.y - newAnchor.y) > 1.0f);
+            if (anchorMoved) {
+                Vector2 diff = { rouletteShip.position.x - rouletteShip.anchorPosition.x,
+                                 rouletteShip.position.y - rouletteShip.anchorPosition.y };
+                rouletteShip.setAnchor(newAnchor, rouletteShip.restAngle);
+                rouletteShip.position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+            }
+        }
     }
 }
 
@@ -1084,6 +1128,15 @@ void RaylibRenderer::resolveShipCollisions() {
             core::Ship::resolveCollision(rShip, s);
         }
     }
+    if (hasRouletteShip && rouletteShip.isInitialized) {
+        core::Ship::resolveCollision(localShip, rouletteShip);
+        for (auto& [id, rShip] : remoteShips) {
+            core::Ship::resolveCollision(rShip, rouletteShip);
+        }
+        for (auto& s : shopShips) {
+            core::Ship::resolveCollision(s, rouletteShip);
+        }
+    }
     for (size_t i = 0; i < shopShips.size(); ++i) {
         for (size_t j = i + 1; j < shopShips.size(); ++j) {
             core::Ship::resolveCollision(shopShips[i], shopShips[j]);
@@ -1114,6 +1167,9 @@ void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
     // 2. Update shop freighters at fixed timestep
     for (auto& s : shopShips) {
         s.update(fixedDt);
+    }
+    if (hasRouletteShip) {
+        rouletteShip.update(fixedDt);
     }
     if (!shopShips.empty()) {
         shopShip = shopShips.front();
@@ -1724,6 +1780,9 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     for (const auto& s : shopShips) {
         s.drawExhaust();
     }
+    if (hasRouletteShip && rouletteShip.isInitialized) {
+        rouletteShip.drawExhaust();
+    }
     localShip.drawExhaust();
 
     // 2. Draw shop ships on the side of the board
@@ -1731,6 +1790,9 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         if (s.isInitialized) {
             s.draw(s.name.c_str(), ui::Colors::Amber400);
         }
+    }
+    if (hasRouletteShip && rouletteShip.isInitialized) {
+        rouletteShip.draw();
     }
 
     // 3. Draw remote ships

@@ -7,6 +7,7 @@
 #include "ui/hud.hpp"
 #include "ui/menu.hpp"
 #include "ui/shop_menu.hpp"
+#include "ui/roulette_ui.hpp"
 #include "audio/voice_manager.hpp"
 #include "render/scrap_system.hpp"
 #include "core/save_manager.hpp"
@@ -53,6 +54,7 @@ private:
     ui::GameHUD hud;
     ui::MainMenu menu;
     ui::ShopMenu shopMenu;
+    ui::RouletteUI rouletteUI;
     core::PlayerInventory playerInventory;
     audio::VoiceManager voiceMgr;
 
@@ -61,6 +63,11 @@ private:
     int openedShopIndex = -1;
     int hoveredShopIndex = -1;
     bool isHoveredShopInRange = false;
+
+    float rouletteProximityAlpha = 0.0f;
+    bool isRouletteOpen = false;
+    bool isRouletteHovered = false;
+    bool isRouletteInRange = false;
     float bubbleNetTimer = 0.0f;
     bool isUsingHeldItem = false;
 

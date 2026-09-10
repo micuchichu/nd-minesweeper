@@ -5,6 +5,7 @@
 #include "particles.hpp"
 #include "../ui/theme.hpp"
 #include "../core/ship.hpp"
+#include "../core/roulette_ship.hpp"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -80,6 +81,8 @@ public:
 
     std::vector<core::ShopShip> shopShips;
     core::ShopShip shopShip;
+    core::RouletteShip rouletteShip;
+    bool hasRouletteShip = false;
     Vector2 shopAnchorPos = { -95.0f, 150.0f };
     void updateShopAnchor(const core::Board& board);
 
@@ -206,6 +209,7 @@ public:
         localShip.exhaust.clear();
         shopShip.exhaust.clear();
         for (auto& s : shopShips) s.exhaust.clear();
+        if (hasRouletteShip) rouletteShip.exhaust.clear();
         lasers.clear();
         clearOutOfReach();
         clearFlagDrops();

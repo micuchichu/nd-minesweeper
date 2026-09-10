@@ -252,6 +252,10 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     hoveredShopIndex = -1;
     isHoveredShopInRange = false;
     shopProximityAlpha = 0.0f;
+    isRouletteOpen = false;
+    isRouletteHovered = false;
+    isRouletteInRange = false;
+    rouletteProximityAlpha = 0.0f;
 
     // Center camera on safe starting cell
     float boardWidth = size * renderer.cellSize;
@@ -682,6 +686,23 @@ void App::update(float dt) {
             openedShopIndex = -1;
             playerInventory.selectedSlot = -1; // unselect item -> triggers retract back into ship
         }
+        if (uiFrame >= 41 && renderer.hasRouletteShip) {
+            openedShopIndex = -1;
+            isRouletteOpen = true;
+            rouletteProximityAlpha = 1.0f;
+            renderer.localShip.position = { renderer.rouletteShip.position.x - 130.0f, renderer.rouletteShip.position.y };
+            renderer.localShip.velocity = { 0.0f, 0.0f };
+            renderer.localShip.isInitialized = true;
+            renderer.camera.centerOn(renderer.rouletteShip.position);
+
+            if (uiFrame == 42) {
+                renderer.rouletteShip.roulette.activeBet.type = core::RouletteBetType::Red;
+                renderer.rouletteShip.roulette.activeBet.amount = 50;
+            }
+            if (uiFrame == 46) {
+                renderer.rouletteShip.startSpin(32, 2.0f);
+            }
+        }
     }
 
     renderer.enableCRT = menu.crtEnabled;
@@ -800,6 +821,9 @@ void App::update(float dt) {
     hoveredShopIndex = -1;
     isHoveredShopInRange = false;
     int clickedShopIndex = -1;
+    isRouletteHovered = false;
+    isRouletteInRange = false;
+    bool clickedRoulette = false;
     bool mouseHandledByShop = false;
 
     if (state == AppState::InGame) {
@@ -838,9 +862,35 @@ void App::update(float dt) {
             }
         }
 
+        // Check roulette ship hover & click
+        if (renderer.hasRouletteShip) {
+            const auto& r = renderer.rouletteShip;
+            float playerDist = Vector2Distance(renderer.localShip.position, r.position);
+            float mouseDist = Vector2Distance(worldMouse, r.position);
+            float clickRadius = std::max({
+                r.collisionRadius * r.scale + 16.0f,
+                static_cast<float>(r.texture.height) * 0.5f * r.scale + 12.0f,
+                36.0f
+            });
+
+            if (mouseDist <= clickRadius && !isOverUI) {
+                isRouletteHovered = true;
+                if (playerDist <= maxShopInteractionDist) {
+                    isRouletteInRange = true;
+                }
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    clickedRoulette = true;
+                }
+            }
+        }
+
         // Handle clicks on shops or shop UI
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (clickedShopIndex >= 0) {
+            if (clickedRoulette && isRouletteInRange) {
+                isRouletteOpen = true;
+                openedShopIndex = -1;
+                mouseHandledByShop = true;
+            } else if (clickedShopIndex >= 0) {
                 // Clicked on a shop ship
                 const auto& s = renderer.shopShips[clickedShopIndex];
                 Vector2 pA, pB;
@@ -854,22 +904,49 @@ void App::update(float dt) {
                 if (playerDist <= maxShopInteractionDist) {
                     openedShopIndex = clickedShopIndex;
                     nearbyShopIndex = clickedShopIndex;
+                    isRouletteOpen = false;
                 }
                 mouseHandledByShop = true;
+            } else if (isRouletteOpen && rouletteProximityAlpha > 0.2f) {
+                if (rouletteUI.isMouseOverCard()) {
+                    mouseHandledByShop = true;
+                } else {
+                    isRouletteOpen = false;
+                    mouseHandledByShop = true;
+                    if (renderer.hasRouletteShip && renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Result) {
+                        renderer.rouletteShip.alignBackToDock();
+                    }
+                }
             } else if (openedShopIndex >= 0 && shopProximityAlpha > 0.2f) {
                 if (shopMenu.isMouseOverCard()) {
                     mouseHandledByShop = true;
                 } else {
-                    // Clicked outside open menu and outside ship: dismiss menu
                     openedShopIndex = -1;
                     mouseHandledByShop = true;
                 }
             }
         }
 
-        // Pressing ESC closes open shop
-        if (openedShopIndex >= 0 && IsKeyPressed(KEY_ESCAPE)) {
-            openedShopIndex = -1;
+        // Close request from roulette UI [X] button
+        if (rouletteUI.requestClose) {
+            isRouletteOpen = false;
+            rouletteUI.requestClose = false;
+            if (renderer.hasRouletteShip && renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Result) {
+                renderer.rouletteShip.alignBackToDock();
+            }
+        }
+
+        // Pressing ESC closes open shop or roulette
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            if (isRouletteOpen) {
+                isRouletteOpen = false;
+                if (renderer.hasRouletteShip && renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Result) {
+                    renderer.rouletteShip.alignBackToDock();
+                }
+            }
+            if (openedShopIndex >= 0) {
+                openedShopIndex = -1;
+            }
         }
 
         // Check if player drifted too far from the opened shop
@@ -890,6 +967,33 @@ void App::update(float dt) {
             openedShopIndex = -1;
         }
 
+        // Check if player drifted too far from roulette ship
+        if (isRouletteOpen && renderer.hasRouletteShip) {
+            float rPlayerDist = Vector2Distance(renderer.localShip.position, renderer.rouletteShip.position);
+            if (rPlayerDist > maxShopCloseDist) {
+                isRouletteOpen = false;
+                if (renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Result) {
+                    renderer.rouletteShip.alignBackToDock();
+                }
+            }
+        }
+
+        // Process roulette payouts upon spin finish (gold & purple celebration particles, NO bubbles)
+        if (renderer.hasRouletteShip) {
+            auto& r = renderer.rouletteShip.roulette;
+            if (r.spinState == core::RouletteSpinState::Result && !r.payoutAwarded) {
+                r.payoutAwarded = true;
+                if (r.lastPayout > 0) {
+                    scrapCount += r.lastPayout;
+                    hud.scrapCount = scrapCount;
+                    menu.scrapCount = scrapCount;
+                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 20, ui::Colors::Amber400);
+                    renderer.particles.emitDebris(renderer.rouletteShip.position, 15, Color{ 168, 85, 247, 255 });
+                }
+                saveCurrentSlot();
+            }
+        }
+
         float targetAlpha = (openedShopIndex >= 0) ? 1.0f : 0.0f;
         shopProximityAlpha = std::lerp(shopProximityAlpha, targetAlpha, std::clamp(dt * 10.0f, 0.0f, 1.0f));
         if (shopProximityAlpha < 0.01f && openedShopIndex < 0) {
@@ -897,12 +1001,19 @@ void App::update(float dt) {
         } else if (openedShopIndex >= 0) {
             nearbyShopIndex = openedShopIndex;
         }
+
+        float targetRouletteAlpha = isRouletteOpen ? 1.0f : 0.0f;
+        rouletteProximityAlpha = std::lerp(rouletteProximityAlpha, targetRouletteAlpha, std::clamp(dt * 10.0f, 0.0f, 1.0f));
     } else {
         shopProximityAlpha = 0.0f;
         nearbyShopIndex = -1;
         openedShopIndex = -1;
         hoveredShopIndex = -1;
         isHoveredShopInRange = false;
+        rouletteProximityAlpha = 0.0f;
+        isRouletteOpen = false;
+        isRouletteHovered = false;
+        isRouletteInRange = false;
     }
 
     bool padAvailable = IsGamepadAvailable(0);
@@ -1443,7 +1554,12 @@ bool App::isMouseOverUI(Vector2 mousePos) const {
         return true;
     }
 
-    // 2. Shop and Inventory Hotbar Dock
+    // 2. Shop, Roulette, and Inventory Hotbar Dock
+    if (rouletteProximityAlpha > 0.01f && isRouletteOpen) {
+        if (rouletteUI.isMouseOverCard(mousePos)) {
+            return true;
+        }
+    }
     if (shopMenu.isMouseOverUI(screenW, screenH, playerInventory, shopProximityAlpha, mousePos)) {
         return true;
     }
@@ -1605,6 +1721,26 @@ void App::draw() {
                 DrawText(prompt, static_cast<int>(promptX), static_cast<int>(promptY), 11, ringCol);
             }
 
+            // Draw interaction reticle and prompt when hovering over roulette ship
+            if (isRouletteHovered && !isRouletteOpen && renderer.hasRouletteShip) {
+                const auto& r = renderer.rouletteShip;
+                float t = static_cast<float>(GetTime());
+                float pulse = (std::sin(t * 8.0f) + 1.0f) * 0.5f;
+                Color ringCol = isRouletteInRange ? Color{ 168, 85, 247, 255 } : ui::Colors::Zinc500;
+                float rad = (r.collisionRadius * r.scale + 6.0f) + pulse * 3.0f;
+
+                DrawCircleLines(static_cast<int>(r.position.x), static_cast<int>(r.position.y), rad, Fade(ringCol, 0.70f));
+
+                const char* prompt = isRouletteInRange ? "[L-CLICK] PLAY ROULETTE" : "[TOO FAR]";
+                int pW = MeasureText(prompt, 11);
+                float promptX = r.position.x - pW * 0.5f;
+                float promptY = r.position.y - (r.collisionRadius * r.scale + 20.0f);
+                Rectangle pBg = { promptX - 6.0f, promptY - 2.0f, static_cast<float>(pW + 12), 16.0f };
+                DrawRectangleRec(pBg, Fade(ui::Colors::Zinc950, 0.85f));
+                DrawRectangleLinesEx(pBg, 1.0f, Fade(ringCol, 0.80f));
+                DrawText(prompt, static_cast<int>(promptX), static_cast<int>(promptY), 11, ringCol);
+            }
+
             EndMode2D();
 
             BeginMode2D(uiCam);
@@ -1614,8 +1750,9 @@ void App::draw() {
 
             // Draw Hovering Shop Menu if player is in proximity
             if (shopProximityAlpha > 0.01f && nearbyShopIndex >= 0 && nearbyShopIndex < static_cast<int>(renderer.shopShips.size())) {
+                auto& targetShip = renderer.shopShips[nearbyShopIndex];
                 bool bought = shopMenu.drawHoverMenu(
-                    renderer.shopShips[nearbyShopIndex],
+                    targetShip,
                     scrapCount,
                     playerInventory,
                     shopProximityAlpha,
@@ -1626,7 +1763,24 @@ void App::draw() {
                 if (bought) {
                     hud.scrapCount = scrapCount;
                     menu.scrapCount = scrapCount;
-                    renderer.emitBubbleBurst(renderer.shopShips[nearbyShopIndex].position, 20);
+                    renderer.particles.emitDebris(targetShip.position, 8, ui::Colors::Amber400);
+                    saveCurrentSlot();
+                }
+            }
+
+            // Draw Roulette Casino Terminal if open
+            if (rouletteProximityAlpha > 0.01f && renderer.hasRouletteShip) {
+                bool action = rouletteUI.draw(
+                    renderer.rouletteShip,
+                    scrapCount,
+                    rouletteProximityAlpha,
+                    renderer.camera,
+                    screenW,
+                    screenH
+                );
+                if (action) {
+                    hud.scrapCount = scrapCount;
+                    menu.scrapCount = scrapCount;
                     saveCurrentSlot();
                 }
             }
@@ -1758,6 +1912,12 @@ void App::draw() {
         } else if (drawUIFrame == 40) {
             TakeScreenshot("screenshot_held_item_retract.png");
             std::cout << "[TEST-UI] Saved screenshot_held_item_retract.png" << std::endl;
+        } else if (drawUIFrame == 44) {
+            TakeScreenshot("screenshot_roulette_ui.png");
+            std::cout << "[TEST-UI] Saved screenshot_roulette_ui.png" << std::endl;
+        } else if (drawUIFrame == 49) {
+            TakeScreenshot("screenshot_roulette_spin.png");
+            std::cout << "[TEST-UI] Saved screenshot_roulette_spin.png" << std::endl;
             shouldQuit = true;
         }
     }

@@ -87,7 +87,7 @@ void ShopShip::draw(const char* label, Color tint, bool speaking) const {
     float h = static_cast<float>(texture.height) * scale;
     Vector2 origin = { w * 0.5f, h * 0.5f };
 
-    float hoverY = (!isMoving) ? (std::sin(static_cast<float>(GetTime()) * 1.8f) * 2.0f) : 0.0f;
+    float hoverY = !isMoving ? (std::sin(static_cast<float>(GetTime()) * 1.8f) * 2.0f) : 0.0f;
     Vector2 drawPos = { position.x, position.y + hoverY };
 
     // 1. Hovering Drop Shadow
