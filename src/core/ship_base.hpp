@@ -15,7 +15,7 @@ struct ShipConfig;
 class Ship {
 public:
     // Core ship attributes:
-    float mass = 8.0f;           // Mass determines collision inertia & pushback resistance
+    float mass = 1.0f;           // Mass determines collision inertia & pushback resistance
     float range = 150.0f;        // Laser reach / interaction distance threshold (default 150px)
     float speed = 600.0f;        // Maximum travel speed (px/s)
     Texture2D texture = { 0 };   // Ship hull texture

@@ -10,7 +10,7 @@ namespace minesweeper::core {
 // ============================================================================
 
 ScoutShip::ScoutShip()
-    : Ship(8.0f, 150.0f, 600.0f)
+    : Ship(1.0f, 150.0f, 600.0f)
 {
     scale = 1.8f;
     collisionRadius = 14.0f;
