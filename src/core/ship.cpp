@@ -64,9 +64,6 @@ void Ship::applyConfig(const ShipConfig& cfg) {
     }
     if (cfg.mass > 0.0f) {
         mass = cfg.mass;
-        if (isAnchored) {
-            maxLeashDist = std::clamp(350.0f / std::sqrt(std::max(1.0f, mass)), 30.0f, 120.0f);
-        }
     }
     if (cfg.speed > 0.0f) {
         speed = cfg.speed;
@@ -472,8 +469,7 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
         // ====================================================================
         // Push Collision (Shop Ships: pushable, but NOT bumpable)
         // ====================================================================
-        // Pushing force and displacement are directly proportional to ship mass,
-        // active continuously (even when touching slowly), and bounded by anchor leash constraints.
+        // Pushing force and displacement are directly proportional to ship mass
         float invMassA = (a.mass > 0.0001f) ? (1.0f / a.mass) : 0.0f;
         float invMassB = (b.mass > 0.0001f) ? (1.0f / b.mass) : 0.0f;
         float invMassSum = invMassA + invMassB;
@@ -483,42 +479,11 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
         float penetration = std::max(0.0f, overlap - slop);
         float sep = penetration * 0.90f;
 
-        // Base separation distribution by inverse mass:
+        // Positional separation directly proportional to the pushing mass:
+        // Ship A displacement is proportional to b.mass (invMassA / invMassSum = mB / (mA + mB))
+        // Ship B displacement is proportional to a.mass (invMassB / invMassSum = mA / (mA + mB))
         float sepFractionA = invMassA / invMassSum;
         float sepFractionB = invMassB / invMassSum;
-
-        // Anchor leash limit resistance:
-        // If B is anchored and being pushed outward, ramp up resistance as it approaches maxLeashDist.
-        float leashResistanceB = 0.0f;
-        if (b.isAnchored && b.maxLeashDist > 0.0f) {
-            Vector2 toAnchor = { b.anchorPosition.x - b.position.x, b.anchorPosition.y - b.position.y };
-            float distFromAnchor = std::sqrt(toAnchor.x * toAnchor.x + toAnchor.y * toAnchor.y);
-            if (distFromAnchor > 0.1f) {
-                // Outward push direction: dot product of push normal with direction away from anchor (-toAnchor)
-                float outwardDot = (normal.x * (-toAnchor.x) + normal.y * (-toAnchor.y)) / distFromAnchor;
-                if (outwardDot > 0.0f) {
-                    float ratio = std::clamp(distFromAnchor / b.maxLeashDist, 0.0f, 1.0f);
-                    leashResistanceB = ratio * ratio * outwardDot;
-                    sepFractionB *= (1.0f - leashResistanceB);
-                    sepFractionA = 1.0f - sepFractionB;
-                }
-            }
-        }
-
-        float leashResistanceA = 0.0f;
-        if (a.isAnchored && a.maxLeashDist > 0.0f) {
-            Vector2 toAnchor = { a.anchorPosition.x - a.position.x, a.anchorPosition.y - a.position.y };
-            float distFromAnchor = std::sqrt(toAnchor.x * toAnchor.x + toAnchor.y * toAnchor.y);
-            if (distFromAnchor > 0.1f) {
-                float outwardDot = (-normal.x * (-toAnchor.x) + -normal.y * (-toAnchor.y)) / distFromAnchor;
-                if (outwardDot > 0.0f) {
-                    float ratio = std::clamp(distFromAnchor / a.maxLeashDist, 0.0f, 1.0f);
-                    leashResistanceA = ratio * ratio * outwardDot;
-                    sepFractionA *= (1.0f - leashResistanceA);
-                    sepFractionB = 1.0f - sepFractionA;
-                }
-            }
-        }
 
         a.position.x -= normal.x * sep * sepFractionA;
         a.position.y -= normal.y * sep * sepFractionA;
@@ -530,90 +495,68 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
         float pushScaleB = (totalMass > 0.0001f) ? ((2.0f * a.mass) / totalMass) : 1.0f;
         float pushScaleA = (totalMass > 0.0001f) ? ((2.0f * b.mass) / totalMass) : 1.0f;
 
-        // Velocities along contact normal (normal points from a to b)
-        float vAn = a.velocity.x * normal.x + a.velocity.y * normal.y;
-        float vBn = b.velocity.x * normal.x + b.velocity.y * normal.y;
-        float relVelNormal = vBn - vAn;
+        // Velocity push transfer (inelastic push, NO rebound/bumper kick)
+        Vector2 relVel = { b.velocity.x - a.velocity.x, b.velocity.y - a.velocity.y };
+        float velAlongNormal = relVel.x * normal.x + relVel.y * normal.y;
 
-        // 1. Dynamic closing impact (closing speed > 0)
-        if (relVelNormal < 0.0f) {
-            float closingSpeed = -relVelNormal;
-            float basePush = std::clamp(closingSpeed * 0.65f + 15.0f, 8.0f, 200.0f);
+        if (velAlongNormal < 0.0f) {
+            float closingSpeed = -velAlongNormal;
+            float basePush = std::clamp(closingSpeed * 0.65f + 18.0f, 10.0f, 200.0f);
 
             if (a.bumpable && !b.bumpable) {
-                // a (player) pushes b (shop):
-                float pushSpeed = std::clamp(basePush * pushScaleB * (1.0f - leashResistanceB), 0.0f, 200.0f);
+                // a (player) pushes b (shop): pushing speed directly proportional to a.mass
+                float pushSpeed = std::clamp(basePush * pushScaleB, 2.0f, 200.0f);
                 b.velocity.x += normal.x * pushSpeed;
                 b.velocity.y += normal.y * pushSpeed;
 
-                // Player velocity into the shop is damped proportional to obstacle mass and leash resistance
-                float dampFactor = std::clamp(0.80f * (pushScaleA * 0.5f + leashResistanceB * 0.5f), 0.20f, 1.0f);
+                // Player velocity into the shop is damped proportional to the obstacle's mass
+                float dampFactor = std::clamp(0.80f * (pushScaleA * 0.5f), 0.20f, 1.0f);
                 a.velocity.x -= normal.x * (closingSpeed * dampFactor);
                 a.velocity.y -= normal.y * (closingSpeed * dampFactor);
             } else if (!a.bumpable && b.bumpable) {
-                // b (player) pushes a (shop):
-                float pushSpeed = std::clamp(basePush * pushScaleA * (1.0f - leashResistanceA), 0.0f, 200.0f);
+                // b (player) pushes a (shop): pushing speed directly proportional to b.mass
+                float pushSpeed = std::clamp(basePush * pushScaleA, 2.0f, 200.0f);
                 a.velocity.x -= normal.x * pushSpeed;
                 a.velocity.y -= normal.y * pushSpeed;
 
-                float dampFactor = std::clamp(0.80f * (pushScaleB * 0.5f + leashResistanceA * 0.5f), 0.20f, 1.0f);
+                float dampFactor = std::clamp(0.80f * (pushScaleB * 0.5f), 0.20f, 1.0f);
                 b.velocity.x += normal.x * (closingSpeed * dampFactor);
                 b.velocity.y += normal.y * (closingSpeed * dampFactor);
             } else {
-                // Both are non-bumpable (e.g. shop vs shop)
-                float pushSpeedB = std::clamp(basePush * 0.5f * pushScaleB * (1.0f - leashResistanceB), 0.0f, 160.0f);
-                float pushSpeedA = std::clamp(basePush * 0.5f * pushScaleA * (1.0f - leashResistanceA), 0.0f, 160.0f);
+                // Both are non-bumpable (e.g. shop vs shop): push speeds directly proportional to each other's mass
+                float pushSpeedB = std::clamp(basePush * 0.5f * pushScaleB, 2.0f, 160.0f);
+                float pushSpeedA = std::clamp(basePush * 0.5f * pushScaleA, 2.0f, 160.0f);
                 a.velocity.x -= normal.x * pushSpeedA;
                 a.velocity.y -= normal.y * pushSpeedA;
                 b.velocity.x += normal.x * pushSpeedB;
                 b.velocity.y += normal.y * pushSpeedB;
             }
-        }
-
-        // 2. Continuous pushing: active driving contact (even when touching slowly or starting from rest)
-        // If ship A has forward velocity into ship B (vAn > 2.0f):
-        if (vAn > 2.0f) {
-            float targetPushB = vAn * pushScaleB * (1.0f - leashResistanceB);
-            if (vBn < targetPushB) {
-                float boostB = (targetPushB - vBn) * 0.85f;
-                b.velocity.x += normal.x * boostB;
-                b.velocity.y += normal.y * boostB;
-
-                // Load resistance on A from pushing B
-                float loadImpedance = std::clamp(pushScaleA * 0.40f + leashResistanceB * 0.60f, 0.10f, 1.0f);
-                float dampA = std::max(0.0f, vAn - targetPushB) * loadImpedance * 0.5f;
-                a.velocity.x -= normal.x * dampA;
-                a.velocity.y -= normal.y * dampA;
+        } else if (overlap > 0.8f) {
+            // Steady pushing when ship presses continuously against another ship
+            // Pushing acceleration is directly proportional to pusher mass / target mass
+            float baseSteady = std::min(25.0f, overlap * 12.0f);
+            if (a.bumpable && !b.bumpable) {
+                float forceRatio = std::clamp(a.mass / std::max(0.1f, b.mass), 0.02f, 5.0f);
+                float steadyPush = baseSteady * forceRatio;
+                b.velocity.x += normal.x * steadyPush;
+                b.velocity.y += normal.y * steadyPush;
+            } else if (!a.bumpable && b.bumpable) {
+                float forceRatio = std::clamp(b.mass / std::max(0.1f, a.mass), 0.02f, 5.0f);
+                float steadyPush = baseSteady * forceRatio;
+                a.velocity.x -= normal.x * steadyPush;
+                a.velocity.y -= normal.y * steadyPush;
+            } else {
+                float forceRatioB = std::clamp(a.mass / std::max(0.1f, b.mass), 0.02f, 5.0f);
+                float forceRatioA = std::clamp(b.mass / std::max(0.1f, a.mass), 0.02f, 5.0f);
+                a.velocity.x -= normal.x * (baseSteady * forceRatioA * 0.5f);
+                a.velocity.y -= normal.y * (baseSteady * forceRatioA * 0.5f);
+                b.velocity.x += normal.x * (baseSteady * forceRatioB * 0.5f);
+                b.velocity.y += normal.y * (baseSteady * forceRatioB * 0.5f);
             }
-        }
-        // If ship B has forward velocity into ship A (vBn < -2.0f):
-        if (vBn < -2.0f) {
-            float vBIntoA = -vBn;
-            float targetPushA = vBIntoA * pushScaleA * (1.0f - leashResistanceA);
-            float vAIntoB = -vAn;
-            if (vAIntoB < targetPushA) {
-                float boostA = (targetPushA - vAIntoB) * 0.85f;
-                a.velocity.x -= normal.x * boostA;
-                a.velocity.y -= normal.y * boostA;
-
-                float loadImpedance = std::clamp(pushScaleB * 0.40f + leashResistanceA * 0.60f, 0.10f, 1.0f);
-                float dampB = std::max(0.0f, vBIntoA - targetPushA) * loadImpedance * 0.5f;
-                b.velocity.x += normal.x * dampB;
-                b.velocity.y += normal.y * dampB;
-            }
-        }
-
-        // 3. Static contact separation nudge (prevents lingering resting overlap)
-        if (overlap > 0.1f) {
-            float baseNudge = std::min(16.0f, overlap * 8.0f);
-            a.velocity.x -= normal.x * baseNudge * sepFractionA;
-            a.velocity.y -= normal.y * baseNudge * sepFractionA;
-            b.velocity.x += normal.x * baseNudge * sepFractionB;
-            b.velocity.y += normal.y * baseNudge * sepFractionB;
         }
 
         // Cap shop speed safely
-        const float maxShopPushSpeed = 220.0f;
+        const float maxShopPushSpeed = 200.0f;
         if (!a.bumpable) {
             float spd = std::sqrt(a.velocity.x * a.velocity.x + a.velocity.y * a.velocity.y);
             if (spd > maxShopPushSpeed) {

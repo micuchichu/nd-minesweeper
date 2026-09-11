@@ -14,8 +14,6 @@ MerchantShip::MerchantShip()
     scale = 1.8f;
     collisionRadius = 26.0f;
     bumpable = false;
-    isAnchored = true;
-    maxLeashDist = std::clamp(350.0f / std::sqrt(std::max(1.0f, mass)), 30.0f, 120.0f);
 }
 
 MerchantShip::MerchantShip(float m, float r, float s, Texture2D tex, int skin)
@@ -24,15 +22,11 @@ MerchantShip::MerchantShip(float m, float r, float s, Texture2D tex, int skin)
     scale = 1.8f;
     collisionRadius = 26.0f;
     bumpable = false;
-    isAnchored = true;
-    maxLeashDist = std::clamp(350.0f / std::sqrt(std::max(1.0f, mass)), 30.0f, 120.0f);
 }
 
 void MerchantShip::setAnchor(Vector2 anchor, float anchorAngle) {
     anchorPosition = anchor;
     restAngle = anchorAngle;
-    isAnchored = true;
-    maxLeashDist = std::clamp(350.0f / std::sqrt(std::max(1.0f, mass)), 30.0f, 120.0f);
     if (!isInitialized) {
         position = anchor;
         angle = anchorAngle;
@@ -61,20 +55,20 @@ void MerchantShip::update(float dt) {
     const float maxSpeed = speed;
 
     if (dist > 0.5f) {
-        float t = std::min(1.0f, dist / slowRadius);
-        float baseDesiredSpeed = (dist > slowRadius) ? maxSpeed : maxSpeed * (t * (2.0f - t));
-        float normDist = dist / std::max(10.0f, slowRadius);
-        float tension = 1.0f + normDist * normDist;
-        float desiredSpeed = std::min(600.0f, baseDesiredSpeed * tension);
+        float desiredSpeed = 0.0f;
+        if (dist > slowRadius) {
+            desiredSpeed = maxSpeed;
+        } else {
+            float t = dist / slowRadius;
+            desiredSpeed = maxSpeed * (t * (2.0f - t));
+        }
 
         Vector2 desiredVel = { (toAnchor.x / dist) * desiredSpeed, (toAnchor.y / dist) * desiredSpeed };
-        float effectiveReturnAccel = returnAccel * tension;
-
-        Vector2 accel = { (desiredVel.x - velocity.x) * 8.0f, (desiredVel.y - velocity.y) * 8.0f };
+        Vector2 accel = { (desiredVel.x - velocity.x) * 7.0f, (desiredVel.y - velocity.y) * 7.0f };
         float accelMag = std::sqrt(accel.x * accel.x + accel.y * accel.y);
-        if (accelMag > effectiveReturnAccel) {
-            accel.x = (accel.x / accelMag) * effectiveReturnAccel;
-            accel.y = (accel.y / accelMag) * effectiveReturnAccel;
+        if (accelMag > returnAccel) {
+            accel.x = (accel.x / accelMag) * returnAccel;
+            accel.y = (accel.y / accelMag) * returnAccel;
         }
 
         velocity.x += accel.x * dt;
@@ -87,21 +81,6 @@ void MerchantShip::update(float dt) {
         } else {
             position.x += velocity.x * dt;
             position.y += velocity.y * dt;
-        }
-
-        // Hard clamp at maxLeashDist to prevent escaping anchor mooring
-        if (maxLeashDist > 0.0f) {
-            Vector2 curToAnchor = { anchorPosition.x - position.x, anchorPosition.y - position.y };
-            float curDist = std::sqrt(curToAnchor.x * curToAnchor.x + curToAnchor.y * curToAnchor.y);
-            if (curDist > maxLeashDist) {
-                position.x = anchorPosition.x - (curToAnchor.x / curDist) * maxLeashDist;
-                position.y = anchorPosition.y - (curToAnchor.y / curDist) * maxLeashDist;
-                float vDotOut = (-velocity.x * curToAnchor.x - velocity.y * curToAnchor.y) / (curDist * curDist);
-                if (vDotOut > 0.0f) {
-                    velocity.x -= (-curToAnchor.x / curDist) * (vDotOut * curDist);
-                    velocity.y -= (-curToAnchor.y / curDist) * (vDotOut * curDist);
-                }
-            }
         }
 
         isMoving = (curSpeed > 15.0f);

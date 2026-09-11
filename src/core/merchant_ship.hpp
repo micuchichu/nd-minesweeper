@@ -9,6 +9,7 @@ namespace minesweeper::core {
 // ============================================================================
 class MerchantShip : public Ship {
 public:
+    Vector2 anchorPosition = { 0.0f, 0.0f };
     float restAngle = 0.0f;
     float returnAccel = 1200.0f;
     float slowRadius = 90.0f;
