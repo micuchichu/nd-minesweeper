@@ -3,7 +3,7 @@
   "tier": 3,
   "itemCapacity": 8,
   "scale": 1.8,
-  "mass": 100.0,
+  "mass": 60.0,
   "speed": 100.0,
   "range": 160.0,
   "collisionRadius": 28.0,

@@ -31,6 +31,11 @@ public:
     bool isMoving = false;
     bool isInitialized = false;
 
+    // Anchor & station-keeping state (for anchored ships/freighters):
+    bool isAnchored = false;
+    Vector2 anchorPosition = { 0.0f, 0.0f };
+    float maxLeashDist = 0.0f;     // Maximum push distance from anchor (0 = unconstrained)
+
     // Configurable thrusters:
     Color thrusterColor = { 255, 179, 0, 255 }; // Unified thruster color across ship
     std::vector<ShipThruster> thrusters;

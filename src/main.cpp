@@ -247,7 +247,49 @@ static int runCapsuleTests() {
             return 14;
         }
 
-        std::cout << "  [PASS] Test 5: Mass-proportional ship pushing force & displacement verified." << std::endl;
+        // Slow push test (Touching slowly at 20 px/s pushes target forward)
+        minesweeper::core::Ship slowPlayer;
+        slowPlayer.mass = 8.0f;
+        slowPlayer.collisionRadius = 14.0f;
+        slowPlayer.bumpable = true;
+        slowPlayer.isInitialized = true;
+        slowPlayer.position = { 100.0f, 100.0f };
+        slowPlayer.velocity = { 20.0f, 0.0f }; // Slow touch (20 px/s)
+
+        minesweeper::core::Ship slowShop;
+        slowShop.mass = 8.0f;
+        slowShop.collisionRadius = 14.0f;
+        slowShop.bumpable = false;
+        slowShop.isInitialized = true;
+        slowShop.position = { 127.0f, 100.0f }; // 1px penetration
+        slowShop.velocity = { 0.0f, 0.0f };
+
+        minesweeper::core::Ship::resolveCollision(slowPlayer, slowShop);
+        if (slowShop.velocity.x < 10.0f) {
+            std::cerr << "  [FAIL] Test 5: Slow touch must impart continuous forward pushing velocity" << std::endl;
+            return 15;
+        }
+
+        // Anchor leash test (Anchored merchant cannot be pushed beyond maxLeashDist)
+        minesweeper::core::MerchantShip mShip(8.0f, 100.0f, 140.0f);
+        mShip.collisionRadius = 14.0f;
+        mShip.setAnchor({ 100.0f, 100.0f });
+        if (mShip.maxLeashDist <= 0.0f || mShip.maxLeashDist > 130.0f) {
+            std::cerr << "  [FAIL] Test 5: MerchantShip must have a valid maxLeashDist" << std::endl;
+            return 16;
+        }
+
+        // Simulate pushing far away (e.g. at 200px from anchor)
+        mShip.position = { 100.0f + 200.0f, 100.0f };
+        mShip.velocity = { 300.0f, 0.0f };
+        mShip.update(0.016f);
+        float distAfterUpdate = std::abs(mShip.position.x - 100.0f);
+        if (distAfterUpdate > mShip.maxLeashDist + 0.001f) {
+            std::cerr << "  [FAIL] Test 5: MerchantShip must be clamped within maxLeashDist" << std::endl;
+            return 17;
+        }
+
+        std::cout << "  [PASS] Test 5: Mass-proportional ship pushing force, slow push, and anchor leash verified." << std::endl;
     }
 
     std::cout << "[TEST-CAPSULE] ALL 2D CAPSULE TESTS PASSED!" << std::endl;
