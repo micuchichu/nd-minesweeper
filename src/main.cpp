@@ -937,6 +937,30 @@ static int runItemTests() {
             CloseWindow();
             return 30;
         }
+
+        // Verify ShopShip constructed with shop3Cfg adheres strictly to JSON without override
+        minesweeper::core::ShopShip shop3Ship(Texture2D{ 0, 0, 0, 0, 0 }, { 0.0f, 0.0f }, shop3Cfg);
+        if (shop3Ship.shopTier != 3 || shop3Ship.itemCapacity != 8 || shop3Ship.inventory.capacity != 8) {
+            std::cerr << "  [FAIL] ShopShip with shop3Cfg did not retain tier 3 or cap 8! Got tier: " 
+                      << shop3Ship.shopTier << ", cap: " << shop3Ship.itemCapacity << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 31;
+        }
+
+        // Verify custom single-slot tier 1 capsule ship is NOT overridden to tier 2 / cap 4
+        minesweeper::core::ShipConfig customCfg = shop3Cfg;
+        customCfg.capsuleLength = 150.0f;
+        customCfg.shopTier = 1;
+        customCfg.itemCapacity = 1;
+        minesweeper::core::ShopShip customShip(Texture2D{ 0, 0, 0, 0, 0 }, { 0.0f, 0.0f }, customCfg);
+        if (customShip.shopTier != 1 || customShip.itemCapacity != 1 || customShip.inventory.capacity != 1) {
+            std::cerr << "  [FAIL] Custom ShopShip was improperly overridden by capsule/procedural logic! Got tier: " 
+                      << customShip.shopTier << ", cap: " << customShip.itemCapacity << std::endl;
+            catalog.shutdown();
+            CloseWindow();
+            return 32;
+        }
     }
     std::cout << "  [PASS] Test 18: Shop ship JSON tiers and item capacity parsing (shop1, shop2, shop3) verified." << std::endl;
 

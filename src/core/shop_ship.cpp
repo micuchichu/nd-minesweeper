@@ -18,8 +18,6 @@ ShopShip::ShopShip()
     name = "SHOP";
     color = ui::Colors::Amber400;
     setAnchor({ 0.0f, 0.0f }, 90.0f);
-    setupThrusters();
-    initializeInventory();
 }
 
 ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const std::string& shipName)
@@ -46,23 +44,30 @@ ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const ShipConfig& config)
 }
 
 void ShopShip::initializeInventory() {
-    int cap = itemCapacity;
-    int tier = shopTier;
-    if (capsuleLength > 0.0f || name.find("big") != std::string::npos || (texture.height > 48)) {
-        if (cap <= 2) cap = 4;
-        if (tier <= 1) tier = 2;
-    } else {
-        if (cap <= 0) cap = 2;
-        if (tier <= 0) tier = 1;
+    // If capacity or tier were not specified (e.g. non-positive or legacy default constructor),
+    // apply fallback heuristics based on ship dimensions. Otherwise strictly respect the JSON config.
+    if (itemCapacity <= 0) {
+        if (capsuleLength > 0.0f || name.find("big") != std::string::npos || (texture.height > 48)) {
+            itemCapacity = 4;
+        } else {
+            itemCapacity = 2;
+        }
     }
-    shopTier = tier;
-    itemCapacity = cap;
+    if (shopTier <= 0) {
+        if (capsuleLength > 0.0f || name.find("big") != std::string::npos || (texture.height > 48)) {
+            shopTier = 2;
+        } else {
+            shopTier = 1;
+        }
+    }
     inventory = ItemCatalog::instance().createInventoryForShop(shopTier, itemCapacity);
 }
 
 void ShopShip::setupThrusters() {
     ShipConfig cfg = ShipConfig::createDefault(texture.width, texture.height, name);
     applyConfig(cfg);
+    if (shopTier <= 0) shopTier = cfg.shopTier;
+    if (itemCapacity <= 0) itemCapacity = cfg.itemCapacity;
 }
 
 void ShopShip::update(float dt) {
