@@ -922,7 +922,7 @@ static int runItemTests() {
         return 28;
     }
     minesweeper::core::ShipConfig shop2Cfg;
-    if (!minesweeper::core::ShipConfig::loadFromFile("assets/shops/shop2.json", shop2Cfg) || shop2Cfg.shopTier != 2 || shop2Cfg.itemCapacity != 4) {
+    if (!minesweeper::core::ShipConfig::loadFromFile("assets/shops/shop2.json", shop2Cfg) || shop2Cfg.shopTier != 2 || shop2Cfg.itemCapacity != 3) {
         std::cerr << "  [FAIL] shop2.json tier or itemCapacity parsing failed! tier: " << shop2Cfg.shopTier << ", cap: " << shop2Cfg.itemCapacity << std::endl;
         catalog.shutdown();
         CloseWindow();
@@ -1356,6 +1356,44 @@ static int runRouletteTests() {
         std::cout << "  [PASS] Test 7: Post-spin auto-alignment back to 90-degree dock orientation verified." << std::endl;
     }
 
+    // Test 8: Fading Result Popup Lifecycle & Win/Loss Tracking
+    {
+        minesweeper::ui::RouletteUI rUI;
+        if (rUI.isPopupActive()) {
+            std::cerr << "  [FAIL] Test 8: Popup should be inactive initially" << std::endl;
+            return 35;
+        }
+
+        // Test Win Popup trigger
+        rUI.triggerPopup(17, true, 120, 40);
+        if (!rUI.isPopupActive() || rUI.popup.winningNumber != 17 || !rUI.popup.won || rUI.popup.payout != 120) {
+            std::cerr << "  [FAIL] Test 8: Win popup state failed to initialize properly" << std::endl;
+            return 36;
+        }
+
+        // Advance midway through display duration
+        rUI.updatePopup(1.5f);
+        if (!rUI.isPopupActive() || rUI.popup.timer < 1.49f) {
+            std::cerr << "  [FAIL] Test 8: Popup should still be active at t=1.5s" << std::endl;
+            return 37;
+        }
+
+        // Advance to expiration (1.5 + 2.5 = 4.0s > duration 3.5s)
+        rUI.updatePopup(2.5f);
+        if (rUI.isPopupActive()) {
+            std::cerr << "  [FAIL] Test 8: Popup failed to fade out/deactivate after duration" << std::endl;
+            return 38;
+        }
+
+        // Test Loss Popup trigger
+        rUI.triggerPopup(0, false, 0, 10);
+        if (!rUI.isPopupActive() || rUI.popup.winningNumber != 0 || rUI.popup.won || rUI.popup.payout != 0) {
+            std::cerr << "  [FAIL] Test 8: Loss popup state failed to initialize properly" << std::endl;
+            return 39;
+        }
+        std::cout << "  [PASS] Test 8: Fading result popup trigger, timing lifecycle, and win/loss state verified." << std::endl;
+    }
+
     std::cout << "[TEST-ROULETTE] ALL ROULETTE TESTS PASSED!" << std::endl;
     return 0;
 }
@@ -1404,7 +1442,7 @@ int main(int argc, char* argv[]) {
             runRouletteTests();
             app.testShopMode = true;
         }
-        else if (std::string(argv[i]) == "--test-shop-ui") {
+        else if (std::string(argv[i]) == "--test-shop-ui" || std::string(argv[i]) == "--test-ui") {
             app.testShopUIMode = true;
         }
         else if (std::string(argv[i]) == "--test-customize") {

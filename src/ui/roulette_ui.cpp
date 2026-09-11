@@ -453,6 +453,7 @@ bool RouletteUI::draw(
             // Deduct bet amount immediately
             scrapCount -= shop.roulette.activeBet.amount;
             shop.startSpin(-1, 5.0f);
+            popup.active = false;
             actionTaken = true;
         }
 
@@ -485,6 +486,176 @@ bool RouletteUI::draw(
     }
 
     return actionTaken;
+}
+
+void RouletteUI::triggerPopup(int number, bool won, uint64_t payout, uint64_t betAmount) {
+    popup.active = true;
+    popup.timer = 0.0f;
+    popup.duration = 3.5f;
+    popup.winningNumber = number;
+    popup.won = won;
+    popup.payout = payout;
+    popup.betAmount = betAmount;
+}
+
+void RouletteUI::updatePopup(float dt) {
+    if (!popup.active) return;
+    popup.timer += dt;
+    if (popup.timer >= popup.duration) {
+        popup.active = false;
+        popup.timer = 0.0f;
+    }
+}
+
+void RouletteUI::drawPopup(
+    const render::CameraController& camera,
+    int screenW,
+    int screenH,
+    Vector2 shipPos,
+    float cardAlpha
+) {
+    if (!popup.active) return;
+
+    float progress = std::clamp(popup.timer / popup.duration, 0.0f, 1.0f);
+    float floatY = progress * 14.0f;
+
+    // Fading popup: full opacity for first 70% of duration, then smooth fade-out over final 30%
+    float alpha = 1.0f;
+    if (progress > 0.70f) {
+        alpha = (1.0f - progress) / 0.30f;
+    }
+    alpha = std::clamp(alpha, 0.0f, 1.0f);
+
+    if (alpha <= 0.01f) return;
+
+    const float popW = 380.0f;
+    const float popH = 76.0f;
+
+    Vector2 shipScreen = camera.getWorldToScreen(shipPos);
+    float targetX = 0.0f;
+    float targetY = 0.0f;
+
+    if (cardAlpha > 0.2f && lastCardRect.width > 0.0f) {
+        // Table card is open: anchor smoothly above the table card
+        targetX = lastCardRect.x + (lastCardRect.width - popW) * 0.5f;
+        if (lastCardRect.y - popH - 14.0f >= 60.0f) {
+            targetY = lastCardRect.y - popH - 14.0f - floatY;
+        } else {
+            targetY = lastCardRect.y + lastCardRect.height + 14.0f + floatY;
+        }
+    } else {
+        // Table card is closed: anchor directly above the ship in screen space
+        targetX = shipScreen.x - popW * 0.5f;
+        targetY = shipScreen.y - 75.0f - popH - floatY;
+    }
+
+    float px = std::clamp(targetX, 16.0f, static_cast<float>(screenW) - popW - 16.0f);
+    float py = std::clamp(targetY, 16.0f, static_cast<float>(screenH) - popH - 16.0f);
+    Rectangle popRect = { px, py, popW, popH };
+
+    // 1. Soft drop shadow
+    Rectangle shadowRect = { px + 4.0f, py + 5.0f, popW, popH };
+    DrawRectangleRounded(shadowRect, 0.25f, 6, Fade(BLACK, alpha * 0.70f));
+
+    // 2. Translucent Glass Panel Background
+    Color bg = popup.won ? Color{ 22, 16, 8, 250 } : Color{ 26, 12, 12, 250 };
+    DrawRectangleRounded(popRect, 0.25f, 6, Fade(bg, alpha));
+
+    // 3. Glowing Border
+    float pulse = (std::sin(popup.timer * 8.0f) + 1.0f) * 0.5f;
+    Color borderCol = popup.won
+        ? Color{
+            static_cast<unsigned char>(251 + (255 - 251) * pulse),
+            static_cast<unsigned char>(191 + (225 - 191) * pulse),
+            static_cast<unsigned char>(36 + (100 - 36) * pulse),
+            255
+          }
+        : Color{ 239, 68, 68, 255 };
+
+    DrawRectangleRoundedLines(popRect, 0.25f, 6, Fade(borderCol, alpha * 0.95f));
+
+    // Corner decorative accents
+    const float cLen = 8.0f;
+    Color cornerCol = Fade(popup.won ? Color{ 254, 240, 138, 255 } : Color{ 254, 202, 202, 255 }, alpha);
+    DrawLineEx({ px, py }, { px + cLen, py }, 2.0f, cornerCol);
+    DrawLineEx({ px, py }, { px, py + cLen }, 2.0f, cornerCol);
+    DrawLineEx({ px + popW, py }, { px + popW - cLen, py }, 2.0f, cornerCol);
+    DrawLineEx({ px + popW, py }, { px + popW, py + cLen }, 2.0f, cornerCol);
+    DrawLineEx({ px, py + popH }, { px + cLen, py + popH }, 2.0f, cornerCol);
+    DrawLineEx({ px, py + popH }, { px, py + popH - cLen }, 2.0f, cornerCol);
+    DrawLineEx({ px + popW, py + popH }, { px + popW - cLen, py + popH }, 2.0f, cornerCol);
+    DrawLineEx({ px + popW, py + popH }, { px + popW, py + popH - cLen }, 2.0f, cornerCol);
+
+    // 4. Number Pocket Badge (Left side)
+    float badgeSize = 56.0f;
+    float badgeX = px + 12.0f;
+    float badgeY = py + (popH - badgeSize) * 0.5f;
+    Rectangle badgeRect = { badgeX, badgeY, badgeSize, badgeSize };
+
+    Color pBg;
+    Color pBorder;
+    Color pTextCol;
+    const char* pColorName = "";
+
+    if (popup.winningNumber == 0) {
+        pBg = Color{ 20, 83, 45, 255 };       // Dark Emerald
+        pBorder = Color{ 74, 222, 128, 255 }; // Bright Green
+        pTextCol = Color{ 240, 253, 244, 255 };
+        pColorName = "GREEN";
+    } else if (core::isRouletteRed(popup.winningNumber)) {
+        pBg = Color{ 153, 27, 27, 255 };      // Dark Crimson
+        pBorder = Color{ 248, 113, 113, 255 };// Bright Red
+        pTextCol = WHITE;
+        pColorName = "RED";
+    } else {
+        pBg = Color{ 24, 24, 32, 255 };       // Dark Slate
+        pBorder = Color{ 192, 132, 252, 255 };// Violet
+        pTextCol = Color{ 245, 245, 250, 255 };
+        pColorName = "BLACK";
+    }
+
+    DrawRectangleRounded(badgeRect, 0.28f, 6, Fade(pBg, alpha));
+    DrawRectangleRoundedLines(badgeRect, 0.28f, 6, Fade(pBorder, alpha));
+
+    // Big bold winning number
+    std::string numStr = std::to_string(popup.winningNumber);
+    int nSize = (numStr.length() > 1) ? 22 : 24;
+    int nW = MeasureText(numStr.c_str(), nSize);
+    DrawText(numStr.c_str(), static_cast<int>(badgeX + (badgeSize - nW) * 0.5f), static_cast<int>(badgeY + 8), nSize, Fade(pTextCol, alpha));
+
+    // Color label under the number
+    int clW = MeasureText(pColorName, 9);
+    DrawText(pColorName, static_cast<int>(badgeX + (badgeSize - clW) * 0.5f), static_cast<int>(badgeY + badgeSize - 15), 9, Fade(pBorder, alpha));
+
+    // 5. Right Content Area: Result Title & Payout Display
+    float textX = badgeX + badgeSize + 16.0f;
+
+    if (popup.won) {
+        // Winner Title
+        bool isJackpot = (popup.betAmount > 0 && popup.payout >= popup.betAmount * 36);
+        const char* title = isJackpot ? "* * * JACKPOT WINNER (36x) * * *" : "* WINNER! *";
+        Color titleCol = isJackpot ? Color{ 250, 204, 21, 255 } : Color{ 253, 224, 71, 255 };
+        DrawText(title, static_cast<int>(textX), static_cast<int>(py + 10), 13, Fade(titleCol, alpha));
+
+        // Payout Amount
+        std::string payStr = "+" + std::to_string(popup.payout) + " SCRAP";
+        DrawText(payStr.c_str(), static_cast<int>(textX), static_cast<int>(py + 27), 21, Fade(Colors::Amber400, alpha));
+
+        // Details Subtitle
+        std::string sub = "LANDED ON NUMBER " + numStr + " [" + pColorName + "]";
+        DrawText(sub.c_str(), static_cast<int>(textX), static_cast<int>(py + 52), 10, Fade(Colors::Zinc400, alpha));
+    } else {
+        // Loss Title
+        DrawText("NO WIN THIS ROUND", static_cast<int>(textX), static_cast<int>(py + 10), 12, Fade(Color{ 248, 113, 113, 255 }, alpha));
+
+        // Payout Display (0 SCRAP)
+        std::string payStr = "PAYOUT: 0 SCRAP";
+        DrawText(payStr.c_str(), static_cast<int>(textX), static_cast<int>(py + 27), 19, Fade(Colors::Zinc400, alpha));
+
+        // Details Subtitle
+        std::string sub = "LANDED ON NUMBER " + numStr + " [" + pColorName + "]";
+        DrawText(sub.c_str(), static_cast<int>(textX), static_cast<int>(py + 51), 10, Fade(Colors::Zinc500, alpha));
+    }
 }
 
 } // namespace minesweeper::ui

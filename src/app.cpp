@@ -702,6 +702,19 @@ void App::update(float dt) {
             if (uiFrame == 46) {
                 renderer.rouletteShip.startSpin(32, 2.0f);
             }
+            if (uiFrame == 50) {
+                // Advance to win state: landed on 32 Red
+                renderer.rouletteShip.roulette.spinTimer = 2.1f;
+                renderer.rouletteShip.update(0.016f);
+            }
+            if (uiFrame == 53) {
+                // Start loss state: bet Red, land on Black 15
+                renderer.rouletteShip.roulette.activeBet.type = core::RouletteBetType::Red;
+                renderer.rouletteShip.roulette.activeBet.amount = 50;
+                renderer.rouletteShip.startSpin(15, 0.1f);
+                renderer.rouletteShip.roulette.spinTimer = 0.15f;
+                renderer.rouletteShip.update(0.016f);
+            }
         }
     }
 
@@ -711,6 +724,7 @@ void App::update(float dt) {
     renderer.activeCursorSkin = menu.cursorSkin;
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
+    rouletteUI.updatePopup(dt);
 
     // 1. Hotbar slot selection: keys 1-5
     if (state == AppState::InGame) {
@@ -978,7 +992,8 @@ void App::update(float dt) {
             }
         }
 
-        // Process roulette payouts upon spin finish (gold & purple celebration particles, NO bubbles)
+        // Process roulette payouts upon spin finish:
+        // Gold particles on WIN, Red particles on LOSE, and trigger fading popup
         if (renderer.hasRouletteShip) {
             auto& r = renderer.rouletteShip.roulette;
             if (r.spinState == core::RouletteSpinState::Result && !r.payoutAwarded) {
@@ -987,9 +1002,19 @@ void App::update(float dt) {
                     scrapCount += r.lastPayout;
                     hud.scrapCount = scrapCount;
                     menu.scrapCount = scrapCount;
-                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 20, ui::Colors::Amber400);
-                    renderer.particles.emitDebris(renderer.rouletteShip.position, 15, Color{ 168, 85, 247, 255 });
+                    // WIN: Gold particles!
+                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 35, ui::Colors::Amber400);
+                    renderer.particles.emitDebris(renderer.rouletteShip.position, 25, Color{ 255, 215, 0, 255 });
+                    renderer.particles.emitDebris(renderer.rouletteShip.getNosePosition(), 15, ui::Colors::Amber300);
+                } else {
+                    // LOSE: Red particles!
+                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 30, ui::Colors::Red500);
+                    renderer.particles.emitDebris(renderer.rouletteShip.position, 20, ui::Colors::Red700);
+                    renderer.particles.emitDebris(renderer.rouletteShip.getNosePosition(), 10, ui::Colors::Red300);
                 }
+                // Trigger fading popup with number landed on and payout
+                rouletteUI.triggerPopup(r.winningNumber, r.lastWon, r.lastPayout, r.activeBet.amount);
+
                 saveCurrentSlot();
             }
         }
@@ -1785,6 +1810,17 @@ void App::draw() {
                 }
             }
 
+            // Draw Roulette Result Popup if active (draws on top of terminal and game world)
+            if (rouletteUI.isPopupActive() && renderer.hasRouletteShip) {
+                rouletteUI.drawPopup(
+                    renderer.camera,
+                    screenW,
+                    screenH,
+                    renderer.rouletteShip.position,
+                    rouletteProximityAlpha
+                );
+            }
+
             // Draw HUD 5-Slot Hotbar Inventory Dock
             shopMenu.drawInventoryDock(screenW, screenH, playerInventory, 1.0f);
 
@@ -1915,9 +1951,15 @@ void App::draw() {
         } else if (drawUIFrame == 44) {
             TakeScreenshot("screenshot_roulette_ui.png");
             std::cout << "[TEST-UI] Saved screenshot_roulette_ui.png" << std::endl;
-        } else if (drawUIFrame == 49) {
+        } else if (drawUIFrame == 48) {
             TakeScreenshot("screenshot_roulette_spin.png");
             std::cout << "[TEST-UI] Saved screenshot_roulette_spin.png" << std::endl;
+        } else if (drawUIFrame == 51) {
+            TakeScreenshot("screenshot_roulette_win.png");
+            std::cout << "[TEST-UI] Saved screenshot_roulette_win.png" << std::endl;
+        } else if (drawUIFrame == 54) {
+            TakeScreenshot("screenshot_roulette_loss.png");
+            std::cout << "[TEST-UI] Saved screenshot_roulette_loss.png" << std::endl;
             shouldQuit = true;
         }
     }
