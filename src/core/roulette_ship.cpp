@@ -284,31 +284,7 @@ void RouletteShip::draw(const char* label, Color tint, bool speaking) const {
     // 3. Ship Sprite
     DrawTexturePro(texture, src, { drawPos.x, drawPos.y, w, h }, origin, angle, WHITE);
 
-    // 4. Roulette 12 O'Clock Indicator Needle & Ball
-    float rimRadius = (static_cast<float>(texture.width) * 0.5f - 4.0f) * scale;
-    Vector2 needleTip = { drawPos.x, drawPos.y - rimRadius + 6.0f * scale };
-    Vector2 needleBaseL = { drawPos.x - 7.0f * scale, drawPos.y - rimRadius - 10.0f * scale };
-    Vector2 needleBaseR = { drawPos.x + 7.0f * scale, drawPos.y - rimRadius - 10.0f * scale };
-
-    // Outer needle border
-    DrawTriangle(
-        { needleTip.x, needleTip.y + 1.5f },
-        { needleBaseL.x - 1.5f, needleBaseL.y - 1.5f },
-        { needleBaseR.x + 1.5f, needleBaseR.y - 1.5f },
-        ui::Colors::Zinc950
-    );
-
-    // Vibrant gold needle fill
-    DrawTriangle(needleTip, needleBaseL, needleBaseR, ui::Colors::Amber400);
-
-    // Highlight center line
-    DrawLineEx({ drawPos.x, needleBaseL.y }, needleTip, 1.5f, WHITE);
-
-    // Glowing indicator bracket at top
-    DrawCircleV({ drawPos.x, drawPos.y - rimRadius - 10.0f * scale }, 4.0f * scale, Color{ 168, 85, 247, 255 });
-    DrawCircleV({ drawPos.x, drawPos.y - rimRadius - 10.0f * scale }, 2.0f * scale, WHITE);
-
-    // 4b. Draw Metallic Roulette Ball
+    // 4 Draw Metallic Roulette Ball
     float bRad = roulette.ball.angle * DEG2RAD;
     float bDist = roulette.ball.radius * scale;
     Vector2 ballPos = { drawPos.x + std::cos(bRad) * bDist, drawPos.y + std::sin(bRad) * bDist };

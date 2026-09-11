@@ -35,11 +35,14 @@ bool RouletteUI::draw(
     bool isAnimating = (shop.roulette.spinState == core::RouletteSpinState::Spinning ||
                         shop.roulette.spinState == core::RouletteSpinState::Result ||
                         shop.isAligning);
+    if (isAnimating) {
+        hasMovedBelow = true;
+    }
 
     // Frame interpolation for smooth vertical gliding between above and below positions
     float frameDt = GetFrameTime();
     if (frameDt > 0.0f && frameDt < 0.1f) {
-        float targetT = isAnimating ? 1.0f : 0.0f;
+        float targetT = (hasMovedBelow || isAnimating) ? 1.0f : 0.0f;
         float moveSpeed = 6.0f;
         if (animMoveT < targetT) {
             animMoveT = std::min(targetT, animMoveT + frameDt * moveSpeed);
@@ -526,10 +529,17 @@ void RouletteUI::triggerPopup(int number, bool won, uint64_t payout, uint64_t be
     popup.betAmount = betAmount;
 }
 
-void RouletteUI::update(float dt, bool isAnimating) {
+void RouletteUI::update(float dt, bool isAnimating, bool isSelected) {
     updatePopup(dt);
 
-    float targetT = isAnimating ? 1.0f : 0.0f;
+    if (!isSelected) {
+        hasMovedBelow = false;
+        animMoveT = 0.0f;
+    } else if (isAnimating) {
+        hasMovedBelow = true;
+    }
+
+    float targetT = (hasMovedBelow || isAnimating) ? 1.0f : 0.0f;
     float moveSpeed = 6.0f;
     if (animMoveT < targetT) {
         animMoveT = std::min(targetT, animMoveT + dt * moveSpeed);

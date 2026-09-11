@@ -734,7 +734,7 @@ void App::update(float dt) {
         renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Result ||
         renderer.rouletteShip.isAligning
     );
-    rouletteUI.update(dt, isRouletteAnimating);
+    rouletteUI.update(dt, isRouletteAnimating, isRouletteOpen);
 
     // 1. Hotbar slot selection: keys 1-5
     if (state == AppState::InGame) {

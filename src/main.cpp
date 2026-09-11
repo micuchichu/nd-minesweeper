@@ -1394,36 +1394,43 @@ static int runRouletteTests() {
         std::cout << "  [PASS] Test 8: Fading result popup trigger, timing lifecycle, and win/loss state verified." << std::endl;
     }
 
-    // Test 9: Dynamic UI Repositioning Below Ship During Animation
+    // Test 9: Dynamic UI Repositioning Below Ship During Animation & Retained Until Deselected
     {
         minesweeper::ui::RouletteUI rUI;
-        if (rUI.animMoveT != 0.0f) {
+        if (rUI.animMoveT != 0.0f || rUI.hasMovedBelow) {
             std::cerr << "  [FAIL] Test 9: animMoveT should initialize at 0.0f (idle above ship)" << std::endl;
             return 40;
         }
 
-        // Test update towards animating state (targetT = 1.0f, moving below ship)
-        rUI.update(0.1f, true);
-        if (rUI.animMoveT <= 0.0f) {
-            std::cerr << "  [FAIL] Test 9: animMoveT should increase when isAnimating is true" << std::endl;
+        // Test update towards animating state while selected (moving below ship)
+        rUI.update(0.1f, true, true);
+        if (rUI.animMoveT <= 0.0f || !rUI.hasMovedBelow) {
+            std::cerr << "  [FAIL] Test 9: animMoveT should increase and hasMovedBelow should be true when isAnimating" << std::endl;
             return 41;
         }
 
         // Advance to full transition (dt = 0.5s > 1.0/6.0)
-        rUI.update(0.5f, true);
+        rUI.update(0.5f, true, true);
         if (rUI.animMoveT < 0.99f) {
             std::cerr << "  [FAIL] Test 9: animMoveT should reach 1.0f when fully animated" << std::endl;
             return 42;
         }
 
-        // Test update back to idle state (targetT = 0.0f, moving above ship)
-        rUI.update(0.5f, false);
-        if (rUI.animMoveT > 0.01f) {
-            std::cerr << "  [FAIL] Test 9: animMoveT should return to 0.0f when idle" << std::endl;
+        // When animation finishes (isAnimating = false), it should STAY below the ship while still selected
+        rUI.update(0.5f, false, true);
+        if (rUI.animMoveT < 0.99f || !rUI.hasMovedBelow) {
+            std::cerr << "  [FAIL] Test 9: UI should remain below the ship after animation while still selected" << std::endl;
             return 43;
         }
 
-        std::cout << "  [PASS] Test 9: Dynamic UI repositioning below ship during animation verified." << std::endl;
+        // When deselected (isSelected = false), UI should reset position
+        rUI.update(0.1f, false, false);
+        if (rUI.animMoveT != 0.0f || rUI.hasMovedBelow) {
+            std::cerr << "  [FAIL] Test 9: animMoveT and hasMovedBelow should reset upon deselection" << std::endl;
+            return 44;
+        }
+
+        std::cout << "  [PASS] Test 9: Dynamic UI repositioning below ship during animation and retained until deselection verified." << std::endl;
     }
 
     std::cout << "[TEST-ROULETTE] ALL ROULETTE TESTS PASSED!" << std::endl;
