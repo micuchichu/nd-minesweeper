@@ -12,7 +12,7 @@ namespace minesweeper::core {
 // ============================================================================
 
 Ship::Ship()
-    : mass(1.0f)
+    : mass(8.0f)
     , range(150.0f)
     , speed(600.0f)
     , texture{ 0 }
@@ -469,28 +469,31 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
         // ====================================================================
         // Push Collision (Shop Ships: pushable, but NOT bumpable)
         // ====================================================================
-        // Player pushes the shop ship smoothly without bouncing back or twitching
+        // Pushing force and displacement are directly proportional to ship mass
+        float invMassA = (a.mass > 0.0001f) ? (1.0f / a.mass) : 0.0f;
+        float invMassB = (b.mass > 0.0001f) ? (1.0f / b.mass) : 0.0f;
+        float invMassSum = invMassA + invMassB;
+        if (invMassSum <= 0.0001f) return false;
+
         const float slop = 0.2f;
         float penetration = std::max(0.0f, overlap - slop);
         float sep = penetration * 0.90f;
 
-        // Distribute separation: push the non-bumpable ship more easily
-        float sepFractionA = 0.5f;
-        float sepFractionB = 0.5f;
-        if (a.bumpable && !b.bumpable) {
-            // a is player, b is shop: player moves shop forward!
-            sepFractionA = 0.30f;
-            sepFractionB = 0.70f;
-        } else if (!a.bumpable && b.bumpable) {
-            // a is shop, b is player: player moves shop forward!
-            sepFractionA = 0.70f;
-            sepFractionB = 0.30f;
-        }
+        // Positional separation directly proportional to the pushing mass:
+        // Ship A displacement is proportional to b.mass (invMassA / invMassSum = mB / (mA + mB))
+        // Ship B displacement is proportional to a.mass (invMassB / invMassSum = mA / (mA + mB))
+        float sepFractionA = invMassA / invMassSum;
+        float sepFractionB = invMassB / invMassSum;
 
         a.position.x -= normal.x * sep * sepFractionA;
         a.position.y -= normal.y * sep * sepFractionA;
         b.position.x += normal.x * sep * sepFractionB;
         b.position.y += normal.y * sep * sepFractionB;
+
+        // Mass-proportional push force factors (normalized so equal mass = 1.0f)
+        float totalMass = a.mass + b.mass;
+        float pushScaleB = (totalMass > 0.0001f) ? ((2.0f * a.mass) / totalMass) : 1.0f;
+        float pushScaleA = (totalMass > 0.0001f) ? ((2.0f * b.mass) / totalMass) : 1.0f;
 
         // Velocity push transfer (inelastic push, NO rebound/bumper kick)
         Vector2 relVel = { b.velocity.x - a.velocity.x, b.velocity.y - a.velocity.y };
@@ -498,38 +501,57 @@ bool Ship::resolveCollision(Ship& a, Ship& b, float restitution) {
 
         if (velAlongNormal < 0.0f) {
             float closingSpeed = -velAlongNormal;
+            float basePush = std::clamp(closingSpeed * 0.65f + 18.0f, 10.0f, 200.0f);
+
             if (a.bumpable && !b.bumpable) {
-                // a (player) pushes b (shop):
-                float pushSpeed = std::clamp(closingSpeed * 0.60f + 15.0f, 10.0f, 180.0f);
+                // a (player) pushes b (shop): pushing speed directly proportional to a.mass
+                float pushSpeed = std::clamp(basePush * pushScaleB, 2.0f, 200.0f);
                 b.velocity.x += normal.x * pushSpeed;
                 b.velocity.y += normal.y * pushSpeed;
-                // Player velocity into the shop is damped so player doesn't bounce backwards
-                a.velocity.x -= normal.x * (closingSpeed * 0.80f);
-                a.velocity.y -= normal.y * (closingSpeed * 0.80f);
+
+                // Player velocity into the shop is damped proportional to the obstacle's mass
+                float dampFactor = std::clamp(0.80f * (pushScaleA * 0.5f), 0.20f, 1.0f);
+                a.velocity.x -= normal.x * (closingSpeed * dampFactor);
+                a.velocity.y -= normal.y * (closingSpeed * dampFactor);
             } else if (!a.bumpable && b.bumpable) {
-                // b (player) pushes a (shop):
-                float pushSpeed = std::clamp(closingSpeed * 0.60f + 15.0f, 10.0f, 180.0f);
+                // b (player) pushes a (shop): pushing speed directly proportional to b.mass
+                float pushSpeed = std::clamp(basePush * pushScaleA, 2.0f, 200.0f);
                 a.velocity.x -= normal.x * pushSpeed;
                 a.velocity.y -= normal.y * pushSpeed;
-                b.velocity.x += normal.x * (closingSpeed * 0.80f);
-                b.velocity.y += normal.y * (closingSpeed * 0.80f);
+
+                float dampFactor = std::clamp(0.80f * (pushScaleB * 0.5f), 0.20f, 1.0f);
+                b.velocity.x += normal.x * (closingSpeed * dampFactor);
+                b.velocity.y += normal.y * (closingSpeed * dampFactor);
             } else {
-                // Both are shop ships: gentle inelastic separation
-                float pushSpeed = closingSpeed * 0.5f;
-                a.velocity.x -= normal.x * pushSpeed;
-                a.velocity.y -= normal.y * pushSpeed;
-                b.velocity.x += normal.x * pushSpeed;
-                b.velocity.y += normal.y * pushSpeed;
+                // Both are non-bumpable (e.g. shop vs shop): push speeds directly proportional to each other's mass
+                float pushSpeedB = std::clamp(basePush * 0.5f * pushScaleB, 2.0f, 160.0f);
+                float pushSpeedA = std::clamp(basePush * 0.5f * pushScaleA, 2.0f, 160.0f);
+                a.velocity.x -= normal.x * pushSpeedA;
+                a.velocity.y -= normal.y * pushSpeedA;
+                b.velocity.x += normal.x * pushSpeedB;
+                b.velocity.y += normal.y * pushSpeedB;
             }
         } else if (overlap > 0.8f) {
-            // Steady pushing when player presses against the shop ship
-            float steadyPush = std::min(25.0f, overlap * 12.0f);
+            // Steady pushing when ship presses continuously against another ship
+            // Pushing acceleration is directly proportional to pusher mass / target mass
+            float baseSteady = std::min(25.0f, overlap * 12.0f);
             if (a.bumpable && !b.bumpable) {
+                float forceRatio = std::clamp(a.mass / std::max(0.1f, b.mass), 0.02f, 5.0f);
+                float steadyPush = baseSteady * forceRatio;
                 b.velocity.x += normal.x * steadyPush;
                 b.velocity.y += normal.y * steadyPush;
             } else if (!a.bumpable && b.bumpable) {
+                float forceRatio = std::clamp(b.mass / std::max(0.1f, a.mass), 0.02f, 5.0f);
+                float steadyPush = baseSteady * forceRatio;
                 a.velocity.x -= normal.x * steadyPush;
                 a.velocity.y -= normal.y * steadyPush;
+            } else {
+                float forceRatioB = std::clamp(a.mass / std::max(0.1f, b.mass), 0.02f, 5.0f);
+                float forceRatioA = std::clamp(b.mass / std::max(0.1f, a.mass), 0.02f, 5.0f);
+                a.velocity.x -= normal.x * (baseSteady * forceRatioA * 0.5f);
+                a.velocity.y -= normal.y * (baseSteady * forceRatioA * 0.5f);
+                b.velocity.x += normal.x * (baseSteady * forceRatioB * 0.5f);
+                b.velocity.y += normal.y * (baseSteady * forceRatioB * 0.5f);
             }
         }
 

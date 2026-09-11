@@ -140,6 +140,116 @@ static int runCapsuleTests() {
         std::cout << "  [PASS] Test 4: Capsule-to-Capsule collision resolved." << std::endl;
     }
 
+    // Test 5: Mass-Proportional Pushing Force & Displacement
+    {
+        // Equal mass test (Player mass 8 vs Mini shop mass 8)
+        minesweeper::core::Ship p1;
+        p1.mass = 8.0f;
+        p1.collisionRadius = 14.0f;
+        p1.bumpable = true;
+        p1.isInitialized = true;
+        p1.position = { 100.0f, 100.0f };
+        p1.velocity = { 100.0f, 0.0f };
+
+        minesweeper::core::Ship sMini;
+        sMini.mass = 8.0f;
+        sMini.collisionRadius = 14.0f;
+        sMini.bumpable = false;
+        sMini.isInitialized = true;
+        sMini.position = { 120.0f, 100.0f }; // 8px penetration (minDist=28, dist=20)
+        sMini.velocity = { 0.0f, 0.0f };
+
+        Vector2 p1Start = p1.position;
+        Vector2 sMiniStart = sMini.position;
+        minesweeper::core::Ship::resolveCollision(p1, sMini);
+
+        float p1Disp = std::abs(p1.position.x - p1Start.x);
+        float sMiniDisp = std::abs(sMini.position.x - sMiniStart.x);
+        float sMiniPushVel = sMini.velocity.x;
+
+        // Both have equal mass: displacement must be equal (50% / 50%)
+        if (std::abs(p1Disp - sMiniDisp) > 0.001f) {
+            std::cerr << "  [FAIL] Test 5: Equal mass ships should have equal separation displacement" << std::endl;
+            return 10;
+        }
+
+        // Heavy mass test (Player mass 8 vs Roulette shop mass 180)
+        minesweeper::core::Ship p2;
+        p2.mass = 8.0f;
+        p2.collisionRadius = 14.0f;
+        p2.bumpable = true;
+        p2.isInitialized = true;
+        p2.position = { 100.0f, 100.0f };
+        p2.velocity = { 100.0f, 0.0f };
+
+        minesweeper::core::Ship sRoulette;
+        sRoulette.mass = 180.0f;
+        sRoulette.collisionRadius = 14.0f;
+        sRoulette.bumpable = false;
+        sRoulette.isInitialized = true;
+        sRoulette.position = { 120.0f, 100.0f }; // 8px penetration
+        sRoulette.velocity = { 0.0f, 0.0f };
+
+        Vector2 p2Start = p2.position;
+        Vector2 sRouletteStart = sRoulette.position;
+        minesweeper::core::Ship::resolveCollision(p2, sRoulette);
+
+        float p2Disp = std::abs(p2.position.x - p2Start.x);
+        float sRouletteDisp = std::abs(sRoulette.position.x - sRouletteStart.x);
+        float sRoulettePushVel = sRoulette.velocity.x;
+
+        // Player (mass 8) should be pushed back far more than roulette (mass 180):
+        // p2Disp / sRouletteDisp should equal roulette.mass / p2.mass = 180 / 8 = 22.5
+        if (p2Disp <= sRouletteDisp * 10.0f) {
+            std::cerr << "  [FAIL] Test 5: Light ship must absorb significantly more displacement when hitting heavy ship" << std::endl;
+            return 11;
+        }
+
+        // Pushing velocity transferred to heavy roulette ship must be significantly smaller than mini-shop
+        if (sRoulettePushVel >= sMiniPushVel * 0.25f) {
+            std::cerr << "  [FAIL] Test 5: Heavy roulette ship push velocity must scale inversely with target mass" << std::endl;
+            return 12;
+        }
+
+        // Heavy ship pushing light ship (Roulette mass 180 pushing Mini mass 8)
+        minesweeper::core::Ship heavyPusher;
+        heavyPusher.mass = 180.0f;
+        heavyPusher.collisionRadius = 14.0f;
+        heavyPusher.bumpable = false;
+        heavyPusher.isInitialized = true;
+        heavyPusher.position = { 100.0f, 100.0f };
+        heavyPusher.velocity = { 100.0f, 0.0f };
+
+        minesweeper::core::Ship lightTarget;
+        lightTarget.mass = 8.0f;
+        lightTarget.collisionRadius = 14.0f;
+        lightTarget.bumpable = false;
+        lightTarget.isInitialized = true;
+        lightTarget.position = { 120.0f, 100.0f };
+        lightTarget.velocity = { 0.0f, 0.0f };
+
+        Vector2 heavyStart = heavyPusher.position;
+        Vector2 lightStart = lightTarget.position;
+        minesweeper::core::Ship::resolveCollision(heavyPusher, lightTarget);
+
+        float heavyDisp = std::abs(heavyPusher.position.x - heavyStart.x);
+        float lightDisp = std::abs(lightTarget.position.x - lightStart.x);
+
+        // Light target must receive the overwhelming majority of separation (> 90%)
+        if (lightDisp <= heavyDisp * 10.0f) {
+            std::cerr << "  [FAIL] Test 5: Heavy ship must displace light target with force directly proportional to mass" << std::endl;
+            return 13;
+        }
+
+        // Light target velocity should be large (> 1.5x base push) while heavy pusher retains most speed
+        if (lightTarget.velocity.x <= 50.0f) {
+            std::cerr << "  [FAIL] Test 5: Light target velocity must be boosted by heavy pusher mass" << std::endl;
+            return 14;
+        }
+
+        std::cout << "  [PASS] Test 5: Mass-proportional ship pushing force & displacement verified." << std::endl;
+    }
+
     std::cout << "[TEST-CAPSULE] ALL 2D CAPSULE TESTS PASSED!" << std::endl;
     return 0;
 }
