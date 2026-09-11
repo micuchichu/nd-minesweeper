@@ -1394,6 +1394,38 @@ static int runRouletteTests() {
         std::cout << "  [PASS] Test 8: Fading result popup trigger, timing lifecycle, and win/loss state verified." << std::endl;
     }
 
+    // Test 9: Dynamic UI Repositioning Below Ship During Animation
+    {
+        minesweeper::ui::RouletteUI rUI;
+        if (rUI.animMoveT != 0.0f) {
+            std::cerr << "  [FAIL] Test 9: animMoveT should initialize at 0.0f (idle above ship)" << std::endl;
+            return 40;
+        }
+
+        // Test update towards animating state (targetT = 1.0f, moving below ship)
+        rUI.update(0.1f, true);
+        if (rUI.animMoveT <= 0.0f) {
+            std::cerr << "  [FAIL] Test 9: animMoveT should increase when isAnimating is true" << std::endl;
+            return 41;
+        }
+
+        // Advance to full transition (dt = 0.5s > 1.0/6.0)
+        rUI.update(0.5f, true);
+        if (rUI.animMoveT < 0.99f) {
+            std::cerr << "  [FAIL] Test 9: animMoveT should reach 1.0f when fully animated" << std::endl;
+            return 42;
+        }
+
+        // Test update back to idle state (targetT = 0.0f, moving above ship)
+        rUI.update(0.5f, false);
+        if (rUI.animMoveT > 0.01f) {
+            std::cerr << "  [FAIL] Test 9: animMoveT should return to 0.0f when idle" << std::endl;
+            return 43;
+        }
+
+        std::cout << "  [PASS] Test 9: Dynamic UI repositioning below ship during animation verified." << std::endl;
+    }
+
     std::cout << "[TEST-ROULETTE] ALL ROULETTE TESTS PASSED!" << std::endl;
     return 0;
 }

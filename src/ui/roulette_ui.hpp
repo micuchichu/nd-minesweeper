@@ -32,6 +32,7 @@ public:
         int screenH
     );
 
+    void update(float dt, bool isAnimating);
     void triggerPopup(int number, bool won, uint64_t payout, uint64_t betAmount = 0);
     void updatePopup(float dt);
     void drawPopup(
@@ -58,6 +59,8 @@ public:
     bool isEditingBet = false;
     std::string betInputBuffer = "10";
     bool requestClose = false;
+
+    float animMoveT = 0.0f; // 0.0f = above ship (idle), 1.0f = below ship (animating)
 
     RoulettePopupState popup;
 

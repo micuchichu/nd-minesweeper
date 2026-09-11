@@ -688,6 +688,7 @@ void App::update(float dt) {
         }
         if (uiFrame >= 41 && renderer.hasRouletteShip) {
             openedShopIndex = -1;
+            shopProximityAlpha = 0.0f;
             isRouletteOpen = true;
             rouletteProximityAlpha = 1.0f;
             renderer.localShip.position = { renderer.rouletteShip.position.x - 130.0f, renderer.rouletteShip.position.y };
@@ -701,6 +702,9 @@ void App::update(float dt) {
             }
             if (uiFrame == 46) {
                 renderer.rouletteShip.startSpin(32, 2.0f);
+            }
+            if (uiFrame >= 47) {
+                rouletteUI.animMoveT = 1.0f;
             }
             if (uiFrame == 50) {
                 // Advance to win state: landed on 32 Red
@@ -724,7 +728,13 @@ void App::update(float dt) {
     renderer.activeCursorSkin = menu.cursorSkin;
     renderer.activePlayerSkin = menu.playerSkin;
     renderer.update(dt);
-    rouletteUI.updatePopup(dt);
+
+    bool isRouletteAnimating = renderer.hasRouletteShip && (
+        renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Spinning ||
+        renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Result ||
+        renderer.rouletteShip.isAligning
+    );
+    rouletteUI.update(dt, isRouletteAnimating);
 
     // 1. Hotbar slot selection: keys 1-5
     if (state == AppState::InGame) {

@@ -31,23 +31,51 @@ bool RouletteUI::draw(
     const float cardW = 480.0f;
     const float cardH = 340.0f;
 
-    // Position anchored near ship, clamping within screen bounds
-    float cardX = std::clamp(shopScreen.x - cardW * 0.5f, 16.0f, static_cast<float>(screenW) - cardW - 16.0f);
-    float cardY = shopScreen.y - cardH - 30.0f;
-    if (cardY < 75.0f) {
-        cardY = shopScreen.y + 40.0f;
-    }
-    cardY = std::clamp(cardY, 75.0f, static_cast<float>(screenH) - cardH - 16.0f);
+    // Determine whether roulette is currently in active animation / result sequence
+    bool isAnimating = (shop.roulette.spinState == core::RouletteSpinState::Spinning ||
+                        shop.roulette.spinState == core::RouletteSpinState::Result ||
+                        shop.isAligning);
 
-    // 1. Holographic connector line
+    // Frame interpolation for smooth vertical gliding between above and below positions
+    float frameDt = GetFrameTime();
+    if (frameDt > 0.0f && frameDt < 0.1f) {
+        float targetT = isAnimating ? 1.0f : 0.0f;
+        float moveSpeed = 6.0f;
+        if (animMoveT < targetT) {
+            animMoveT = std::min(targetT, animMoveT + frameDt * moveSpeed);
+        } else if (animMoveT > targetT) {
+            animMoveT = std::max(targetT, animMoveT - frameDt * moveSpeed);
+        }
+    }
+
+    float t = animMoveT * animMoveT * (3.0f - 2.0f * animMoveT);
+    float normalY = shopScreen.y - cardH - 30.0f;
+    float animY = shopScreen.y + 68.0f;
+
+    float minY = 65.0f;
+    float maxY = static_cast<float>(screenH) - cardH - 16.0f;
+    normalY = std::clamp(normalY, minY, maxY);
+    animY = std::clamp(animY, minY, maxY);
+
+    float cardX = std::clamp(shopScreen.x - cardW * 0.5f, 16.0f, static_cast<float>(screenW) - cardW - 16.0f);
+    float cardY = std::lerp(normalY, animY, t);
+
+    // 1. Holographic connector line from ship hull to card frame
+    Vector2 anchorShip = shopScreen;
+    if (cardY > shopScreen.y + 40.0f) {
+        anchorShip.y += 56.0f;
+    } else if (cardY + cardH < shopScreen.y - 40.0f) {
+        anchorShip.y -= 56.0f;
+    }
+
     Vector2 anchorCard = (cardY > shopScreen.y)
         ? Vector2{ cardX + cardW * 0.5f, cardY }
         : Vector2{ cardX + cardW * 0.5f, cardY + cardH };
 
     Color lineCol = Fade(Color{ 168, 85, 247, 255 }, alpha * 0.45f);
-    DrawLineEx(shopScreen, anchorCard, 1.5f, lineCol);
-    DrawCircleV(shopScreen, 3.5f, Fade(Color{ 216, 180, 254, 255 }, alpha * 0.7f));
-    DrawCircleLines(static_cast<int>(shopScreen.x), static_cast<int>(shopScreen.y), 6.0f, lineCol);
+    DrawLineEx(anchorShip, anchorCard, 1.5f, lineCol);
+    DrawCircleV(anchorShip, 3.5f, Fade(Color{ 216, 180, 254, 255 }, alpha * 0.7f));
+    DrawCircleLines(static_cast<int>(anchorShip.x), static_cast<int>(anchorShip.y), 6.0f, lineCol);
 
     // 2. Card Background Frame
     Rectangle cardRect = { cardX, cardY, cardW, cardH };
@@ -434,11 +462,11 @@ bool RouletteUI::draw(
             // Active ready state
             float pulse = (std::sin(pulseTimer * 5.0f) + 1.0f) * 0.5f;
             spinBg = spinHover ? Color{ 126, 34, 206, 255 } : Color{ 107, 33, 168, 255 };
-            float t = pulse * 0.4f;
+            float pulseT = pulse * 0.4f;
             spinBorder = Color{
-                static_cast<unsigned char>(192 + (250 - 192) * t),
-                static_cast<unsigned char>(132 + (204 - 132) * t),
-                static_cast<unsigned char>(252 + (21 - 252) * t),
+                static_cast<unsigned char>(192 + (250 - 192) * pulseT),
+                static_cast<unsigned char>(132 + (204 - 132) * pulseT),
+                static_cast<unsigned char>(252 + (21 - 252) * pulseT),
                 255
             };
             spinLabel = "SPIN WHEEL (" + std::to_string(shop.roulette.activeBet.amount) + " SCRAP)";
@@ -498,6 +526,18 @@ void RouletteUI::triggerPopup(int number, bool won, uint64_t payout, uint64_t be
     popup.betAmount = betAmount;
 }
 
+void RouletteUI::update(float dt, bool isAnimating) {
+    updatePopup(dt);
+
+    float targetT = isAnimating ? 1.0f : 0.0f;
+    float moveSpeed = 6.0f;
+    if (animMoveT < targetT) {
+        animMoveT = std::min(targetT, animMoveT + dt * moveSpeed);
+    } else if (animMoveT > targetT) {
+        animMoveT = std::max(targetT, animMoveT - dt * moveSpeed);
+    }
+}
+
 void RouletteUI::updatePopup(float dt) {
     if (!popup.active) return;
     popup.timer += dt;
@@ -536,12 +576,19 @@ void RouletteUI::drawPopup(
     float targetY = 0.0f;
 
     if (cardAlpha > 0.2f && lastCardRect.width > 0.0f) {
-        // Table card is open: anchor smoothly above the table card
-        targetX = lastCardRect.x + (lastCardRect.width - popW) * 0.5f;
-        if (lastCardRect.y - popH - 14.0f >= 60.0f) {
-            targetY = lastCardRect.y - popH - 14.0f - floatY;
+        if (lastCardRect.y > shipScreen.y) {
+            // Table card is below the ship (during animation):
+            // Anchor popup prominently above the ship in open space
+            targetX = shipScreen.x - popW * 0.5f;
+            targetY = shipScreen.y - 75.0f - popH - floatY;
         } else {
-            targetY = lastCardRect.y + lastCardRect.height + 14.0f + floatY;
+            // Table card is above the ship (when idle):
+            targetX = lastCardRect.x + (lastCardRect.width - popW) * 0.5f;
+            if (lastCardRect.y - popH - 14.0f >= 60.0f) {
+                targetY = lastCardRect.y - popH - 14.0f - floatY;
+            } else {
+                targetY = lastCardRect.y + lastCardRect.height + 14.0f + floatY;
+            }
         }
     } else {
         // Table card is closed: anchor directly above the ship in screen space
@@ -550,7 +597,7 @@ void RouletteUI::drawPopup(
     }
 
     float px = std::clamp(targetX, 16.0f, static_cast<float>(screenW) - popW - 16.0f);
-    float py = std::clamp(targetY, 16.0f, static_cast<float>(screenH) - popH - 16.0f);
+    float py = std::clamp(targetY, 60.0f, static_cast<float>(screenH) - popH - 16.0f);
     Rectangle popRect = { px, py, popW, popH };
 
     // 1. Soft drop shadow
