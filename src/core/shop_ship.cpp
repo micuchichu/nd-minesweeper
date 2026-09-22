@@ -36,6 +36,7 @@ ShopShip::ShopShip(Texture2D tex, Vector2 anchor, const ShipConfig& config)
 {
     name = config.name.empty() ? "SHOP" : config.name;
     color = ui::Colors::Amber400;
+    this->config = config;
     setAnchor(anchor, 90.0f);
     applyConfig(config);
     shopTier = config.shopTier;

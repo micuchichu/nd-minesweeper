@@ -12,6 +12,7 @@
 
 namespace minesweeper::core {
 struct InventorySlot;
+class CampaignManager;
 }
 
 namespace minesweeper::render {
@@ -114,6 +115,7 @@ public:
 
     bool isLocalSpeaking = false;
     float guiScale = 1.0f;
+    int activeCampaignSector = -1;
 
     static std::vector<FlagSkinItem> flagSkins;
     static int getFlagSkinCount();
@@ -142,6 +144,8 @@ public:
     void init() override;
     void update(float dt) override;
     void render(const core::Board& board, int64_t hoveredIndex, const net::NetworkManager& net) override;
+    void renderCampaign(const core::CampaignManager& campaign, int64_t hoveredGlobalCell, const net::NetworkManager& net);
+    void updateShopAnchorCampaign(const core::CampaignManager& campaign);
     void cleanup() override;
 
     int64_t getHoveredCellIndex(const core::Board& board) const override;
@@ -151,6 +155,7 @@ public:
     void beginOffscreen();
     void endOffscreen();
     void drawOffscreenToScreen();
+    void saveScreenshot(const char* filename);
 
     struct BubbleParticle {
         Vector2 position;
@@ -238,7 +243,10 @@ private:
     void initShaders();
     void initCellTextures();
     void unloadAssets();
-    void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex);
+    void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset = 0);
+    void drawCampaignWalls(const core::CampaignManager& campaign);
+    void drawCampaignLaunchers(const core::CampaignManager& campaign);
+    void drawCampaignGateways(const core::CampaignManager& campaign) { drawCampaignLaunchers(campaign); }
     void drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex);
 };
 

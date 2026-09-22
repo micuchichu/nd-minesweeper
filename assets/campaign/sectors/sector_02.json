@@ -1,0 +1,40 @@
+{
+  "id": 2,
+  "name": "Sector 02: Foundry Wastes",
+  "codename": "FOUNDRY-WASTES",
+  "subtitle": "Smelting Basin & Scrap Refineries",
+  "description": "Former mineral refinery. Dense magnetic sub-munitions were seeded during the planetary evacuation. Containment walls prevent hazardous slag from overflowing.",
+  "threatLevel": 2,
+  "map": {
+    "gridSize": 10,
+    "bombCount": 18,
+    "dimension": 2,
+    "wallThickness": 28.0,
+    "westMargin": 180.0,
+    "eastMargin": 180.0,
+    "vertMargin": 120.0,
+    "spawnPos": [80.0, -1.0],
+    "stagingDepotPos": [90.0, -1.0],
+    "stagingDepotTitle": "LOGISTICS & REFUELING DOCK // CONTRACTOR HUB",
+    "customWalls": []
+  },
+  "progression": {
+    "isUnlocked": false,
+    "unlocks": [3],
+    "hasExitLauncher": true,
+    "launcherTargetSector": 3,
+    "launcherOpeningHeight": 140.0
+  },
+  "ships": {
+    "allowShops": true,
+    "allowRoulette": true,
+    "allowedShipTypes": ["shop1", "shop2", "shop3", "roulette"],
+    "shopDockPos": [85.0, 90.0],
+    "rouletteDockPos": [85.0, -70.0],
+    "merchantSpawns": [
+      { "type": "shop3", "x": 85.0, "y": 90.0, "angle": 0.0 },
+      { "type": "shop1", "x": 85.0, "y": 290.0, "angle": 0.0 },
+      { "type": "roulette", "x": 85.0, "y": -70.0, "angle": 0.0 }
+    ]
+  }
+}

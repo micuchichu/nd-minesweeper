@@ -33,7 +33,14 @@ void App::init() {
 
     saveMgr.init();
     menu.saveManager = &saveMgr;
+    menu.campaignManager = &campaignMgr;
     loadSettings();
+
+    if (saveMgr.hasCampaignSave()) {
+        loadCampaignProgress();
+    } else {
+        campaignMgr.init(12345);
+    }
 
     // Setup Steam Overlay lobby join callback
     net::SteamManager::instance().setLobbyJoinRequestedCallback([this](uint64_t lobbyId) {
@@ -80,6 +87,12 @@ void App::init() {
     renderer.activeFlagSkin = menu.flagSkin;
     renderer.activePlayerSkin = menu.playerSkin;
 
+#if defined(_DEBUG) || !defined(NDEBUG)
+    if (testEditorMode) {
+        menu.currentScreen = ui::MenuScreen::Campaign;
+    }
+#endif
+
     loadSaveSlot(activeSaveSlot);
 
     if (menu.vsyncEnabled) {
@@ -103,6 +116,12 @@ void App::init() {
         voiceMgr.receiveVoicePacket(pkt);
     };
 
+    soundMgr.init();
+    soundMgr.setEnabled(menu.bgmEnabled);
+    soundMgr.setVolume(menu.bgmVolume);
+    soundMgr.setSfxEnabled(menu.sfxEnabled);
+    soundMgr.setSfxVolume(menu.sfxVolume);
+
     scrapSystem.init();
     scrapSystem.setSharedTextures(
         render::ProceduralTextures::instance().shadowTexture,
@@ -118,6 +137,7 @@ void App::init() {
 void App::cleanup() {
     saveCurrentSlot();
     saveSettings();
+    soundMgr.cleanup();
     scrapSystem.cleanup();
     voiceMgr.cleanup();
     core::ItemCatalog::instance().shutdown();
@@ -146,6 +166,11 @@ void App::loadSettings() {
         menu.voiceSettings.voiceVolume = gs.voiceVolume;
         menu.voiceSettings.micGain = gs.micGain;
 
+        menu.bgmEnabled = gs.bgmEnabled;
+        menu.bgmVolume = gs.bgmVolume;
+        menu.sfxEnabled = gs.sfxEnabled;
+        menu.sfxVolume = gs.sfxVolume;
+
         menu.vsyncEnabled = gs.vsyncEnabled;
         menu.showFPS = gs.showFPS;
         menu.fpsLimit = gs.fpsLimit;
@@ -173,6 +198,11 @@ void App::saveSettings() {
     gs.voicePushToTalk = menu.voiceSettings.pushToTalk;
     gs.voiceVolume = menu.voiceSettings.voiceVolume;
     gs.micGain = menu.voiceSettings.micGain;
+
+    gs.bgmEnabled = menu.bgmEnabled;
+    gs.bgmVolume = menu.bgmVolume;
+    gs.sfxEnabled = menu.sfxEnabled;
+    gs.sfxVolume = menu.sfxVolume;
 
     gs.vsyncEnabled = menu.vsyncEnabled;
     gs.showFPS = menu.showFPS;
@@ -222,8 +252,97 @@ bool App::loadSaveSlot(int slotIndex) {
     }
     float initialZoom = 1.0f;
     if (board.config.size > 30) initialZoom = 30.0f / static_cast<float>(board.config.size);
-    renderer.camera.reset(center, initialZoom);
+    renderer.camera.reset({ 0.0f, 0.0f }, initialZoom);
+    renderer.camera.centerOn(center);
     renderer.updateShopAnchor(board);
+    return ok;
+}
+
+void App::startCampaignGame(bool isHost) {
+    (void)isHost;
+    currentMode = GameMode::Campaign;
+    renderer.clearParticles();
+    renderer.localShip.isInitialized = false;
+    pendingUncoverCell = -1;
+    currentHoveredCell = -1;
+    renderer.clearOutOfReach();
+
+    if (!loadCampaignProgress()) {
+        campaignMgr.init(12345);
+        saveCampaignProgress();
+    }
+
+    // Deploy directly into selected fortress if valid and unlocked
+    int selSec = menu.campaignSelectedSector;
+    if (selSec >= 0 && selSec < static_cast<int>(menu.planetRenderer.sectors.size())) {
+        const auto& hSec = menu.planetRenderer.sectors[selSec];
+        if (hSec.isFortress && hSec.fortressIdx >= 0 && hSec.fortressIdx < static_cast<int>(campaignMgr.sectors.size())) {
+            if (campaignMgr.sectors[hSec.fortressIdx].isUnlocked) {
+                campaignMgr.activeSectorIndex = hSec.fortressIdx;
+            }
+        }
+    }
+
+    board.isGameOver = false;
+    board.isVictory = false;
+    renderer.activeCampaignSector = campaignMgr.activeSectorIndex;
+
+    // If active sector was uncleared and in game over state, reset its board so player can retry immediately
+    if (campaignMgr.activeSectorIndex >= 0 && campaignMgr.activeSectorIndex < static_cast<int>(campaignMgr.sectors.size())) {
+        auto& activeSec = campaignMgr.sectors[campaignMgr.activeSectorIndex];
+        if (activeSec.board.isGameOver && !activeSec.isCleared) {
+            activeSec.board.init(activeSec.board.config);
+        }
+    }
+
+    Vector2 spawn = campaignMgr.getSectorSpawnPosition(campaignMgr.activeSectorIndex);
+    renderer.localShip.position = spawn;
+    renderer.localShip.velocity = { 0.0f, 0.0f };
+    renderer.localShip.isInitialized = !sectorEditor.isOpen;
+    renderer.camera.reset({ 0.0f, 0.0f }, 1.0f);
+    renderer.camera.centerOn(spawn);
+    renderer.updateShopAnchorCampaign(campaignMgr);
+
+    hud.scrapCount = scrapCount;
+    menu.scrapCount = scrapCount;
+}
+
+void App::triggerSectorWarp(int newSectorIdx) {
+    if (newSectorIdx < 0 || newSectorIdx >= static_cast<int>(campaignMgr.sectors.size())) return;
+
+    campaignMgr.activeSectorIndex = newSectorIdx;
+    campaignMgr.sectors[newSectorIdx].isUnlocked = true;
+    renderer.activeCampaignSector = newSectorIdx;
+
+    Vector2 newSpawn = campaignMgr.getSectorSpawnPosition(newSectorIdx);
+    renderer.localShip.position = newSpawn;
+    renderer.localShip.velocity = { 180.0f, 0.0f };
+    renderer.camera.reset({ 0.0f, 0.0f }, 1.0f);
+    renderer.camera.centerOn(newSpawn);
+    renderer.updateShopAnchorCampaign(campaignMgr);
+
+    renderer.emitExplosion(newSpawn, ui::Colors::Cyan400);
+    renderer.emitBubbles(newSpawn, 20);
+    soundMgr.playUncoverSound();
+
+    pendingUncoverCell = -1;
+    currentHoveredCell = -1;
+    renderer.clearOutOfReach();
+
+    std::cout << "[CAMPAIGN] Orbital launcher engaged! Transiting to " << campaignMgr.sectors[newSectorIdx].name << "!" << std::endl;
+    saveCampaignProgress();
+}
+
+void App::saveCampaignProgress() {
+    if (net.role != net::NetRole::Client) {
+        saveMgr.saveCampaign(campaignMgr, timePlayed, scrapCount);
+    }
+}
+
+bool App::loadCampaignProgress() {
+    bool ok = saveMgr.loadCampaign(campaignMgr, timePlayed, scrapCount);
+    hud.scrapCount = scrapCount;
+    menu.scrapCount = scrapCount;
     return ok;
 }
 
@@ -271,7 +390,8 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
 
     float initialZoom = 1.0f;
     if (size > 30) initialZoom = 30.0f / static_cast<float>(size);
-    renderer.camera.reset(center, initialZoom);
+    renderer.camera.reset({ 0.0f, 0.0f }, initialZoom);
+    renderer.camera.centerOn(center);
 }
 
 void App::restartCurrentGame() {
@@ -396,8 +516,10 @@ void App::handleNetEvents() {
                             core::RevealResult res = board.reveal(idx, &newlyRevealed);
                             if (res == core::RevealResult::HitBomb) {
                                 renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                                soundMgr.playExplosionSound();
                             } else {
                                 renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                soundMgr.playUncoverSound();
                                 for (size_t cIdx : newlyRevealed) {
                                     if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                         Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
@@ -418,6 +540,11 @@ void App::handleNetEvents() {
                             std::vector<size_t> newlyRevealed;
                             bool hitBomb = false;
                             if (board.chord(idx, newlyRevealed, hitBomb)) {
+                                if (hitBomb) {
+                                    soundMgr.playExplosionSound();
+                                } else if (!newlyRevealed.empty()) {
+                                    soundMgr.playUncoverSound();
+                                }
                                 for (size_t revIdx : newlyRevealed) {
                                     Vector2 pos = renderer.getCellWorldPosition(revIdx, board);
                                     if (board.isBomb(revIdx)) {
@@ -456,6 +583,7 @@ void App::handleNetEvents() {
                         } else if (cs == core::CellState::Hidden) {
                             board.setFlag(idx, ev.peerId, ev.clickData.flagSkin);
                             renderer.triggerFlagDrop(idx, groundPos, shipPos, ev.clickData.flagSkin);
+                            soundMgr.playFlagSound();
                             net::PacketResult pr;
                             pr.index = idx;
                             pr.state = 2; // Flagged
@@ -488,8 +616,10 @@ void App::handleNetEvents() {
                     Vector2 pos = renderer.getCellWorldPosition(idx, board);
                     if (res == core::RevealResult::HitBomb) {
                         renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                        soundMgr.playExplosionSound();
                     } else {
                         renderer.emitDebris(pos, ui::Colors::Zinc400);
+                        soundMgr.playUncoverSound();
                         for (size_t cIdx : newlyRevealed) {
                             if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
                                 Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
@@ -511,6 +641,7 @@ void App::handleNetEvents() {
                     Vector2 groundPos = renderer.getFlagBasePosition(idx, board);
                     Vector2 shipPos = (ev.resultData.placerId != 0 && renderer.remoteShips.count(ev.resultData.placerId)) ? renderer.remoteShips[ev.resultData.placerId].position : renderer.localShip.position;
                     renderer.triggerFlagDrop(idx, groundPos, shipPos, ev.resultData.flagSkin);
+                    soundMgr.playFlagSound();
                 }
                 break;
             }
@@ -534,6 +665,7 @@ void App::handleNetEvents() {
                     : renderer.getLaserColorForSkin(ev.laserData.skinId);
 
                 renderer.fireLaser(from, to, laserCol);
+                soundMgr.playLaserSound();
                 break;
             }
             case net::NetEventType::BubbleTriggered: {
@@ -550,6 +682,7 @@ void App::handleNetEvents() {
 void App::broadcastLaser(Vector2 from, Vector2 to, uint8_t laserType) {
     Color col = (laserType == 1) ? ui::Colors::Red500 : renderer.getLaserColorForSkin(menu.cursorSkin);
     renderer.fireLaser(from, to, col);
+    soundMgr.playLaserSound();
 
     if (net.role != net::NetRole::Offline) {
         net::PacketLaser pkt;
@@ -607,6 +740,43 @@ void App::update(float dt) {
     if (IsKeyPressed(KEY_F12)) {
         TakeScreenshot("screenshot.png");
     }
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+    if (IsKeyPressed(KEY_F6)) {
+        sectorEditor.toggle(campaignMgr);
+    }
+#endif
+
+    bool isEditorOpen = false;
+#if defined(_DEBUG) || !defined(NDEBUG)
+    isEditorOpen = sectorEditor.isOpen;
+#endif
+
+    if (isEditorOpen) {
+        renderer.localShip.isInitialized = false;
+        renderer.localShip.velocity = { 0.0f, 0.0f };
+        renderer.localShip.isMoving = false;
+        pendingUncoverCell = -1;
+        renderer.clearOutOfReach();
+        currentHoveredCell = -1;
+    } else if (wasEditorOpen) {
+        // Editor just closed: re-enable and restore player ship at sector spawn
+        if (state == AppState::InGame) {
+            if (currentMode == GameMode::Campaign) {
+                Vector2 spawn = campaignMgr.getSectorSpawnPosition(campaignMgr.activeSectorIndex);
+                renderer.localShip.position = spawn;
+                renderer.localShip.velocity = { 0.0f, 0.0f };
+                renderer.localShip.isMoving = false;
+                renderer.localShip.isInitialized = true;
+                renderer.camera.centerOn(spawn);
+            } else {
+                renderer.localShip.isInitialized = true;
+                renderer.localShip.velocity = { 0.0f, 0.0f };
+                renderer.localShip.isMoving = false;
+            }
+        }
+    }
+    wasEditorOpen = isEditorOpen;
 
     if (testShopMode && state == AppState::InGame) {
         static int testUpdateFrame = 0;
@@ -787,6 +957,7 @@ void App::update(float dt) {
                 if (IsKeyPressed(KEY_E)) {
                     playerInventory.bananaBoostTimer = 20.0f;
                     renderer.emitExplosion(renderer.localShip.position, ui::Colors::Amber400);
+                    soundMgr.playBananaSound();
                     playerInventory.clearSlot(playerInventory.selectedSlot);
                 }
             }
@@ -824,6 +995,27 @@ void App::update(float dt) {
     voiceMgr.getSettings() = menu.voiceSettings;
     menu.micInputLevel = voiceMgr.getMicLevel();
 
+    // Synchronize and update background audio manager
+    soundMgr.setEnabled(menu.bgmEnabled);
+    soundMgr.setVolume(menu.bgmVolume);
+    soundMgr.setSfxEnabled(menu.sfxEnabled);
+    soundMgr.setSfxVolume(menu.sfxVolume);
+    soundMgr.update(dt);
+
+    if (soundMgr.getState() == audio::BgmPlaybackState::Playing) {
+        float played = soundMgr.getCurrentTrackTimePlayed();
+        float total = soundMgr.getCurrentTrackTimeLength();
+        menu.bgmStatusText = TextFormat("PLAYING: %s (%d:%02d / %d:%02d)",
+            soundMgr.getCurrentTrackName().c_str(),
+            static_cast<int>(played) / 60, static_cast<int>(played) % 60,
+            static_cast<int>(total) / 60, static_cast<int>(total) % 60);
+    } else if (soundMgr.getState() == audio::BgmPlaybackState::Waiting) {
+        menu.bgmStatusText = TextFormat("STATUS: SILENCE (Next sound in %ds)",
+            static_cast<int>(soundMgr.getRemainingWaitTime()));
+    } else {
+        menu.bgmStatusText = "STATUS: IDLE";
+    }
+
     Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
     if (testShopMode) {
         worldMouse = { 250.0f, 250.0f };
@@ -849,8 +1041,15 @@ void App::update(float dt) {
     isRouletteInRange = false;
     bool clickedRoulette = false;
     bool mouseHandledByShop = false;
+    bool allowShops = (currentMode != GameMode::Campaign || campaignMgr.activeSectorIndex > 0);
 
-    if (state == AppState::InGame) {
+#if defined(_DEBUG) || !defined(NDEBUG)
+    if (sectorEditor.isOpen && (!isOverUI || sectorEditor.isDragging())) {
+        sectorEditor.updateWorldInteraction(campaignMgr, worldMouse, dt);
+    }
+#endif
+
+    if (state == AppState::InGame && allowShops && !isEditorOpen) {
         for (size_t i = 0; i < renderer.shopShips.size(); ++i) {
             const auto& s = renderer.shopShips[i];
             Vector2 pA, pB;
@@ -1055,31 +1254,33 @@ void App::update(float dt) {
     Vector2 moveInput = { 0.0f, 0.0f };
 
     // 1. Movement: WASD / Arrows (Keyboard) and Left Stick / D-Pad (Gamepad)
-    if (menu.controlMode == 1) {
-        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) moveInput.y -= 1.0f;
-        if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) moveInput.y += 1.0f;
-        if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) moveInput.x -= 1.0f;
-        if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) moveInput.x += 1.0f;
-    }
+    if (!isEditorOpen) {
+        if (menu.controlMode == 1) {
+            if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) moveInput.y -= 1.0f;
+            if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) moveInput.y += 1.0f;
+            if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) moveInput.x -= 1.0f;
+            if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) moveInput.x += 1.0f;
+        }
 
-    if (padAvailable) {
-        float stickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
-        float stickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
-        if (std::abs(stickX) < 0.15f) stickX = 0.0f;
-        if (std::abs(stickY) < 0.15f) stickY = 0.0f;
-        moveInput.x += stickX;
-        moveInput.y += stickY;
+        if (padAvailable) {
+            float stickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
+            float stickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+            if (std::abs(stickX) < 0.15f) stickX = 0.0f;
+            if (std::abs(stickY) < 0.15f) stickY = 0.0f;
+            moveInput.x += stickX;
+            moveInput.y += stickY;
 
-        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) moveInput.y -= 1.0f;
-        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) moveInput.y += 1.0f;
-        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) moveInput.x -= 1.0f;
-        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) moveInput.x += 1.0f;
-    }
+            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) moveInput.y -= 1.0f;
+            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) moveInput.y += 1.0f;
+            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) moveInput.x -= 1.0f;
+            if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) moveInput.x += 1.0f;
+        }
 
-    float moveInputLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
-    if (moveInputLen > 1.0f) {
-        moveInput.x /= moveInputLen;
-        moveInput.y /= moveInputLen;
+        float moveInputLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
+        if (moveInputLen > 1.0f) {
+            moveInput.x /= moveInputLen;
+            moveInput.y /= moveInputLen;
+        }
     }
 
     // 2. Mouse tracking state
@@ -1097,7 +1298,7 @@ void App::update(float dt) {
     float aimAngle = 0.0f;
     int64_t rightStickCell = -1;
 
-    if (padAvailable) {
+    if (padAvailable && !isEditorOpen) {
         float rx = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
         float ry = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
         float rLen = std::sqrt(rx * rx + ry * ry);
@@ -1121,13 +1322,23 @@ void App::update(float dt) {
     }
 
     // 4. Update cell selection
-    if (rightStickCell >= 0) {
+    if (isEditorOpen) {
+        currentHoveredCell = -1;
+    } else if (rightStickCell >= 0) {
         currentHoveredCell = rightStickCell;
     } else if (hasAim) {
         currentHoveredCell = -1;
     } else if (renderer.isMouseActive) {
         if (isOverUI) {
             currentHoveredCell = -1;
+        } else if (currentMode == GameMode::Campaign) {
+            auto* sec = campaignMgr.getSectorAtGridWorldPos(worldMouse);
+            if (sec && sec->isUnlocked) {
+                int64_t lIdx = sec->getCellIndexAtWorldPos(worldMouse, 40.0f);
+                currentHoveredCell = (lIdx >= 0) ? static_cast<int64_t>(core::CampaignManager::toGlobalCellIndex(sec->id - 1, static_cast<size_t>(lIdx))) : -1;
+            } else {
+                currentHoveredCell = -1;
+            }
         } else {
             currentHoveredCell = renderer.getHoveredCellIndex(board);
         }
@@ -1141,7 +1352,27 @@ void App::update(float dt) {
     renderer.syncRemoteShips(net.remoteCursors);
     renderer.updatePhysics(worldMouse, dt);
 
-    voiceMgr.setLocalCursorPos(renderer.localShip.position.x, renderer.localShip.position.y);
+    if (state == AppState::InGame && currentMode == GameMode::Campaign) {
+        if (renderer.localShip.isInitialized) {
+            campaignMgr.resolveShipCollisions(renderer.localShip, &renderer.particles);
+        }
+        for (auto& [id, rShip] : renderer.remoteShips) {
+            campaignMgr.resolveShipCollisions(rShip, &renderer.particles);
+        }
+        campaignMgr.update(dt);
+
+        // Check if player entered an unlocked Orbital Launcher to inject into orbit / jump to next sector!
+        if (renderer.localShip.isInitialized && campaignMgr.checkLauncherTransit(campaignMgr.activeSectorIndex, renderer.localShip.position, renderer.localShip.collisionRadius)) {
+            int targetIdx = campaignMgr.getLauncherTargetSectorIndex(campaignMgr.activeSectorIndex);
+            if (targetIdx >= 0) {
+                triggerSectorWarp(targetIdx);
+            }
+        }
+    }
+
+    if (renderer.localShip.isInitialized) {
+        voiceMgr.setLocalCursorPos(renderer.localShip.position.x, renderer.localShip.position.y);
+    }
     voiceMgr.setPushToTalkActive(IsKeyDown(KEY_V));
     voiceMgr.update(dt);
 
@@ -1177,7 +1408,7 @@ void App::update(float dt) {
             renderer.camera.manualPanActive = false;
             renderer.camera.centerOn(renderer.localShip.position);
         }
-        if (!testShopMode && !hud.showLargeGridWarning && renderer.localShip.isInitialized && menu.controlMode == 0) {
+        if (!testShopMode && !testCampaignMode && !hud.showLargeGridWarning && renderer.localShip.isInitialized && menu.controlMode == 0) {
             renderer.camera.followShip(renderer.localShip.position, dt);
         }
 
@@ -1195,7 +1426,7 @@ void App::update(float dt) {
         }
 
         // Multiplayer Cursor / Ship Broadcast
-        if (net.role != net::NetRole::Offline) {
+        if (net.role != net::NetRole::Offline && renderer.localShip.isInitialized) {
             static Vector2 lastSent = { -9999.0f, -9999.0f };
             static float lastSentAngle = -9999.0f;
             static bool lastSentMoving = false;
@@ -1229,8 +1460,40 @@ void App::update(float dt) {
 
         int64_t hovered = currentHoveredCell;
 
+        bool isCurrentGameOver = false;
+        bool isCurrentVictory = false;
+        if (currentMode == GameMode::Campaign) {
+            auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+            if (curSec) {
+                isCurrentGameOver = curSec->board.isGameOver;
+                isCurrentVictory = curSec->isCleared;
+            }
+        } else {
+            isCurrentGameOver = board.isGameOver;
+            isCurrentVictory = board.isVictory;
+        }
+
+        auto getTargetBoardAndCell = [&](size_t globalIdx, int& outSectorIdx, size_t& outLocalIdx, core::Board*& outBoard, Vector2& outCenter) {
+            if (currentMode == GameMode::Campaign) {
+                core::CampaignManager::fromGlobalCellIndex(globalIdx, outSectorIdx, outLocalIdx);
+                auto* sec = campaignMgr.getSectorByIndex(outSectorIdx);
+                if (sec) {
+                    outBoard = &sec->board;
+                    outCenter = sec->getCellWorldPosition(outLocalIdx, 40.0f);
+                } else {
+                    outBoard = &board;
+                    outCenter = { 0.0f, 0.0f };
+                }
+            } else {
+                outSectorIdx = -1;
+                outLocalIdx = globalIdx;
+                outBoard = &board;
+                outCenter = renderer.getCellWorldPosition(globalIdx, board);
+            }
+        };
+
         // In-game Input Handling
-        if (!board.isGameOver && !board.isVictory && !hud.showLargeGridWarning) {
+        if (!isCurrentGameOver && !isCurrentVictory && !hud.showLargeGridWarning && !isEditorOpen && renderer.localShip.isInitialized) {
             bool triggerUncover = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !mouseHandledByShop && !isOverUI;
             bool triggerFlag = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !mouseHandledByShop && !isOverUI;
             bool triggerChord = IsKeyPressed(KEY_C);
@@ -1256,9 +1519,13 @@ void App::update(float dt) {
             }
 
             // Contextual chording: if uncover button is pressed on an already-revealed numbered cell, chord it!
-            if (triggerUncover && hovered >= 0 && board.getState(static_cast<size_t>(hovered)) == core::CellState::Revealed) {
-                triggerChord = true;
-                triggerUncover = false;
+            if (triggerUncover && hovered >= 0) {
+                int chkS = 0; size_t chkL = 0; core::Board* chkBoard = nullptr; Vector2 chkCenter;
+                getTargetBoardAndCell(static_cast<size_t>(hovered), chkS, chkL, chkBoard, chkCenter);
+                if (chkBoard && chkL < chkBoard->totalCells() && chkBoard->getState(chkL) == core::CellState::Revealed) {
+                    triggerChord = true;
+                    triggerUncover = false;
+                }
             }
 
             bool isMouseAction = (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) ||
@@ -1269,7 +1536,9 @@ void App::update(float dt) {
             if (isMouseAction || (renderer.isMouseActive && menu.controlMode == 0)) {
                 actionTarget = worldMouse;
             } else if (hovered >= 0) {
-                actionTarget = renderer.getCellWorldPosition(static_cast<size_t>(hovered), board);
+                int sI = 0; size_t lI = 0; core::Board* tb = nullptr; Vector2 cCenter;
+                getTargetBoardAndCell(static_cast<size_t>(hovered), sI, lI, tb, cCenter);
+                actionTarget = cCenter;
             } else if (menu.controlMode == 1) {
                 float rad = (renderer.localShip.angle - 90.0f) * DEG2RAD;
                 actionTarget = { renderer.localShip.position.x + std::cos(rad) * 60.0f, renderer.localShip.position.y + std::sin(rad) * 60.0f };
@@ -1287,8 +1556,10 @@ void App::update(float dt) {
 
                 if (hovered >= 0) {
                     size_t hIdx = static_cast<size_t>(hovered);
-                    if (board.getState(hIdx) == core::CellState::Hidden) {
-                        Vector2 cellCenter = renderer.getCellWorldPosition(hIdx, board);
+                    int sI = 0; size_t lI = 0; core::Board* targetBoard = nullptr; Vector2 cellCenter;
+                    getTargetBoardAndCell(hIdx, sI, lI, targetBoard, cellCenter);
+
+                    if (targetBoard && targetBoard->getState(lI) == core::CellState::Hidden) {
                         float dist = Vector2Distance(renderer.localShip.position, cellCenter);
 
                         if (dist > renderer.localShip.range && menu.controlMode == 0 && !padAvailable) {
@@ -1306,34 +1577,53 @@ void App::update(float dt) {
                                 net.sendToServer(&pc, sizeof(pc));
                             } else {
                                 std::vector<size_t> newlyRevealed;
-                                core::RevealResult res = board.reveal(hIdx, &newlyRevealed);
+                                core::RevealResult res = targetBoard->reveal(lI, &newlyRevealed);
                                 for (size_t revIdx : newlyRevealed) {
-                                    renderer.removeFlagDrop(revIdx);
+                                    size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
+                                    renderer.removeFlagDrop(gIdx);
                                 }
-                                Vector2 pos = renderer.getCellWorldPosition(hIdx, board);
+                                Vector2 pos = cellCenter;
                                 if (res == core::RevealResult::HitBomb) {
                                     renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                                    soundMgr.playExplosionSound();
                                 } else {
                                     renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                    soundMgr.playUncoverSound();
                                     for (size_t cIdx : newlyRevealed) {
-                                        if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
-                                            Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
+                                        if (!targetBoard->isBomb(cIdx) && render::ScrapSystem::isScrapCell(targetBoard->config.seed, cIdx, targetBoard->totalCells(), targetBoard->config.bombs)) {
+                                            Vector2 cPos = (currentMode == GameMode::Campaign)
+                                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, 40.0f)
+                                                : renderer.getCellWorldPosition(cIdx, board);
                                             scrapSystem.spawn(cPos);
                                         }
                                     }
                                 }
 
+                                if (currentMode == GameMode::Campaign) {
+                                    bool justSecured = campaignMgr.checkSectorClear(sI);
+                                    if (justSecured) {
+                                        scrapCount += static_cast<uint64_t>(50 * (sI + 1));
+                                        hud.scrapCount = scrapCount;
+                                        menu.scrapCount = scrapCount;
+                                        hud.triggerScrapPulse();
+                                        soundMgr.playUncoverSound();
+                                    }
+                                    saveCampaignProgress();
+                                } else {
+                                    saveCurrentSlot();
+                                }
+
                                 if (net.role == net::NetRole::Host) {
                                     for (size_t revIdx : newlyRevealed) {
+                                        size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
                                         net::PacketResult pr;
-                                        pr.index = revIdx;
+                                        pr.index = gIdx;
                                         pr.state = 0;
                                         pr.placerId = 0;
                                         pr.flagSkin = 0;
                                         net.broadcast(&pr, sizeof(pr));
                                     }
                                 }
-                                saveCurrentSlot();
                             }
                         }
                     }
@@ -1343,10 +1633,12 @@ void App::update(float dt) {
             // Pending uncover when ship arrives within reach (mouse follower mode)
             if (pendingUncoverCell >= 0) {
                 size_t pIdx = static_cast<size_t>(pendingUncoverCell);
-                if (board.isGameOver || board.isVictory || pIdx >= board.totalCells() || board.getState(pIdx) != core::CellState::Hidden || IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) || IsKeyPressed(KEY_ESCAPE)) {
+                int sI = 0; size_t lI = 0; core::Board* targetBoard = nullptr; Vector2 cellCenter;
+                getTargetBoardAndCell(pIdx, sI, lI, targetBoard, cellCenter);
+
+                if (!targetBoard || targetBoard->isGameOver || targetBoard->isVictory || lI >= targetBoard->totalCells() || targetBoard->getState(lI) != core::CellState::Hidden || IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) || IsKeyPressed(KEY_ESCAPE)) {
                     pendingUncoverCell = -1;
                 } else {
-                    Vector2 cellCenter = renderer.getCellWorldPosition(pIdx, board);
                     float dist = Vector2Distance(renderer.localShip.position, cellCenter);
                     if (dist <= renderer.localShip.range) {
                         pendingUncoverCell = -1;
@@ -1361,34 +1653,53 @@ void App::update(float dt) {
                             net.sendToServer(&pc, sizeof(pc));
                         } else {
                             std::vector<size_t> newlyRevealed;
-                            core::RevealResult res = board.reveal(pIdx, &newlyRevealed);
+                            core::RevealResult res = targetBoard->reveal(lI, &newlyRevealed);
                             for (size_t revIdx : newlyRevealed) {
-                                renderer.removeFlagDrop(revIdx);
+                                size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
+                                renderer.removeFlagDrop(gIdx);
                             }
-                            Vector2 pos = renderer.getCellWorldPosition(pIdx, board);
+                            Vector2 pos = cellCenter;
                             if (res == core::RevealResult::HitBomb) {
                                 renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                                soundMgr.playExplosionSound();
                             } else {
                                 renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                soundMgr.playUncoverSound();
                                 for (size_t cIdx : newlyRevealed) {
-                                    if (!board.isBomb(cIdx) && render::ScrapSystem::isScrapCell(board.config.seed, cIdx, board.totalCells(), board.config.bombs)) {
-                                        Vector2 cPos = renderer.getCellWorldPosition(cIdx, board);
+                                    if (!targetBoard->isBomb(cIdx) && render::ScrapSystem::isScrapCell(targetBoard->config.seed, cIdx, targetBoard->totalCells(), targetBoard->config.bombs)) {
+                                        Vector2 cPos = (currentMode == GameMode::Campaign)
+                                            ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, 40.0f)
+                                            : renderer.getCellWorldPosition(cIdx, board);
                                         scrapSystem.spawn(cPos);
                                     }
                                 }
                             }
 
+                            if (currentMode == GameMode::Campaign) {
+                                bool justSecured = campaignMgr.checkSectorClear(sI);
+                                if (justSecured) {
+                                    scrapCount += static_cast<uint64_t>(50 * (sI + 1));
+                                    hud.scrapCount = scrapCount;
+                                    menu.scrapCount = scrapCount;
+                                    hud.triggerScrapPulse();
+                                    soundMgr.playUncoverSound();
+                                }
+                                saveCampaignProgress();
+                            } else {
+                                saveCurrentSlot();
+                            }
+
                             if (net.role == net::NetRole::Host) {
                                 for (size_t revIdx : newlyRevealed) {
+                                    size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
                                     net::PacketResult pr;
-                                    pr.index = revIdx;
+                                    pr.index = gIdx;
                                     pr.state = 0;
                                     pr.placerId = 0;
                                     pr.flagSkin = 0;
                                     net.broadcast(&pr, sizeof(pr));
                                 }
                             }
-                            saveCurrentSlot();
                         }
                     }
                 }
@@ -1408,43 +1719,52 @@ void App::update(float dt) {
 
                 if (hovered >= 0) {
                     size_t hIdx = static_cast<size_t>(hovered);
-                    if (net.role == net::NetRole::Client) {
-                        net::PacketClick pc;
-                        pc.index = hIdx;
-                        pc.action = 2;
-                        pc.flagSkin = static_cast<uint8_t>(menu.flagSkin);
-                        net.sendToServer(&pc, sizeof(pc));
-                    } else {
-                        uint32_t myId = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
-                        core::CellState cs = board.getState(hIdx);
-                        Vector2 groundPos = renderer.getFlagBasePosition(hIdx, board);
-                        Vector2 shipPos = renderer.localShip.position;
-                        if (cs == core::CellState::Flagged) {
-                            uint8_t skinId = board.getFlagSkin(hIdx, static_cast<uint8_t>(menu.flagSkin));
-                            renderer.triggerFlagPickup(groundPos, shipPos, myId, true, skinId);
-                            renderer.removeFlagDrop(hIdx);
-                            board.unflag(hIdx);
-                            if (net.role == net::NetRole::Host) {
-                                net::PacketResult pr;
-                                pr.index = hIdx;
-                                pr.state = 1; // Hidden / unflagged
-                                pr.placerId = myId;
-                                pr.flagSkin = skinId;
-                                net.broadcast(&pr, sizeof(pr));
+                    int sI = 0; size_t lI = 0; core::Board* targetBoard = nullptr; Vector2 cellCenter;
+                    getTargetBoardAndCell(hIdx, sI, lI, targetBoard, cellCenter);
+
+                    if (targetBoard) {
+                        if (net.role == net::NetRole::Client) {
+                            net::PacketClick pc;
+                            pc.index = hIdx;
+                            pc.action = 2;
+                            pc.flagSkin = static_cast<uint8_t>(menu.flagSkin);
+                            net.sendToServer(&pc, sizeof(pc));
+                        } else {
+                            uint32_t myId = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
+                            core::CellState cs = targetBoard->getState(lI);
+                            Vector2 groundPos = (currentMode == GameMode::Campaign)
+                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(lI, 40.0f)
+                                : renderer.getFlagBasePosition(hIdx, board);
+                            Vector2 shipPos = renderer.localShip.position;
+                            if (cs == core::CellState::Flagged) {
+                                uint8_t skinId = targetBoard->getFlagSkin(lI, static_cast<uint8_t>(menu.flagSkin));
+                                renderer.triggerFlagPickup(groundPos, shipPos, myId, true, skinId);
+                                renderer.removeFlagDrop(hIdx);
+                                targetBoard->unflag(lI);
+                                if (net.role == net::NetRole::Host) {
+                                    net::PacketResult pr;
+                                    pr.index = hIdx;
+                                    pr.state = 1;
+                                    pr.placerId = myId;
+                                    pr.flagSkin = skinId;
+                                    net.broadcast(&pr, sizeof(pr));
+                                }
+                            } else if (cs == core::CellState::Hidden) {
+                                targetBoard->setFlag(lI, myId, static_cast<uint8_t>(menu.flagSkin));
+                                renderer.triggerFlagDrop(hIdx, groundPos, shipPos, static_cast<uint8_t>(menu.flagSkin));
+                                soundMgr.playFlagSound();
+                                if (net.role == net::NetRole::Host) {
+                                    net::PacketResult pr;
+                                    pr.index = hIdx;
+                                    pr.state = 2;
+                                    pr.placerId = myId;
+                                    pr.flagSkin = static_cast<uint8_t>(menu.flagSkin);
+                                    net.broadcast(&pr, sizeof(pr));
+                                }
                             }
-                        } else if (cs == core::CellState::Hidden) {
-                            board.setFlag(hIdx, myId, static_cast<uint8_t>(menu.flagSkin));
-                            renderer.triggerFlagDrop(hIdx, groundPos, shipPos, static_cast<uint8_t>(menu.flagSkin));
-                            if (net.role == net::NetRole::Host) {
-                                net::PacketResult pr;
-                                pr.index = hIdx;
-                                pr.state = 2; // Flagged
-                                pr.placerId = myId;
-                                pr.flagSkin = static_cast<uint8_t>(menu.flagSkin);
-                                net.broadcast(&pr, sizeof(pr));
-                            }
+                            if (currentMode == GameMode::Campaign) saveCampaignProgress();
+                            else saveCurrentSlot();
                         }
-                        saveCurrentSlot();
                     }
                 }
             }
@@ -1460,8 +1780,10 @@ void App::update(float dt) {
 
                 if (hovered >= 0) {
                     size_t hIdx = static_cast<size_t>(hovered);
-                    if (board.getState(hIdx) == core::CellState::Revealed) {
-                        Vector2 cellCenter = renderer.getCellWorldPosition(hIdx, board);
+                    int sI = 0; size_t lI = 0; core::Board* targetBoard = nullptr; Vector2 cellCenter;
+                    getTargetBoardAndCell(hIdx, sI, lI, targetBoard, cellCenter);
+
+                    if (targetBoard && targetBoard->getState(lI) == core::CellState::Revealed) {
                         float dist = Vector2Distance(renderer.localShip.position, cellCenter);
 
                         if (dist > renderer.localShip.range && menu.controlMode == 0 && !padAvailable) {
@@ -1472,35 +1794,55 @@ void App::update(float dt) {
                             if (net.role == net::NetRole::Client) {
                                 net::PacketClick pc;
                                 pc.index = hIdx;
-                                pc.action = 1; // Chord
+                                pc.action = 1;
                                 pc.flagSkin = 0;
                                 net.sendToServer(&pc, sizeof(pc));
                             } else {
                                 std::vector<size_t> newlyRevealed;
                                 bool hitBomb = false;
-                                if (board.chord(hIdx, newlyRevealed, hitBomb)) {
+                                if (targetBoard->chord(lI, newlyRevealed, hitBomb)) {
+                                    if (hitBomb) {
+                                        soundMgr.playExplosionSound();
+                                    } else if (!newlyRevealed.empty()) {
+                                        soundMgr.playUncoverSound();
+                                    }
                                     for (size_t revIdx : newlyRevealed) {
-                                        renderer.removeFlagDrop(revIdx);
-                                        Vector2 pos = renderer.getCellWorldPosition(revIdx, board);
-                                        if (board.isBomb(revIdx)) {
+                                        size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
+                                        renderer.removeFlagDrop(gIdx);
+                                        Vector2 pos = (currentMode == GameMode::Campaign)
+                                            ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(revIdx, 40.0f)
+                                            : renderer.getCellWorldPosition(revIdx, board);
+                                        if (targetBoard->isBomb(revIdx)) {
                                             renderer.emitExplosion(pos, ui::Colors::CellFlag);
                                         } else {
                                             renderer.emitDebris(pos, ui::Colors::Zinc400);
-                                            if (render::ScrapSystem::isScrapCell(board.config.seed, revIdx, board.totalCells(), board.config.bombs)) {
+                                            if (render::ScrapSystem::isScrapCell(targetBoard->config.seed, revIdx, targetBoard->totalCells(), targetBoard->config.bombs)) {
                                                 scrapSystem.spawn(pos);
                                             }
                                         }
 
                                         if (net.role == net::NetRole::Host) {
                                             net::PacketResult pr;
-                                            pr.index = revIdx;
+                                            pr.index = gIdx;
                                             pr.state = 0;
                                             pr.placerId = 0;
                                             pr.flagSkin = 0;
                                             net.broadcast(&pr, sizeof(pr));
                                         }
                                     }
-                                    saveCurrentSlot();
+                                    if (currentMode == GameMode::Campaign) {
+                                        bool justSecured = campaignMgr.checkSectorClear(sI);
+                                        if (justSecured) {
+                                            scrapCount += static_cast<uint64_t>(50 * (sI + 1));
+                                            hud.scrapCount = scrapCount;
+                                            menu.scrapCount = scrapCount;
+                                            hud.triggerScrapPulse();
+                                            soundMgr.playUncoverSound();
+                                        }
+                                        saveCampaignProgress();
+                                    } else {
+                                        saveCurrentSlot();
+                                    }
                                 }
                             }
                         }
@@ -1527,20 +1869,50 @@ void App::update(float dt) {
 
         // Cheat / X-Ray Mode ('X')
         if (IsKeyPressed(KEY_X) && net.role != net::NetRole::Client) {
-            for (size_t i = 0; i < board.totalCells(); ++i) {
-                if (!board.isBomb(i)) {
-                    board.reveal(i);
+            if (currentMode == GameMode::Campaign) {
+                auto* sec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+                if (sec) {
+                    for (size_t i = 0; i < sec->board.totalCells(); ++i) {
+                        if (!sec->board.isBomb(i)) {
+                            sec->board.reveal(i);
+                        }
+                    }
+                    campaignMgr.checkSectorClear(campaignMgr.activeSectorIndex);
+                    saveCampaignProgress();
+                }
+            } else {
+                for (size_t i = 0; i < board.totalCells(); ++i) {
+                    if (!board.isBomb(i)) {
+                        board.reveal(i);
+                    }
                 }
             }
         }
 
         // Timer progression
-        if (board.revealedCount > 0 && !board.isGameOver && !board.isVictory) {
+        if (currentMode == GameMode::Campaign) {
+            timePlayed += dt;
+        } else if (board.revealedCount > 0 && !board.isGameOver && !board.isVictory) {
             timePlayed += dt;
         }
 
         // Restart hotkey ('R')
-        if ((board.isGameOver || board.isVictory) && IsKeyPressed(KEY_R)) {
+        if (currentMode == GameMode::Campaign) {
+            auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+            if (curSec && (curSec->board.isGameOver || campaignMgr.isPlanetCleared) && IsKeyPressed(KEY_R)) {
+                if (curSec->board.isGameOver && !curSec->isCleared) {
+                    curSec->board.init(curSec->board.config);
+                    renderer.localShip.position = curSec->spawnPos;
+                    renderer.localShip.velocity = { 0.0f, 0.0f };
+                    renderer.camera.centerOn(curSec->spawnPos);
+                    renderer.clearOutOfReach();
+                    pendingUncoverCell = -1;
+                    saveCampaignProgress();
+                } else if (campaignMgr.isPlanetCleared) {
+                    startCampaignGame(false);
+                }
+            }
+        } else if ((board.isGameOver || board.isVictory) && IsKeyPressed(KEY_R)) {
             if (net.role != net::NetRole::Client) {
                 restartCurrentGame();
             }
@@ -1548,7 +1920,7 @@ void App::update(float dt) {
 
         // Update Scrap System
         Vector2 hudScrapPos = hud.getScrapBadgeScreenPos();
-        bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop;
+        bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop && !isEditorOpen;
         scrapSystem.update(dt, hudScrapPos, renderer.camera.camera, worldMouse, mouseClicked);
 
         int collected = scrapSystem.collectPending();
@@ -1559,7 +1931,8 @@ void App::update(float dt) {
             hud.triggerScrapPulse();
             saveSettings();
             if (net.role != net::NetRole::Client) {
-                saveCurrentSlot();
+                if (currentMode == GameMode::Campaign) saveCampaignProgress();
+                else saveCurrentSlot();
             }
         }
 
@@ -1569,7 +1942,8 @@ void App::update(float dt) {
         if (autoSaveTimer >= 3.0f) {
             autoSaveTimer = 0.0f;
             if (net.role != net::NetRole::Client) {
-                saveCurrentSlot();
+                if (currentMode == GameMode::Campaign) saveCampaignProgress();
+                else saveCurrentSlot();
             }
         }
     }
@@ -1583,20 +1957,36 @@ bool App::isMouseOverUI(Vector2 mousePos) const {
     int screenW = GetScreenWidth();
     int screenH = GetScreenHeight();
     float scale = std::clamp(menu.guiScale, 0.75f, 1.50f);
+    bool isCampaign = (currentMode == GameMode::Campaign);
 
-    // 1. Game HUD (top bar, bottom bar, modals, banners)
-    if (hud.isMouseOver(screenW, screenH, scale, mousePos)) {
+#if defined(_DEBUG) || !defined(NDEBUG)
+    Vector2 uiMouse = { mousePos.x / scale, mousePos.y / scale };
+    if (sectorEditor.isOpen && sectorEditor.isMouseOver(uiMouse)) {
+        return true;
+    }
+#endif
+
+    // 1. Game HUD (top bar, modals, banners; footer only in non-campaign)
+    if (hud.isMouseOver(screenW, screenH, scale, mousePos, isCampaign)) {
         return true;
     }
 
     // 2. Shop, Roulette, and Inventory Hotbar Dock
-    if (rouletteProximityAlpha > 0.01f && isRouletteOpen) {
-        if (rouletteUI.isMouseOverCard(mousePos)) {
+    bool allowShops = (!isCampaign || campaignMgr.activeSectorIndex > 0);
+    if (allowShops) {
+        if (rouletteProximityAlpha > 0.01f && isRouletteOpen) {
+            if (rouletteUI.isMouseOverCard(mousePos)) {
+                return true;
+            }
+        }
+        if (shopMenu.isMouseOverUI(screenW, screenH, playerInventory, shopProximityAlpha, mousePos)) {
             return true;
         }
-    }
-    if (shopMenu.isMouseOverUI(screenW, screenH, playerInventory, shopProximityAlpha, mousePos)) {
-        return true;
+    } else {
+        // Sector 1: shops and roulette do not exist. Only check hotbar dock if hovering items
+        if (shopMenu.isMouseOverHotbar(screenW, screenH, playerInventory, mousePos)) {
+            return true;
+        }
     }
 
     // 3. FPS counter overlay badge if active
@@ -1658,7 +2048,39 @@ void App::draw() {
             saveSettings();
         }
 
-        if (menuAct.playSolo) {
+        if (menuAct.bgmSkip) {
+            soundMgr.skip();
+        }
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+        if (menuAct.toggleSectorEditor) {
+            sectorEditor.toggle(campaignMgr);
+        }
+#endif
+
+        if (menuAct.playCampaignSolo) {
+            currentMode = GameMode::Campaign;
+            startCampaignGame(false);
+            state = AppState::InGame;
+            saveSettings();
+        }
+        else if (menuAct.playCampaignHost) {
+            currentMode = GameMode::Campaign;
+            startCampaignGame(true);
+            if (net.startHost(menuAct.hostPort)) {
+                state = AppState::InGame;
+                saveSettings();
+            } else {
+                menu.statusMessage = "FAILED TO BIND PORT";
+            }
+        }
+        else if (menuAct.resetCampaign) {
+            saveMgr.deleteCampaignSave();
+            campaignMgr.init(static_cast<uint64_t>(GetTime() * 100000.0) ^ 0x51A8C9ULL);
+            saveCampaignProgress();
+        }
+        else if (menuAct.playSolo) {
+            currentMode = GameMode::Custom;
             activeSaveSlot = menuAct.selectedSlot;
             if (menuAct.startNewInSlot) {
                 activeSaveName = menuAct.newSlotName;
@@ -1669,6 +2091,7 @@ void App::draw() {
             saveSettings();
         }
         else if (menuAct.hostGame) {
+            currentMode = GameMode::Custom;
             activeSaveSlot = menuAct.selectedSlot;
             if (menuAct.startNewInSlot) {
                 activeSaveName = menuAct.newSlotName;
@@ -1683,6 +2106,7 @@ void App::draw() {
             }
         }
         else if (menuAct.joinGame) {
+            currentMode = GameMode::Custom;
             activeSaveSlot = 0;
             if (net.connectToHost(menuAct.joinAddress)) {
                 board.init(2, 0, 0, 0);
@@ -1721,7 +2145,11 @@ void App::draw() {
         }
         else {
             int64_t hovered = currentHoveredCell;
-            renderer.render(board, hovered, net);
+            if (currentMode == GameMode::Campaign) {
+                renderer.renderCampaign(campaignMgr, hovered, net);
+            } else {
+                renderer.render(board, hovered, net);
+            }
 
             BeginMode2D(renderer.camera.camera);
             scrapSystem.drawWorld(renderer.camera.camera);
@@ -1776,10 +2204,22 @@ void App::draw() {
                 DrawText(prompt, static_cast<int>(promptX), static_cast<int>(promptY), 11, ringCol);
             }
 
+#if defined(_DEBUG) || !defined(NDEBUG)
+            if (sectorEditor.isOpen) {
+                Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
+                sectorEditor.drawWorldGizmos(campaignMgr, worldMouse);
+            }
+#endif
+
             EndMode2D();
 
             BeginMode2D(uiCam);
-            ui::HUDActions hudAct = hud.drawAndProcess(uiW, uiH, board, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
+            ui::HUDActions hudAct;
+            if (currentMode == GameMode::Campaign) {
+                hudAct = hud.drawAndProcessCampaign(uiW, uiH, campaignMgr, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
+            } else {
+                hudAct = hud.drawAndProcess(uiW, uiH, board, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
+            }
             scrapSystem.drawScreen(scale);
             EndMode2D();
 
@@ -1799,7 +2239,8 @@ void App::draw() {
                     hud.scrapCount = scrapCount;
                     menu.scrapCount = scrapCount;
                     renderer.particles.emitDebris(targetShip.position, 8, ui::Colors::Amber400);
-                    saveCurrentSlot();
+                    if (currentMode == GameMode::Campaign) saveCampaignProgress();
+                    else saveCurrentSlot();
                 }
             }
 
@@ -1816,7 +2257,8 @@ void App::draw() {
                 if (action) {
                     hud.scrapCount = scrapCount;
                     menu.scrapCount = scrapCount;
-                    saveCurrentSlot();
+                    if (currentMode == GameMode::Campaign) saveCampaignProgress();
+                    else saveCurrentSlot();
                 }
             }
 
@@ -1842,7 +2284,13 @@ void App::draw() {
                     menu.scrapCount = scrapCount;
                     saveSettings();
                 }
-                saveCurrentSlot();
+                if (currentMode == GameMode::Campaign) {
+                    saveCampaignProgress();
+                    menu.currentScreen = ui::MenuScreen::Campaign;
+                } else {
+                    saveCurrentSlot();
+                    menu.currentScreen = ui::MenuScreen::Play;
+                }
                 net.disconnect();
                 state = AppState::Menu;
             }
@@ -1861,7 +2309,21 @@ void App::draw() {
             }
             if (hudAct.restartGame) {
                 if (net.role != net::NetRole::Client) {
-                    restartCurrentGame();
+                    if (currentMode == GameMode::Campaign) {
+                        auto* sec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+                        if (sec) {
+                            sec->board.init(sec->board.config);
+                            sec->isCleared = false;
+                            renderer.localShip.position = sec->spawnPos;
+                            renderer.localShip.velocity = { 0.0f, 0.0f };
+                            renderer.camera.centerOn(sec->spawnPos);
+                            renderer.clearOutOfReach();
+                            pendingUncoverCell = -1;
+                            saveCampaignProgress();
+                        }
+                    } else {
+                        restartCurrentGame();
+                    }
                 }
             }
             if (hudAct.toggleHost) {
@@ -1872,6 +2334,14 @@ void App::draw() {
             }
         }
     }
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+    if (sectorEditor.isOpen) {
+        BeginMode2D(uiCam);
+        sectorEditor.drawAndProcess(campaignMgr, uiW, uiH);
+        EndMode2D();
+    }
+#endif
 
     // On-Screen FPS Counter Overlay
     if (menu.showFPS) {
@@ -1973,6 +2443,118 @@ void App::draw() {
             shouldQuit = true;
         }
     }
+
+    if (testCampaignMode) {
+        static int campFrame = 0;
+        ++campFrame;
+        if (campFrame == 12) {
+            renderer.saveScreenshot("screenshot_campaign_camera_orbit.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_campaign_camera_orbit.png" << std::endl;
+        } else if (campFrame == 14) {
+            startCampaignGame(false);
+            campaignMgr.init(12345);
+            state = AppState::InGame;
+            float arenaMidX = campaignMgr.sectors[0].arenaBounds.x + campaignMgr.sectors[0].arenaBounds.width * 0.5f;
+            float arenaMidY = campaignMgr.sectors[0].arenaBounds.y + campaignMgr.sectors[0].arenaBounds.height * 0.5f;
+            renderer.camera.reset({ 0.0f, 0.0f }, 0.90f);
+            renderer.camera.centerOn({ arenaMidX, arenaMidY });
+        } else if (campFrame == 22) {
+            renderer.saveScreenshot("screenshot_sector_world_locked.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_world_locked.png" << std::endl;
+        } else if (campFrame == 24) {
+            for (size_t i = 0; i < campaignMgr.sectors[0].board.totalCells(); ++i) {
+                if (!campaignMgr.sectors[0].board.isBomb(i)) {
+                    campaignMgr.sectors[0].board.reveal(i);
+                }
+            }
+            campaignMgr.checkSectorClear(0);
+            campaignMgr.sectors[0].exitLauncher.openAnim = 1.0f;
+        } else if (campFrame == 30) {
+            renderer.saveScreenshot("screenshot_sector_world_unlocked.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_world_unlocked.png" << std::endl;
+        } else if (campFrame == 32) {
+            triggerSectorWarp(1);
+            float s2MidX = campaignMgr.sectors[1].arenaBounds.x + campaignMgr.sectors[1].arenaBounds.width * 0.5f;
+            float s2MidY = campaignMgr.sectors[1].arenaBounds.y + campaignMgr.sectors[1].arenaBounds.height * 0.5f;
+            renderer.camera.reset({ 0.0f, 0.0f }, 0.82f);
+            renderer.camera.centerOn({ s2MidX, s2MidY });
+        } else if (campFrame == 38) {
+            renderer.saveScreenshot("screenshot_sector_02_world.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_02_world.png" << std::endl;
+            shouldQuit = true;
+        }
+    }
+
+    if (testEditorMode) {
+        static int edFrame = 0;
+        ++edFrame;
+        if (edFrame == 3) {
+            renderer.saveScreenshot("screenshot_campaign_editor_button.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_campaign_editor_button.png" << std::endl;
+#if defined(_DEBUG) || !defined(NDEBUG)
+            sectorEditor.open(campaignMgr, 0);
+            sectorEditor.currentTab = ui::SectorEditorTab::Meta;
+#endif
+        } else if (edFrame == 9) {
+            renderer.saveScreenshot("screenshot_editor_meta.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_editor_meta.png" << std::endl;
+#if defined(_DEBUG) || !defined(NDEBUG)
+            sectorEditor.currentTab = ui::SectorEditorTab::Map;
+#endif
+        } else if (edFrame == 15) {
+            renderer.saveScreenshot("screenshot_editor_map.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_editor_map.png" << std::endl;
+#if defined(_DEBUG) || !defined(NDEBUG)
+            sectorEditor.currentTab = ui::SectorEditorTab::Progression;
+#endif
+        } else if (edFrame == 21) {
+            renderer.saveScreenshot("screenshot_editor_progression.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_editor_progression.png" << std::endl;
+#if defined(_DEBUG) || !defined(NDEBUG)
+            sectorEditor.currentTab = ui::SectorEditorTab::Ships;
+#endif
+        } else if (edFrame == 27) {
+            renderer.saveScreenshot("screenshot_editor_ships.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_editor_ships.png" << std::endl;
+#if defined(_DEBUG) || !defined(NDEBUG)
+            sectorEditor.currentTab = ui::SectorEditorTab::Walls;
+#endif
+        } else if (edFrame == 33) {
+            renderer.saveScreenshot("screenshot_editor_walls.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_editor_walls.png" << std::endl;
+            currentMode = GameMode::Campaign;
+            startCampaignGame(false);
+            state = AppState::InGame;
+#if defined(_DEBUG) || !defined(NDEBUG)
+            campaignMgr.activeSectorIndex = 1;
+            sectorEditor.open(campaignMgr, 1);
+            sectorEditor.currentTab = ui::SectorEditorTab::Ships;
+            sectorEditor.selectionType = ui::EditorSelectionType::MerchantDock;
+            sectorEditor.selectedIndex = 0;
+            renderer.camera.centerOn({ 150.0f, 200.0f });
+#endif
+        } else if (edFrame == 42) {
+            renderer.saveScreenshot("screenshot_editor_ships_docks.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_editor_ships_docks.png" << std::endl;
+#if defined(_DEBUG) || !defined(NDEBUG)
+            sectorEditor.currentTab = ui::SectorEditorTab::Walls;
+            core::SectorWall demoWall;
+            demoWall.rect = { 180.0f, 160.0f, 140.0f, 60.0f };
+            demoWall.isHazard = true;
+            auto cfg = sectorEditor.getWorkingConfig();
+            cfg.customWalls.push_back(demoWall);
+            campaignMgr.rebuildSector(1, cfg);
+            sectorEditor.open(campaignMgr, 1);
+            sectorEditor.selectionType = ui::EditorSelectionType::Wall;
+            sectorEditor.selectedIndex = static_cast<int>(cfg.customWalls.size()) - 1;
+#endif
+        } else if (edFrame == 50) {
+            renderer.saveScreenshot("screenshot_editor_walls_gizmos.png");
+            std::cout << "[TEST-EDITOR] Saved screenshot_editor_walls_gizmos.png" << std::endl;
+            renderer.saveScreenshot("screenshot_editor_ingame.png");
+            shouldQuit = true;
+        }
+    }
 }
 
 void App::run() {
@@ -1999,6 +2581,13 @@ void App::run() {
     if (testCustomizeMode) {
         state = AppState::Menu;
         menu.currentScreen = ui::MenuScreen::Customize;
+    }
+    if (testCampaignMode) {
+        state = AppState::Menu;
+        menu.currentScreen = ui::MenuScreen::Campaign;
+        int sIdx = menu.planetRenderer.getSectorIdxForFortress(0);
+        menu.campaignSelectedSector = (sIdx >= 0) ? sIdx : 0;
+        menu.planetRenderer.focusSector(menu.campaignSelectedSector);
     }
 
     while (!WindowShouldClose() && !shouldQuit) {

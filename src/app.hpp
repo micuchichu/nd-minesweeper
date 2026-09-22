@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/board.hpp"
+#include "core/campaign.hpp"
 #include "core/item.hpp"
 #include "render/raylib_renderer.hpp"
 #include "net/network_manager.hpp"
@@ -9,10 +10,17 @@
 #include "ui/shop_menu.hpp"
 #include "ui/roulette_ui.hpp"
 #include "audio/voice_manager.hpp"
+#include "audio/sound_manager.hpp"
 #include "render/scrap_system.hpp"
 #include "core/save_manager.hpp"
+#include "ui/sector_editor.hpp"
 
 namespace minesweeper {
+
+enum class GameMode {
+    Custom,
+    Campaign
+};
 
 enum class AppState {
     Menu,
@@ -25,6 +33,8 @@ public:
     bool testShopMode = false;
     bool testCustomizeMode = false;
     bool testShopUIMode = false;
+    bool testCampaignMode = false;
+    bool testEditorMode = false;
 
     App();
     ~App();
@@ -35,6 +45,7 @@ public:
 
 private:
     AppState state = AppState::Menu;
+    GameMode currentMode = GameMode::Campaign;
     bool shouldQuit = false;
     float timePlayed = 0.0f;
     uint64_t scrapCount = 0;
@@ -48,6 +59,7 @@ private:
     float navRepeatTimer = 0.0f;
 
     core::Board board;
+    core::CampaignManager campaignMgr;
     render::RaylibRenderer renderer;
     render::ScrapSystem scrapSystem;
     net::NetworkManager net;
@@ -55,8 +67,11 @@ private:
     ui::MainMenu menu;
     ui::ShopMenu shopMenu;
     ui::RouletteUI rouletteUI;
+    ui::SectorEditor sectorEditor;
+    bool wasEditorOpen = false;
     core::PlayerInventory playerInventory;
     audio::VoiceManager voiceMgr;
+    audio::SoundManager soundMgr;
 
     float shopProximityAlpha = 0.0f;
     int nearbyShopIndex = -1;
@@ -89,6 +104,10 @@ private:
 
     void saveCurrentSlot();
     bool loadSaveSlot(int slotIndex);
+    void startCampaignGame(bool isHost = false);
+    void triggerSectorWarp(int newSectorIdx);
+    void saveCampaignProgress();
+    bool loadCampaignProgress();
     void saveSettings();
     void loadSettings();
 };

@@ -1,4 +1,5 @@
 #include "save_manager.hpp"
+#include "campaign.hpp"
 #include <fstream>
 #include <filesystem>
 #include <cstring>
@@ -16,7 +17,10 @@ constexpr uint32_t SLOT_MAGIC = 0x5057534D; // 'MSWP'
 constexpr uint32_t SLOT_VERSION = 1;
 
 constexpr uint32_t SETTINGS_MAGIC = 0x53544553; // 'SETS'
-constexpr uint32_t SETTINGS_VERSION = 2;
+constexpr uint32_t SETTINGS_VERSION = 4;
+
+constexpr uint32_t CAMPAIGN_MAGIC = 0x504D4143; // 'CAMP'
+constexpr uint32_t CAMPAIGN_VERSION = 1;
 
 std::string formatTimestamp(int64_t epochSeconds) {
     if (epochSeconds <= 0) return "Never";
@@ -134,10 +138,27 @@ bool SaveManager::loadGlobalSettings(GlobalSettings& outSettings) {
     }
 
     if (version == 1) {
-        // Version 1 had GlobalSettings without controlMode
-        size_t oldSize = sizeof(GlobalSettings) - sizeof(int);
-        file.read(reinterpret_cast<char*>(&outSettings), oldSize);
+        size_t v1Size = offsetof(GlobalSettings, lastActiveSlot) + sizeof(int);
+        file.read(reinterpret_cast<char*>(&outSettings), v1Size);
         outSettings.controlMode = 0;
+        outSettings.bgmEnabled = true;
+        outSettings.bgmVolume = 0.20f;
+        outSettings.sfxEnabled = true;
+        outSettings.sfxVolume = 0.80f;
+        return file.good();
+    } else if (version == 2) {
+        size_t v2Size = offsetof(GlobalSettings, controlMode) + sizeof(int);
+        file.read(reinterpret_cast<char*>(&outSettings), v2Size);
+        outSettings.bgmEnabled = true;
+        outSettings.bgmVolume = 0.20f;
+        outSettings.sfxEnabled = true;
+        outSettings.sfxVolume = 0.80f;
+        return file.good();
+    } else if (version == 3) {
+        size_t v3Size = offsetof(GlobalSettings, bgmVolume) + sizeof(float);
+        file.read(reinterpret_cast<char*>(&outSettings), v3Size);
+        outSettings.sfxEnabled = true;
+        outSettings.sfxVolume = 0.80f;
         return file.good();
     } else if (version == SETTINGS_VERSION) {
         file.read(reinterpret_cast<char*>(&outSettings), sizeof(GlobalSettings));
@@ -393,6 +414,182 @@ bool SaveManager::deleteSlot(int slotIndex) {
     std::string path = getSlotPath(slotIndex);
     std::error_code ec;
     return std::filesystem::remove(path, ec);
+}
+
+bool SaveManager::hasCampaignSave() const {
+    return std::filesystem::exists("saves/campaign.dat");
+}
+
+void SaveManager::deleteCampaignSave() {
+    std::error_code ec;
+    std::filesystem::remove("saves/campaign.dat", ec);
+}
+
+bool SaveManager::saveCampaign(const CampaignManager& campaign, float timePlayed, uint64_t scrapCount) {
+    std::string tempPath = "saves/campaign.dat.tmp";
+    std::ofstream file(tempPath, std::ios::binary);
+    if (!file.is_open()) return false;
+
+    uint32_t magic = CAMPAIGN_MAGIC;
+    uint32_t version = CAMPAIGN_VERSION;
+    file.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+    file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+
+    uint64_t planetSeed = campaign.planetSeed;
+    int32_t activeSector = campaign.activeSectorIndex;
+    uint8_t isPlanetCleared = campaign.isPlanetCleared ? 1 : 0;
+    uint32_t numSectors = static_cast<uint32_t>(campaign.sectors.size());
+    int64_t timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+
+    file.write(reinterpret_cast<const char*>(&planetSeed), sizeof(planetSeed));
+    file.write(reinterpret_cast<const char*>(&timePlayed), sizeof(timePlayed));
+    file.write(reinterpret_cast<const char*>(&scrapCount), sizeof(scrapCount));
+    file.write(reinterpret_cast<const char*>(&activeSector), sizeof(activeSector));
+    file.write(reinterpret_cast<const char*>(&isPlanetCleared), sizeof(isPlanetCleared));
+    file.write(reinterpret_cast<const char*>(&numSectors), sizeof(numSectors));
+    file.write(reinterpret_cast<const char*>(&timestamp), sizeof(timestamp));
+
+    for (const auto& sec : campaign.sectors) {
+        int32_t sId = sec.id;
+        uint8_t isUnlocked = sec.isUnlocked ? 1 : 0;
+        uint8_t isCleared = sec.isCleared ? 1 : 0;
+        float clearTimer = sec.clearAnimTimer;
+        uint8_t isGameOver = sec.board.isGameOver ? 1 : 0;
+        uint8_t isVictory = sec.board.isVictory ? 1 : 0;
+
+        file.write(reinterpret_cast<const char*>(&sId), sizeof(sId));
+        file.write(reinterpret_cast<const char*>(&isUnlocked), sizeof(isUnlocked));
+        file.write(reinterpret_cast<const char*>(&isCleared), sizeof(isCleared));
+        file.write(reinterpret_cast<const char*>(&clearTimer), sizeof(clearTimer));
+        file.write(reinterpret_cast<const char*>(&isGameOver), sizeof(isGameOver));
+        file.write(reinterpret_cast<const char*>(&isVictory), sizeof(isVictory));
+
+        // State words
+        uint32_t wordCount = static_cast<uint32_t>(sec.board.state.data.size());
+        file.write(reinterpret_cast<const char*>(&wordCount), sizeof(wordCount));
+        file.write(reinterpret_cast<const char*>(sec.board.state.data.data()), wordCount * sizeof(uint64_t));
+
+        // Flag owners
+        uint32_t flagCount = static_cast<uint32_t>(sec.board.flagOwners.size());
+        file.write(reinterpret_cast<const char*>(&flagCount), sizeof(flagCount));
+        for (const auto& [idx, info] : sec.board.flagOwners) {
+            uint64_t fIdx = static_cast<uint64_t>(idx);
+            uint32_t pId = info.placerId;
+            uint8_t sIdVal = info.skinId;
+            file.write(reinterpret_cast<const char*>(&fIdx), sizeof(fIdx));
+            file.write(reinterpret_cast<const char*>(&pId), sizeof(pId));
+            file.write(reinterpret_cast<const char*>(&sIdVal), sizeof(sIdVal));
+        }
+    }
+
+    file.close();
+    std::error_code ec;
+    std::filesystem::rename(tempPath, "saves/campaign.dat", ec);
+    return !ec;
+}
+
+bool SaveManager::loadCampaign(CampaignManager& campaign, float& timePlayed, uint64_t& scrapCount) {
+    std::string path = "saves/campaign.dat";
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) return false;
+
+    uint32_t magic = 0;
+    uint32_t version = 0;
+    file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+    file.read(reinterpret_cast<char*>(&version), sizeof(version));
+
+    if (magic != CAMPAIGN_MAGIC || version != CAMPAIGN_VERSION) return false;
+
+    uint64_t planetSeed = 0;
+    int32_t activeSector = 0;
+    uint8_t isPlanetCleared = 0;
+    uint32_t numSectors = 0;
+    int64_t timestamp = 0;
+
+    file.read(reinterpret_cast<char*>(&planetSeed), sizeof(planetSeed));
+    file.read(reinterpret_cast<char*>(&timePlayed), sizeof(timePlayed));
+    file.read(reinterpret_cast<char*>(&scrapCount), sizeof(scrapCount));
+    file.read(reinterpret_cast<char*>(&activeSector), sizeof(activeSector));
+    file.read(reinterpret_cast<char*>(&isPlanetCleared), sizeof(isPlanetCleared));
+    file.read(reinterpret_cast<char*>(&numSectors), sizeof(numSectors));
+    file.read(reinterpret_cast<char*>(&timestamp), sizeof(timestamp));
+
+    campaign.init(planetSeed);
+    campaign.totalCampaignTime = timePlayed;
+    campaign.totalScrapEarned = scrapCount;
+    campaign.activeSectorIndex = activeSector;
+    campaign.isPlanetCleared = (isPlanetCleared != 0);
+
+    for (uint32_t s = 0; s < numSectors; ++s) {
+        int32_t sId = 0;
+        uint8_t isUnlocked = 0;
+        uint8_t isCleared = 0;
+        float clearTimer = 0.0f;
+        uint8_t isGameOver = 0;
+        uint8_t isVictory = 0;
+
+        file.read(reinterpret_cast<char*>(&sId), sizeof(sId));
+        file.read(reinterpret_cast<char*>(&isUnlocked), sizeof(isUnlocked));
+        file.read(reinterpret_cast<char*>(&isCleared), sizeof(isCleared));
+        file.read(reinterpret_cast<char*>(&clearTimer), sizeof(clearTimer));
+        file.read(reinterpret_cast<char*>(&isGameOver), sizeof(isGameOver));
+        file.read(reinterpret_cast<char*>(&isVictory), sizeof(isVictory));
+
+        uint32_t wordCount = 0;
+        file.read(reinterpret_cast<char*>(&wordCount), sizeof(wordCount));
+
+        CampaignSector* sec = campaign.getSector(sId);
+        std::vector<uint64_t> words(wordCount);
+        if (wordCount > 0) {
+            file.read(reinterpret_cast<char*>(words.data()), wordCount * sizeof(uint64_t));
+        }
+
+        uint32_t flagCount = 0;
+        file.read(reinterpret_cast<char*>(&flagCount), sizeof(flagCount));
+        std::vector<std::tuple<uint64_t, uint32_t, uint8_t>> flags(flagCount);
+        for (uint32_t f = 0; f < flagCount; ++f) {
+            uint64_t fIdx = 0;
+            uint32_t pId = 0;
+            uint8_t sIdVal = 0;
+            file.read(reinterpret_cast<char*>(&fIdx), sizeof(fIdx));
+            file.read(reinterpret_cast<char*>(&pId), sizeof(pId));
+            file.read(reinterpret_cast<char*>(&sIdVal), sizeof(sIdVal));
+            flags[f] = { fIdx, pId, sIdVal };
+        }
+
+        if (sec) {
+            sec->isUnlocked = (isUnlocked != 0);
+            sec->isCleared = (isCleared != 0);
+            sec->clearAnimTimer = clearTimer;
+            sec->board.isGameOver = (isGameOver != 0);
+            sec->board.isVictory = (isVictory != 0);
+
+            if (wordCount == sec->board.state.data.size()) {
+                sec->board.state.data = words;
+                sec->board.revealedCount = sec->board.state.countRevealed();
+                sec->board.flaggedCount = 0;
+                for (size_t c = 0; c < sec->board.coord.totalCells; ++c) {
+                    if (sec->board.state.get(c) == CellState::Flagged) {
+                        ++sec->board.flaggedCount;
+                    }
+                }
+            }
+
+            sec->board.flagOwners.clear();
+            for (const auto& [fIdx, pId, sIdVal] : flags) {
+                sec->board.flagOwners[static_cast<size_t>(fIdx)] = { pId, sIdVal };
+            }
+
+            if (sec->hasExitLauncher) {
+                sec->exitLauncher.isLocked = !sec->isCleared;
+                sec->exitLauncher.openAnim = sec->isCleared ? 1.0f : 0.0f;
+            }
+        }
+    }
+
+    campaign.updatePlanetClearance();
+    return file.good();
 }
 
 } // namespace minesweeper::core

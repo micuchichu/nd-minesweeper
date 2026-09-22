@@ -18,7 +18,9 @@ namespace Colors {
     constexpr Color Zinc400 = { 161, 161, 170, 255 };
     constexpr Color Zinc300 = { 212, 212, 216, 255 };
     constexpr Color Zinc200 = { 228, 228, 231, 255 };
+    constexpr Color Zinc100 = { 244, 244, 245, 255 };
 
+    constexpr Color Red200 = { 254, 202, 202, 255 };
     constexpr Color Red300 = { 252, 165, 165, 255 };
     constexpr Color Red400 = { 248, 113, 113, 255 };
     constexpr Color Red500 = { 239, 68, 68, 255 };

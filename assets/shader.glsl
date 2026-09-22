@@ -18,7 +18,7 @@ vec2 curveUV(vec2 uv) {
 }
 
 void main() {
-    vec2 baseUV = (crtEnabled > 0.5) ? curveUV(fragTexCoord) : fragTexCoord;
+    vec2 baseUV = fragTexCoord;
     
     if (baseUV.x < 0.0 || baseUV.x > 1.0 || baseUV.y < 0.0 || baseUV.y > 1.0) {
         finalColor = vec4(0.0, 0.0, 0.0, 1.0);

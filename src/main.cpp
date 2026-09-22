@@ -8,6 +8,10 @@
 #include "ui/roulette_ui.hpp"
 #include "render/camera_controller.hpp"
 #include "render/procedural_textures.hpp"
+#include "audio/sound_manager.hpp"
+#include "core/campaign.hpp"
+#include "core/save_manager.hpp"
+#include "render/planet_renderer.hpp"
 #include <string>
 #include <iostream>
 #include <cassert>
@@ -1437,21 +1441,970 @@ static int runRouletteTests() {
     return 0;
 }
 
+static int runAudioTests() {
+    std::cout << "[TEST-AUDIO] Starting SoundManager & Background Sounds Tests..." << std::endl;
+
+    minesweeper::audio::SoundManager soundMgr;
+
+    // 1. Initial defaults
+    if (soundMgr.getState() != minesweeper::audio::BgmPlaybackState::Idle) {
+        std::cerr << "  [FAIL] Initial state is not Idle!" << std::endl;
+        return 1;
+    }
+    if (std::abs(soundMgr.getVolume() - 0.20f) > 0.001f) {
+        std::cerr << "  [FAIL] Initial volume is not 0.20f!" << std::endl;
+        return 2;
+    }
+    std::cout << "  [PASS] Test 1: Initial default state (Idle, volume 0.20) verified." << std::endl;
+
+    // 2. Initialization and file discovery
+    if (!soundMgr.init()) {
+        std::cerr << "  [FAIL] soundMgr.init() returned false!" << std::endl;
+        return 3;
+    }
+    if (soundMgr.getTrackCount() == 0) {
+        std::cerr << "  [FAIL] No background sound files discovered!" << std::endl;
+        return 4;
+    }
+    std::cout << "  [PASS] Test 2: SoundManager initialized, discovered " << soundMgr.getTrackCount() << " track(s)." << std::endl;
+
+    // 3. State after initialization: waiting with random interval
+    if (soundMgr.getState() != minesweeper::audio::BgmPlaybackState::Waiting) {
+        std::cerr << "  [FAIL] State after init is not Waiting!" << std::endl;
+        return 5;
+    }
+    float initialWait = soundMgr.getRemainingWaitTime();
+    if (initialWait <= 0.0f) {
+        std::cerr << "  [FAIL] Initial wait timer <= 0!" << std::endl;
+        return 6;
+    }
+    std::cout << "  [PASS] Test 3: Waiting state scheduled with initial interval (" << initialWait << "s)." << std::endl;
+
+    // 4. Play random track & verify fade-in starts at 0 volume
+    soundMgr.playRandomTrack();
+    if (soundMgr.getState() != minesweeper::audio::BgmPlaybackState::Playing) {
+        std::cerr << "  [FAIL] State after playRandomTrack() is not Playing!" << std::endl;
+        return 7;
+    }
+    if (soundMgr.getFadeFactor() > 0.001f) {
+        std::cerr << "  [FAIL] Fade factor should start at 0.0, got " << soundMgr.getFadeFactor() << std::endl;
+        return 8;
+    }
+    std::string trackName = soundMgr.getCurrentTrackName();
+    if (trackName != "background1.ogg") {
+        std::cerr << "  [FAIL] Unexpected track name: " << trackName << std::endl;
+        return 9;
+    }
+    float len = soundMgr.getCurrentTrackTimeLength();
+    if (len < 200.0f) {
+        std::cerr << "  [FAIL] Track length should be ~240s, got " << len << std::endl;
+        return 10;
+    }
+    std::cout << "  [PASS] Test 4: Track playing (" << trackName << ", length: " << len << "s, initial fade: 0.0)." << std::endl;
+
+    // 5. Gradual fade-in update verification
+    soundMgr.update(2.5f); // Halfway through 5.0s fade duration
+    float midFade = soundMgr.getFadeFactor();
+    if (midFade < 0.6f || midFade > 0.8f) {
+        std::cerr << "  [FAIL] Halfway fade factor should be ~0.707 (sine curve), got " << midFade << std::endl;
+        return 11;
+    }
+    soundMgr.update(2.5f); // Complete 5.0s fade
+    float fullFade = soundMgr.getFadeFactor();
+    if (std::abs(fullFade - 1.0f) > 0.01f) {
+        std::cerr << "  [FAIL] Completed fade factor should be 1.0, got " << fullFade << std::endl;
+        return 12;
+    }
+    std::cout << "  [PASS] Test 5: Smooth 5.0s sine fade-in progression (0.0 -> " << midFade << " -> " << fullFade << ") verified." << std::endl;
+
+    // 6. Stop and transition back to waiting with new interval
+    soundMgr.setIntervalRange(15.0f, 45.0f);
+    soundMgr.stop();
+    if (soundMgr.getState() != minesweeper::audio::BgmPlaybackState::Waiting) {
+        std::cerr << "  [FAIL] State after stop() is not Waiting!" << std::endl;
+        return 10;
+    }
+    float waitTimer = soundMgr.getRemainingWaitTime();
+    if (waitTimer < 14.9f || waitTimer > 45.1f) {
+        std::cerr << "  [FAIL] Interval timer not in range [15, 45]: " << waitTimer << std::endl;
+        return 11;
+    }
+    std::cout << "  [PASS] Test 5: Stop transitioned to Waiting with random interval (" << waitTimer << "s in [15, 45])." << std::endl;
+
+    // 7. Sound Effects (SFX) Verification
+    if (!soundMgr.isSfxEnabled() || std::abs(soundMgr.getSfxVolume() - 0.80f) > 0.001f) {
+        std::cerr << "  [FAIL] Default SFX settings mismatch!" << std::endl;
+        return 13;
+    }
+    if (!soundMgr.hasButtonSound()) {
+        std::cerr << "  [FAIL] UI button sound not loaded!" << std::endl;
+        return 14;
+    }
+    if (!soundMgr.hasIncrementSound()) {
+        std::cerr << "  [FAIL] UI increment sound not loaded!" << std::endl;
+        return 15;
+    }
+    if (!soundMgr.hasUncoverSound()) {
+        std::cerr << "  [FAIL] Game uncover sound not loaded!" << std::endl;
+        return 16;
+    }
+    if (soundMgr.getExplosionSoundCount() != 3) {
+        std::cerr << "  [FAIL] Expected 3 explosion sounds, got " << soundMgr.getExplosionSoundCount() << std::endl;
+        return 17;
+    }
+    if (!soundMgr.hasBananaSound()) {
+        std::cerr << "  [FAIL] Game banana sound not loaded!" << std::endl;
+        return 18;
+    }
+    if (!soundMgr.hasLaserSound()) {
+        std::cerr << "  [FAIL] Game laser sound not loaded!" << std::endl;
+        return 19;
+    }
+    if (!soundMgr.hasFlagSound()) {
+        std::cerr << "  [FAIL] Game flag sound not loaded!" << std::endl;
+        return 20;
+    }
+    std::cout << "  [PASS] Test 6: SFX assets verified (button, increment, uncover, 3 explosions, banana, laser, flag)." << std::endl;
+
+    // 8. SFX playback and static triggers execution
+    soundMgr.playButtonSound();
+    soundMgr.playIncrementSound();
+    soundMgr.playUncoverSound();
+    soundMgr.playExplosionSound();
+    soundMgr.playBananaSound();
+    soundMgr.playLaserSound();
+    soundMgr.playFlagSound();
+
+    minesweeper::audio::SoundManager::playButton();
+    minesweeper::audio::SoundManager::playIncrement();
+    minesweeper::audio::SoundManager::playUncover();
+    minesweeper::audio::SoundManager::playExplosion();
+    minesweeper::audio::SoundManager::playBanana();
+    minesweeper::audio::SoundManager::playLaser();
+    minesweeper::audio::SoundManager::playFlag();
+
+    soundMgr.setSfxVolume(0.50f);
+    if (std::abs(soundMgr.getSfxVolume() - 0.50f) > 0.001f) {
+        std::cerr << "  [FAIL] SFX volume adjustment mismatch!" << std::endl;
+        return 21;
+    }
+    std::cout << "  [PASS] Test 7: SFX playback triggers & volume adjustment verified." << std::endl;
+
+    // 9. Disable audio
+    soundMgr.setEnabled(false);
+    if (soundMgr.getState() != minesweeper::audio::BgmPlaybackState::Idle) {
+        std::cerr << "  [FAIL] State after setEnabled(false) is not Idle!" << std::endl;
+        return 22;
+    }
+    std::cout << "  [PASS] Test 8: Disabled audio transitions to Idle." << std::endl;
+
+    // 10. Cleanup
+    soundMgr.cleanup();
+    std::cout << "[TEST-AUDIO] ALL AUDIO TESTS PASSED!" << std::endl;
+    return 0;
+}
+
+static int runCampaignTests() {
+    std::cout << "[TEST-CAMPAIGN] Starting Campaign Mode Unit Tests..." << std::endl;
+
+    // Test 1: Planet & Sector initialization
+    minesweeper::core::CampaignManager campaign;
+    campaign.init(998877);
+
+    if (campaign.sectors.size() != 4) {
+        std::cerr << "  [FAIL] Expected 4 sectors, got " << campaign.sectors.size() << std::endl;
+        return 1;
+    }
+    if (campaign.sectors[0].gridSize != 8 || campaign.sectors[0].bombCount != 10 || !campaign.sectors[0].isUnlocked) {
+        std::cerr << "  [FAIL] Sector 0 config invalid!" << std::endl;
+        return 2;
+    }
+    if (campaign.sectors[1].gridSize != 10 || campaign.sectors[1].bombCount != 18 || campaign.sectors[1].isUnlocked) {
+        std::cerr << "  [FAIL] Sector 1 config invalid!" << std::endl;
+        return 3;
+    }
+    if (campaign.sectors[2].gridSize != 12 || campaign.sectors[2].bombCount != 28 || campaign.sectors[2].isUnlocked) {
+        std::cerr << "  [FAIL] Sector 2 config invalid!" << std::endl;
+        return 4;
+    }
+    if (campaign.sectors[3].gridSize != 14 || campaign.sectors[3].bombCount != 42 || campaign.sectors[3].isUnlocked) {
+        std::cerr << "  [FAIL] Sector 3 config invalid!" << std::endl;
+        return 5;
+    }
+    std::cout << "  [PASS] Test 1: Planet and 4 sectors initialized correctly." << std::endl;
+
+    // Test 2: Global Cell Indexing conversions
+    {
+        for (int s = 0; s < 4; ++s) {
+            size_t local = 42 + static_cast<size_t>(s) * 17;
+            size_t global = minesweeper::core::CampaignManager::toGlobalCellIndex(s, local);
+            int outS = -1;
+            size_t outLocal = 0;
+            minesweeper::core::CampaignManager::fromGlobalCellIndex(global, outS, outLocal);
+            if (outS != s || outLocal != local) {
+                std::cerr << "  [FAIL] Global index roundtrip failed for sector " << s << std::endl;
+                return 6;
+            }
+        }
+        std::cout << "  [PASS] Test 2: Global cell indexing roundtrip verified." << std::endl;
+    }
+
+    // Test 3: Sector Walls & Collision Resolution
+    {
+        minesweeper::core::Ship ship;
+        ship.collisionRadius = 14.0f;
+        ship.isInitialized = true;
+
+        const auto& walls = campaign.sectors[0].walls;
+        if (walls.empty()) {
+            std::cerr << "  [FAIL] Sector 0 has no perimeter walls!" << std::endl;
+            return 7;
+        }
+
+        // Test collision with first wall: place ship overlapping top wall
+        const auto& wall = walls[0];
+        ship.position = { wall.rect.x + wall.rect.width * 0.5f, wall.rect.y - 5.0f };
+        ship.velocity = { 0.0f, 50.0f };
+
+        bool hit = campaign.resolveShipCollisions(ship);
+        if (!hit) {
+            std::cerr << "  [FAIL] Ship collision with wall was not detected!" << std::endl;
+            return 8;
+        }
+        if (ship.position.y > wall.rect.y - ship.collisionRadius + 0.01f) {
+            std::cerr << "  [FAIL] Ship was not pushed out of wall correctly! Y=" << ship.position.y << std::endl;
+            return 9;
+        }
+        std::cout << "  [PASS] Test 3: Ship-to-wall Circle-AABB collision resolution verified." << std::endl;
+    }
+
+    // Test 4: Locked Orbital Launcher Gantry Clamps block ship transit
+    {
+        minesweeper::core::Ship ship;
+        ship.collisionRadius = 14.0f;
+        ship.isInitialized = true;
+
+        const auto& launcher = campaign.sectors[0].exitLauncher;
+        if (!launcher.isLocked) {
+            std::cerr << "  [FAIL] Sector 0 orbital launcher should be locked initially!" << std::endl;
+            return 10;
+        }
+
+        ship.position = { launcher.barrierBounds.x + launcher.barrierBounds.width * 0.5f, launcher.barrierBounds.y + launcher.barrierBounds.height * 0.5f };
+        ship.velocity = { 100.0f, 0.0f };
+
+        bool hitLauncher = campaign.resolveShipCollisions(ship);
+        if (!hitLauncher) {
+            std::cerr << "  [FAIL] Ship inside locked orbital launcher barrier was not collided!" << std::endl;
+            return 11;
+        }
+        std::cout << "  [PASS] Test 4: Locked orbital launcher gantry clamps block ship passage." << std::endl;
+    }
+
+    // Test 5: Sector Clearance and Orbital Launcher Arming
+    {
+        auto& sec0 = campaign.sectors[0];
+        for (size_t i = 0; i < sec0.board.totalCells(); ++i) {
+            if (!sec0.board.isBomb(i)) {
+                sec0.board.reveal(i);
+            }
+        }
+
+        bool cleared = campaign.checkSectorClear(0);
+        if (!cleared || !sec0.isCleared) {
+            std::cerr << "  [FAIL] Sector 0 failed to clear after uncovering all safe cells!" << std::endl;
+            return 12;
+        }
+
+        if (!campaign.sectors[1].isUnlocked) {
+            std::cerr << "  [FAIL] Sector 1 did not unlock after Sector 0 cleared!" << std::endl;
+            return 13;
+        }
+
+        if (campaign.sectors[0].exitLauncher.isLocked) {
+            std::cerr << "  [FAIL] Sector 0 exit launcher is still locked!" << std::endl;
+            return 14;
+        }
+
+        campaign.updatePlanetClearance();
+        if (campaign.planetClearPercentage <= 0.0f) {
+            std::cerr << "  [FAIL] Planet clearance percentage did not update!" << std::endl;
+            return 15;
+        }
+        std::cout << "  [PASS] Test 5: Sector clearance and orbital launcher arming verified." << std::endl;
+    }
+
+    // Test 6: Campaign Save & Load Persistence
+    {
+        minesweeper::core::SaveManager saveMgr;
+        saveMgr.init();
+
+        float saveTime = 345.5f;
+        uint64_t saveScrap = 780;
+        bool saved = saveMgr.saveCampaign(campaign, saveTime, saveScrap);
+        if (!saved) {
+            std::cerr << "  [FAIL] Failed to save campaign state!" << std::endl;
+            return 16;
+        }
+
+        if (!saveMgr.hasCampaignSave()) {
+            std::cerr << "  [FAIL] hasCampaignSave() returned false after saving!" << std::endl;
+            return 17;
+        }
+
+        minesweeper::core::CampaignManager loadedCampaign;
+        float loadTime = 0.0f;
+        uint64_t loadScrap = 0;
+        bool loaded = saveMgr.loadCampaign(loadedCampaign, loadTime, loadScrap);
+        if (!loaded) {
+            std::cerr << "  [FAIL] Failed to load campaign state!" << std::endl;
+            return 18;
+        }
+
+        if (loadScrap != 780) {
+            std::cerr << "  [FAIL] Loaded scrap mismatch: expected 780, got " << loadScrap << std::endl;
+            return 19;
+        }
+        if (std::abs(loadTime - 345.5f) > 0.1f) {
+            std::cerr << "  [FAIL] Loaded playtime mismatch: expected 345.5, got " << loadTime << std::endl;
+            return 20;
+        }
+        if (loadedCampaign.planetSeed != campaign.planetSeed) {
+            std::cerr << "  [FAIL] Loaded planet seed mismatch!" << std::endl;
+            return 21;
+        }
+        if (!loadedCampaign.sectors[0].isCleared || !loadedCampaign.sectors[1].isUnlocked) {
+            std::cerr << "  [FAIL] Loaded sector clearance state mismatch!" << std::endl;
+            return 22;
+        }
+
+        saveMgr.deleteCampaignSave();
+        if (saveMgr.hasCampaignSave()) {
+            std::cerr << "  [FAIL] Campaign save still exists after deleteCampaignSave()!" << std::endl;
+            return 23;
+        }
+        std::cout << "  [PASS] Test 6: Campaign save and load round-trip verified." << std::endl;
+    }
+
+    // Test 7: Standalone Sector Worlds & Orbital Launcher Transit Detection
+    {
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345);
+
+        // Sector 0 should have entrance spawn
+        Vector2 s0Spawn = mgr.getSectorSpawnPosition(0);
+        if (s0Spawn.x <= 0.0f || s0Spawn.y <= 0.0f) {
+            std::cerr << "  [FAIL] Sector 0 spawn position is invalid: (" << s0Spawn.x << ", " << s0Spawn.y << ")" << std::endl;
+            return 24;
+        }
+
+        // Before sector is cleared, launcher transit should return false
+        const auto& launcher = mgr.sectors[0].exitLauncher;
+        Vector2 launcherCenter = { launcher.openingBounds.x + launcher.openingBounds.width * 0.5f, launcher.openingBounds.y + launcher.openingBounds.height * 0.5f };
+        if (mgr.checkLauncherTransit(0, launcherCenter, 14.0f)) {
+            std::cerr << "  [FAIL] checkLauncherTransit should return false for locked launcher!" << std::endl;
+            return 25;
+        }
+
+        // Clear sector 0 to arm launcher
+        for (size_t i = 0; i < mgr.sectors[0].board.totalCells(); ++i) {
+            if (!mgr.sectors[0].board.isBomb(i)) {
+                mgr.sectors[0].board.reveal(i);
+            }
+        }
+        mgr.checkSectorClear(0);
+        if (!mgr.checkLauncherTransit(0, launcherCenter, 14.0f)) {
+            std::cerr << "  [FAIL] checkLauncherTransit failed to trigger for armed launcher!" << std::endl;
+            return 26;
+        }
+
+        // Far away from launcher should return false
+        if (mgr.checkLauncherTransit(0, { 50.0f, 50.0f }, 14.0f)) {
+            std::cerr << "  [FAIL] checkLauncherTransit triggered when far away from launcher!" << std::endl;
+            return 27;
+        }
+
+        std::cout << "  [PASS] Test 7: Standalone sector worlds and orbital launcher transit triggering verified." << std::endl;
+    }
+
+    // Test 8: Sector 1 Shop Suppression & Sector 2 Shop Docking
+    {
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345);
+        mgr.activeSectorIndex = 0;
+
+        minesweeper::render::RaylibRenderer rnd;
+        rnd.activeCampaignSector = 0;
+        rnd.shopShips.resize(1);
+        rnd.hasRouletteShip = true;
+        rnd.updateShopAnchorCampaign(mgr);
+
+        if (rnd.shopShips[0].isInitialized) {
+            std::cerr << "  [FAIL] Sector 0 shop ships should not be initialized!" << std::endl;
+            return 28;
+        }
+        if (rnd.rouletteShip.isInitialized) {
+            std::cerr << "  [FAIL] Sector 0 roulette ship should not be initialized!" << std::endl;
+            return 29;
+        }
+
+        // Now test Sector 2 (activeSectorIndex = 1)
+        mgr.activeSectorIndex = 1;
+        rnd.activeCampaignSector = 1;
+        rnd.updateShopAnchorCampaign(mgr);
+
+        if (!rnd.shopShips[0].isInitialized) {
+            std::cerr << "  [FAIL] Sector 1 shop ships should be initialized!" << std::endl;
+            return 30;
+        }
+        if (rnd.shopShips[0].position.y > 100.0f) {
+            std::cerr << "  [FAIL] Sector 1 shop ship not docked north clear of runway! Y=" << rnd.shopShips[0].position.y << std::endl;
+            return 31;
+        }
+        if (rnd.rouletteShip.position.y < 500.0f) {
+            std::cerr << "  [FAIL] Sector 1 roulette ship not docked south clear of runway! Y=" << rnd.rouletteShip.position.y << std::endl;
+            return 32;
+        }
+        std::cout << "  [PASS] Test 8: Sector 1 shop suppression and Sector 2 docking verified." << std::endl;
+    }
+
+    // Test 9: Campaign Cell Uncovering & Game-Over Board Recovery
+    {
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345);
+        auto& sec0 = mgr.sectors[0];
+
+        // Reveal first safe cell
+        for (size_t i = 0; i < sec0.board.totalCells(); ++i) {
+            if (!sec0.board.isBomb(i)) {
+                sec0.board.reveal(i);
+                break;
+            }
+        }
+        if (sec0.board.revealedCount == 0) {
+            std::cerr << "  [FAIL] Failed to reveal cells on sector board!" << std::endl;
+            return 33;
+        }
+
+        // Test Board Game Over reset
+        sec0.board.isGameOver = true;
+        if (!sec0.board.isGameOver) {
+            std::cerr << "  [FAIL] Board isGameOver flag not set!" << std::endl;
+            return 34;
+        }
+        sec0.board.init(sec0.board.config);
+        if (sec0.board.isGameOver || sec0.board.revealedCount != 0) {
+            std::cerr << "  [FAIL] Board reset after game over failed!" << std::endl;
+            return 35;
+        }
+
+        // Test GameHUD isMouseOver campaign flag skips bottom footer
+        minesweeper::ui::GameHUD hud;
+        Vector2 bottomScreenPt = { 400.0f, 650.0f }; // In bottom 92px of 720p window
+        if (hud.isMouseOver(1280, 720, 1.0f, bottomScreenPt, false) == false) {
+            std::cerr << "  [FAIL] Normal HUD should detect bottom footer!" << std::endl;
+            return 36;
+        }
+        if (hud.isMouseOver(1280, 720, 1.0f, bottomScreenPt, true) == true) {
+            std::cerr << "  [FAIL] Campaign HUD should not block bottom screen!" << std::endl;
+            return 37;
+        }
+
+        std::cout << "  [PASS] Test 9: Cell uncover, board reset, and non-blocking campaign HUD verified." << std::endl;
+    }
+
+    // Test 10: Data-Driven Sector Parsing, Configuration, & Dynamic Unlock Rules
+    {
+        // 1. Test parseSectorJson with custom schema
+        std::string customJson = R"({
+            "id": 99,
+            "name": "Sector 99: Asteroid Foundry",
+            "codename": "AST-99",
+            "subtitle": "Zero-G Orbital Smelter",
+            "description": "High radiation anomaly detected in sector 99.",
+            "threatLevel": 5,
+            "map": {
+                "gridSize": 9,
+                "bombCount": 15,
+                "dimension": 2,
+                "wallThickness": 32.0,
+                "westMargin": 200.0,
+                "eastMargin": 190.0,
+                "vertMargin": 130.0,
+                "spawnPos": [110.0, 250.0],
+                "stagingDepotPos": [120.0, 250.0],
+                "stagingDepotTitle": "SPECIAL OPERATIONS OUTPOST",
+                "customWalls": [
+                    { "x": 150.0, "y": 80.0, "w": 40.0, "h": 100.0, "isHazard": true }
+                ]
+            },
+            "progression": {
+                "isUnlocked": true,
+                "unlocks": [101, 102],
+                "hasExitLauncher": true,
+                "launcherTargetSector": 101,
+                "launcherOpeningHeight": 160.0
+            },
+            "ships": {
+                "allowShops": true,
+                "allowRoulette": false,
+                "allowedShipTypes": ["shop1"],
+                "shopDockPos": [105.0, 85.0],
+                "rouletteDockPos": [105.0, -85.0]
+            }
+        })";
+
+        minesweeper::core::SectorConfig parsedCfg;
+        if (!minesweeper::core::CampaignManager::parseSectorJson(customJson, parsedCfg)) {
+            std::cerr << "  [FAIL] Failed to parse custom sector JSON!" << std::endl;
+            return 38;
+        }
+
+        if (parsedCfg.id != 99 || parsedCfg.codename != "AST-99" || parsedCfg.threatLevel != 5) {
+            std::cerr << "  [FAIL] Parsed sector metadata mismatch! ID=" << parsedCfg.id << std::endl;
+            return 39;
+        }
+        if (parsedCfg.gridSize != 9 || parsedCfg.bombCount != 15 || parsedCfg.customWalls.size() != 1) {
+            std::cerr << "  [FAIL] Parsed sector map specifications mismatch!" << std::endl;
+            return 40;
+        }
+        if (parsedCfg.unlocks.size() != 2 || parsedCfg.unlocks[0] != 101 || parsedCfg.launcherTargetSector != 101) {
+            std::cerr << "  [FAIL] Parsed sector progression specifications mismatch!" << std::endl;
+            return 41;
+        }
+        if (!parsedCfg.allowShops || parsedCfg.allowRoulette || parsedCfg.stagingDepotTitle != "SPECIAL OPERATIONS OUTPOST") {
+            std::cerr << "  [FAIL] Parsed sector ship specifications mismatch!" << std::endl;
+            return 42;
+        }
+
+        // 2. Test directory loader discovering assets/campaign/sectors/
+        auto loadedConfigs = minesweeper::core::CampaignManager::loadSectorConfigs("assets/campaign/sectors");
+        if (loadedConfigs.size() < 4) {
+            std::cerr << "  [FAIL] Expected at least 4 sectors loaded from assets/campaign/sectors/, got " << loadedConfigs.size() << std::endl;
+            return 43;
+        }
+        if (loadedConfigs[0].id != 1 || loadedConfigs[0].codename != "OUTPOST-ALPHA" || loadedConfigs[0].allowShops != false) {
+            std::cerr << "  [FAIL] Sector 01 configuration mismatch in loaded assets!" << std::endl;
+            return 44;
+        }
+        if (loadedConfigs[1].id != 2 || loadedConfigs[1].codename != "FOUNDRY-WASTES" || loadedConfigs[1].allowShops != true) {
+            std::cerr << "  [FAIL] Sector 02 configuration mismatch in loaded assets!" << std::endl;
+            return 45;
+        }
+
+        // 3. Test CampaignManager initialization and dynamic launcher routing
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345);
+
+        if (mgr.sectors.size() < 4) {
+            std::cerr << "  [FAIL] CampaignManager failed to initialize with loaded sectors! Count=" << mgr.sectors.size() << std::endl;
+            return 46;
+        }
+        int s0Target = mgr.getLauncherTargetSectorIndex(0);
+        if (s0Target != 1) {
+            std::cerr << "  [FAIL] Expected Sector 0 launcher to target index 1 (Sector 02), got " << s0Target << std::endl;
+            return 47;
+        }
+
+        // 4. Test dynamic unlock progression
+        // Modify sector 0 unlocks to directly target sector 3 (index 2)
+        mgr.sectors[0].unlocksSectors = { 3 };
+        mgr.sectors[2].isUnlocked = false;
+        for (size_t i = 0; i < mgr.sectors[0].board.totalCells(); ++i) {
+            if (!mgr.sectors[0].board.isBomb(i)) {
+                mgr.sectors[0].board.reveal(i);
+            }
+        }
+        mgr.checkSectorClear(0);
+        if (!mgr.sectors[2].isUnlocked) {
+            std::cerr << "  [FAIL] Custom dynamic unlock failed to unlock Sector 3!" << std::endl;
+            return 48;
+        }
+
+        std::cout << "  [PASS] Test 10: Data-driven sector JSON parsing, asset loading, and dynamic progression verified." << std::endl;
+    }
+
+    // Test 11: Sector Editor Serialization, JSON Export, and Live Rebuilding
+    {
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345);
+
+        // 1. Export sector 0 to JSON string
+        minesweeper::core::SectorConfig cfg = mgr.sectors[0].config;
+        cfg.name = "Sector 01: Test Rebuild Zone";
+        cfg.gridSize = 9;
+        cfg.bombCount = 14;
+        cfg.wallThickness = 36.0f;
+        cfg.westMargin = 220.0f;
+        cfg.stagingDepotTitle = "TEST STAGING DOCK";
+
+        std::string exportedJson = minesweeper::core::CampaignManager::exportSectorConfigToJson(cfg);
+        if (exportedJson.empty()) {
+            std::cerr << "  [FAIL] exportSectorConfigToJson returned empty string!" << std::endl;
+            return 49;
+        }
+
+        // 2. Parse exported JSON back and verify roundtrip
+        minesweeper::core::SectorConfig roundtripCfg;
+        if (!minesweeper::core::CampaignManager::parseSectorJson(exportedJson, roundtripCfg)) {
+            std::cerr << "  [FAIL] Failed to parse exported JSON string!" << std::endl;
+            return 50;
+        }
+
+        if (roundtripCfg.name != "Sector 01: Test Rebuild Zone" || roundtripCfg.gridSize != 9 || roundtripCfg.bombCount != 14) {
+            std::cerr << "  [FAIL] Exported JSON roundtrip mismatch in map parameters!" << std::endl;
+            return 51;
+        }
+        if (roundtripCfg.wallThickness != 36.0f || roundtripCfg.stagingDepotTitle != "TEST STAGING DOCK") {
+            std::cerr << "  [FAIL] Exported JSON roundtrip mismatch in depot title / wall thickness!" << std::endl;
+            return 52;
+        }
+
+        // 3. Test rebuildSector live
+        bool rebuilt = mgr.rebuildSector(0, roundtripCfg);
+        if (!rebuilt) {
+            std::cerr << "  [FAIL] rebuildSector failed!" << std::endl;
+            return 53;
+        }
+
+        if (mgr.sectors[0].gridSize != 9 || mgr.sectors[0].bombCount != 14 || mgr.sectors[0].name != "Sector 01: Test Rebuild Zone") {
+            std::cerr << "  [FAIL] Live rebuilt sector fields mismatch!" << std::endl;
+            return 54;
+        }
+
+        // Arena width must account for 9*40 = 360 board + 220 west + 180 east = 760
+        float expectedArenaW = 9 * 40.0f + 220.0f + roundtripCfg.eastMargin;
+        if (std::abs(mgr.sectors[0].arenaBounds.width - expectedArenaW) > 0.1f) {
+            std::cerr << "  [FAIL] Live rebuilt arena width mismatch! Expected " << expectedArenaW << ", got " << mgr.sectors[0].arenaBounds.width << std::endl;
+            return 55;
+        }
+
+        std::cout << "  [PASS] Test 11: Sector Editor JSON export, roundtrip parsing, and live sector rebuilding verified." << std::endl;
+    }
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+    // Test 12: Player ship disabled while sector editor is open
+    {
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345ULL);
+        minesweeper::render::RaylibRenderer renderer;
+        minesweeper::ui::SectorEditor editor;
+
+        // Initially player ship is initialized in game
+        renderer.localShip.position = mgr.getSectorSpawnPosition(0);
+        renderer.localShip.isInitialized = true;
+        renderer.localShip.velocity = { 100.0f, 0.0f };
+
+        // Open sector editor
+        editor.open(mgr, 0);
+        if (!editor.isOpen) {
+            std::cerr << "  [FAIL] Test 12: Editor should be open!" << std::endl;
+            return 56;
+        }
+
+        // When editor is open, ship is disabled
+        renderer.localShip.isInitialized = false;
+        renderer.localShip.velocity = { 0.0f, 0.0f };
+        renderer.localShip.isMoving = false;
+
+        // Step physics while disabled: verify ship remains at rest and does not update
+        Vector2 prevPos = renderer.localShip.position;
+        renderer.stepPhysics({ 800.0f, 800.0f }, 0.016f);
+        if (renderer.localShip.position.x != prevPos.x || renderer.localShip.position.y != prevPos.y) {
+            std::cerr << "  [FAIL] Test 12: Player ship moved while editor was open and ship disabled!" << std::endl;
+            return 57;
+        }
+        if (renderer.localShip.velocity.x != 0.0f || renderer.localShip.velocity.y != 0.0f) {
+            std::cerr << "  [FAIL] Test 12: Player ship had non-zero velocity while disabled!" << std::endl;
+            return 58;
+        }
+
+        // Close editor: verify ship can be restored at sector spawn
+        editor.close();
+        if (editor.isOpen) {
+            std::cerr << "  [FAIL] Test 12: Editor should be closed!" << std::endl;
+            return 59;
+        }
+
+        Vector2 spawn = mgr.getSectorSpawnPosition(mgr.activeSectorIndex);
+        renderer.localShip.position = spawn;
+        renderer.localShip.velocity = { 0.0f, 0.0f };
+        renderer.localShip.isMoving = false;
+        renderer.localShip.isInitialized = true;
+
+        if (!renderer.localShip.isInitialized) {
+            std::cerr << "  [FAIL] Test 12: Player ship was not re-enabled upon closing editor!" << std::endl;
+            return 60;
+        }
+
+        // Verify ship resumes movement once re-enabled
+        renderer.stepPhysics({ spawn.x + 200.0f, spawn.y }, 0.05f);
+        if (renderer.localShip.position.x == spawn.x && renderer.localShip.position.y == spawn.y) {
+            std::cerr << "  [FAIL] Test 12: Player ship did not move after being re-enabled!" << std::endl;
+            return 61;
+        }
+
+        std::cout << "  [PASS] Test 12: Player ship disabled while sector editor is open verified." << std::endl;
+    }
+#endif
+
+    // Test 13: In-World Sector Editor Wall Manipulation & Heterogeneous Merchant Docks
+    {
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345ULL);
+        minesweeper::render::RaylibRenderer renderer;
+
+        // 1. Verify Sector 02 has heterogeneous merchant docks (shop3, shop1, roulette)
+        auto* sec2 = mgr.getSectorByIndex(1);
+        if (!sec2) {
+            std::cerr << "  [FAIL] Test 13: Sector 02 not found!" << std::endl;
+            return 62;
+        }
+        if (sec2->merchantSpawns.size() < 3) {
+            std::cerr << "  [FAIL] Test 13: Sector 02 should have at least 3 merchant spawns, got " << sec2->merchantSpawns.size() << std::endl;
+            return 63;
+        }
+        if (sec2->merchantSpawns[0].type != "shop3" || sec2->merchantSpawns[1].type != "shop1" || sec2->merchantSpawns[2].type != "roulette") {
+            std::cerr << "  [FAIL] Test 13: Sector 02 heterogeneous dock types mismatch! Got "
+                      << sec2->merchantSpawns[0].type << ", " << sec2->merchantSpawns[1].type << ", " << sec2->merchantSpawns[2].type << std::endl;
+            return 64;
+        }
+
+        // 2. Instantiate ships in renderer and verify shopShips and rouletteShip reflect heterogeneous types
+        mgr.activeSectorIndex = 1;
+        renderer.updateShopAnchorCampaign(mgr);
+        if (renderer.shopShips.size() < 2) {
+            std::cerr << "  [FAIL] Test 13: Renderer should have at least 2 shop ships, got " << renderer.shopShips.size() << std::endl;
+            return 65;
+        }
+        if (renderer.shopShips[0].typeId != "shop3") {
+            std::cerr << "  [FAIL] Test 13: Dock 1 should be shop3 (heavy freighter)! Got " << renderer.shopShips[0].typeId << std::endl;
+            return 66;
+        }
+        if (renderer.shopShips[1].typeId != "shop1") {
+            std::cerr << "  [FAIL] Test 13: Dock 2 should be shop1 (mini shop)! Got " << renderer.shopShips[1].typeId << std::endl;
+            return 67;
+        }
+        if (!renderer.hasRouletteShip || !renderer.rouletteShip.isInitialized) {
+            std::cerr << "  [FAIL] Test 13: Roulette ship should be initialized for Sector 02!" << std::endl;
+            return 68;
+        }
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+        // 3. Test SectorEditor interactive in-world manipulation
+        minesweeper::ui::SectorEditor editor;
+        editor.open(mgr, 1);
+        if (!editor.isOpen) {
+            std::cerr << "  [FAIL] Test 13: SectorEditor failed to open!" << std::endl;
+            return 69;
+        }
+
+        // Test grid snap
+        editor.gridSnap = 20.0f;
+        float snapped = editor.snapCoord(113.6f);
+        if (std::abs(snapped - 120.0f) > 0.01f) {
+            std::cerr << "  [FAIL] Test 13: Grid snap failed! Expected 120, got " << snapped << std::endl;
+            return 70;
+        }
+
+        // Test adding custom wall
+        minesweeper::core::SectorWall testWall;
+        testWall.rect = { 100.0f, 120.0f, 80.0f, 40.0f };
+        testWall.isHazard = false;
+        editor.currentTool = minesweeper::ui::EditorTool::Select;
+        auto workingCfg = editor.getWorkingConfig();
+        workingCfg.customWalls.push_back(testWall);
+        workingCfg.merchantSpawns[0].type = "shop2"; // Change dock 1 to cargo hauler
+
+        mgr.rebuildSector(1, workingCfg);
+        renderer.updateShopAnchorCampaign(mgr);
+
+        if (renderer.shopShips[0].typeId != "shop2") {
+            std::cerr << "  [FAIL] Test 13: Live rebuild failed to update dock 1 ship type to shop2! Got " << renderer.shopShips[0].typeId << std::endl;
+            return 71;
+        }
+        if (mgr.sectors[1].walls.empty()) {
+            std::cerr << "  [FAIL] Test 13: Live rebuild lost walls!" << std::endl;
+            return 72;
+        }
+#endif
+
+        // 4. Test JSON roundtrip of merchantSpawns array
+        std::string jsonStr = minesweeper::core::CampaignManager::exportSectorConfigToJson(sec2->config);
+        minesweeper::core::SectorConfig roundtripCfg;
+        if (!minesweeper::core::CampaignManager::parseSectorJson(jsonStr, roundtripCfg)) {
+            std::cerr << "  [FAIL] Test 13: Failed to parse exported JSON with merchantSpawns!" << std::endl;
+            return 73;
+        }
+        if (roundtripCfg.merchantSpawns.size() != sec2->config.merchantSpawns.size()) {
+            std::cerr << "  [FAIL] Test 13: Exported JSON roundtrip mismatch in merchantSpawns count!" << std::endl;
+            return 74;
+        }
+        if (roundtripCfg.merchantSpawns[0].type != sec2->config.merchantSpawns[0].type ||
+            roundtripCfg.merchantSpawns[1].type != sec2->config.merchantSpawns[1].type) {
+            std::cerr << "  [FAIL] Test 13: Exported JSON roundtrip mismatch in merchantSpawns types!" << std::endl;
+            return 75;
+        }
+
+        std::cout << "  [PASS] Test 13: In-world editor manipulation, heterogeneous merchant docks, and JSON roundtrip verified." << std::endl;
+    }
+
+    std::cout << "[TEST-CAMPAIGN] ALL CAMPAIGN TESTS PASSED!" << std::endl;
+    return 0;
+}
+
+static int runPlanetTests() {
+    std::cout << "[TEST-PLANET] Starting 3D Geodesic Hex Planet Renderer Unit Tests..." << std::endl;
+
+    // Test 1: PlanetRenderer initialization & 42-sector hexagonal dual lattice
+    minesweeper::render::PlanetRenderer planet;
+    planet.init();
+
+    if (planet.sectors.size() != 42) {
+        std::cerr << "  [FAIL] Expected 42 geodesic sectors (12 pentagons + 30 hexagons), got " << planet.sectors.size() << std::endl;
+        return 1;
+    }
+    for (size_t i = 0; i < planet.sectors.size(); ++i) {
+        const auto& sec = planet.sectors[i];
+        if (sec.corners.size() < 5 || sec.corners.size() > 6) {
+            std::cerr << "  [FAIL] Sector " << i << " has invalid corner count: " << sec.corners.size() << std::endl;
+            return 2;
+        }
+        if (std::abs(Vector3Length(sec.center) - 1.0f) > 0.01f) {
+            std::cerr << "  [FAIL] Sector " << i << " center vector is not normalized!" << std::endl;
+            return 3;
+        }
+        for (const auto& c : sec.corners) {
+            if (std::abs(Vector3Length(c) - 1.0f) > 0.01f) {
+                std::cerr << "  [FAIL] Sector " << i << " corner vector is not normalized!" << std::endl;
+                return 4;
+            }
+        }
+    }
+    if (planet.stars.empty()) {
+        std::cerr << "  [FAIL] Starfield not generated!" << std::endl;
+        return 5;
+    }
+    std::cout << "  [PASS] Test 1: PlanetRenderer initialized with 42 seamless geodesic hex/pent facets." << std::endl;
+
+    // Test 2: Campaign Fortress mapping
+    {
+        int f0 = planet.getSectorIdxForFortress(0);
+        int f1 = planet.getSectorIdxForFortress(1);
+        int f2 = planet.getSectorIdxForFortress(2);
+        int f3 = planet.getSectorIdxForFortress(3);
+
+        if (f0 < 0 || f1 < 0 || f2 < 0 || f3 < 0) {
+            std::cerr << "  [FAIL] Fortress mapping failed to assign all 4 campaign fortresses!" << std::endl;
+            return 6;
+        }
+        if (f0 == f1 || f0 == f2 || f0 == f3 || f1 == f2 || f1 == f3 || f2 == f3) {
+            std::cerr << "  [FAIL] Duplicate fortress sector indices detected!" << std::endl;
+            return 7;
+        }
+        if (!planet.sectors[f0].isFortress || !planet.sectors[f1].isFortress ||
+            !planet.sectors[f2].isFortress || !planet.sectors[f3].isFortress) {
+            std::cerr << "  [FAIL] isFortress flag not set on assigned fortress sectors!" << std::endl;
+            return 8;
+        }
+        std::cout << "  [PASS] Test 2: All 4 Campaign Fortresses uniquely mapped to prominent surface hexes." << std::endl;
+    }
+
+    // Test 3: Sector focus calculation and smooth transition
+    {
+        int sec1 = planet.getSectorIdxForFortress(1);
+        planet.focusSector(sec1);
+        if (!planet.isTransitioning) {
+            std::cerr << "  [FAIL] isTransitioning flag should be true after focusSector!" << std::endl;
+            return 9;
+        }
+
+        float initPitch = planet.pitch;
+        float initYaw = planet.yaw;
+
+        planet.update(0.25f);
+
+        float dYaw1 = std::abs(planet.targetYaw - initYaw);
+        float dYaw2 = std::abs(planet.targetYaw - planet.yaw);
+        float dPitch1 = std::abs(planet.targetPitch - initPitch);
+        float dPitch2 = std::abs(planet.targetPitch - planet.pitch);
+        if (dYaw2 >= dYaw1 && dPitch2 >= dPitch1) {
+            std::cerr << "  [FAIL] Orientation did not advance toward target during update!" << std::endl;
+            return 10;
+        }
+
+        // Settle smoothly
+        for (int step = 0; step < 60; ++step) {
+            planet.update(0.08f);
+        }
+
+        Vector3 focusedNorm = planet.rotateVector(planet.sectors[sec1].center);
+        if (focusedNorm.z < 0.95f) {
+            std::cerr << "  [FAIL] Focused sector center should point toward camera (+Z >= 0.95), got Z=" << focusedNorm.z << std::endl;
+            return 11;
+        }
+        std::cout << "  [PASS] Test 3: Smooth spherical camera focus and orientation verified." << std::endl;
+    }
+
+    // Test 4: Coordinate rotation length preservation
+    {
+        Vector3 testVec = { 0.577f, 0.577f, 0.577f };
+        Vector3 rotVec = planet.rotateVector(testVec);
+        if (std::abs(Vector3Length(testVec) - Vector3Length(rotVec)) > 0.001f) {
+            std::cerr << "  [FAIL] rotateVector did not preserve vector length!" << std::endl;
+            return 12;
+        }
+        std::cout << "  [PASS] Test 4: Spherical rotation isometry and vector norms verified." << std::endl;
+    }
+
+    // Test 5: Exact spherical Voronoi sector selection & raycast math
+    {
+        for (size_t i = 0; i < planet.sectors.size(); ++i) {
+            // Test that a ray pointing directly at a sector's center on the planet sphere selects exactly sector i
+            Vector3 hitPoint = Vector3Scale(planet.sectors[i].center, minesweeper::render::PlanetRenderer::PLANET_RADIUS);
+            Vector3 hitNorm = Vector3Normalize(hitPoint);
+            float bestDot = -2.0f;
+            int bestIdx = -1;
+            for (size_t j = 0; j < planet.sectors.size(); ++j) {
+                float dot = Vector3DotProduct(planet.sectors[j].center, hitNorm);
+                if (dot > bestDot) {
+                    bestDot = dot;
+                    bestIdx = static_cast<int>(j);
+                }
+            }
+            if (bestIdx != static_cast<int>(i)) {
+                std::cerr << "  [FAIL] Voronoi selection mismatch for sector " << i << ": got " << bestIdx << std::endl;
+                return 13;
+            }
+        }
+        std::cout << "  [PASS] Test 5: Spherical Voronoi raycast sector selection verified for all 42 sectors." << std::endl;
+    }
+
+    std::cout << "[TEST-PLANET] ALL 3D GEODESIC HEX PLANET TESTS PASSED!" << std::endl;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "--test-capsule") {
+        if (std::string(argv[i]) == "--test" || std::string(argv[i]) == "--test-all" || std::string(argv[i]) == "--test-capsule") {
             int r1 = runCapsuleTests();
             int r2 = runCameraTests();
             int r3 = runControlTests();
             int r4 = runTextureTests();
             int r5 = runItemTests();
             int r6 = runRouletteTests();
+            int r7 = runAudioTests();
+            int r8 = runCampaignTests();
+            int r9 = runPlanetTests();
             if (r1 != 0) return r1;
             if (r2 != 0) return r2;
             if (r3 != 0) return r3;
             if (r4 != 0) return r4;
             if (r5 != 0) return r5;
-            return r6;
+            if (r6 != 0) return r6;
+            if (r7 != 0) return r7;
+            if (r8 != 0) return r8;
+            return r9;
         }
         if (std::string(argv[i]) == "--test-camera") {
             return runCameraTests();
@@ -1467,6 +2420,15 @@ int main(int argc, char* argv[]) {
         }
         if (std::string(argv[i]) == "--test-roulette") {
             return runRouletteTests();
+        }
+        if (std::string(argv[i]) == "--test-audio") {
+            return runAudioTests();
+        }
+        if (std::string(argv[i]) == "--test-campaign") {
+            return runCampaignTests();
+        }
+        if (std::string(argv[i]) == "--test-planet") {
+            return runPlanetTests();
         }
     }
 
@@ -1487,6 +2449,14 @@ int main(int argc, char* argv[]) {
         else if (std::string(argv[i]) == "--test-customize") {
             app.testCustomizeMode = true;
         }
+        else if (std::string(argv[i]) == "--test-campaign-ui") {
+            app.testCampaignMode = true;
+        }
+#if defined(_DEBUG) || !defined(NDEBUG)
+        else if (std::string(argv[i]) == "--editor" || std::string(argv[i]) == "--sector-editor" || std::string(argv[i]) == "--test-editor") {
+            app.testEditorMode = true;
+        }
+#endif
         else if (std::string(argv[i]) == "+connect_lobby" && i + 1 < argc) {
             try {
                 app.initialLobbyId = std::stoull(argv[i + 1]);

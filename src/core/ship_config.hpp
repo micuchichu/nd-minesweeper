@@ -2,7 +2,7 @@
 
 #include "raylib.h"
 #include "json_parser.hpp"
-#include "ship.hpp"
+#include "ship_types.hpp"
 #include <string>
 #include <string_view>
 #include <vector>

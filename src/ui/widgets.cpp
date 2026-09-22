@@ -1,5 +1,6 @@
 #include "widgets.hpp"
 #include "render/procedural_textures.hpp"
+#include "../audio/sound_manager.hpp"
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
@@ -33,23 +34,8 @@ void Widgets::endScissor() {
 
 Vector2 Widgets::getUIMousePos() {
     Vector2 mouse = GetMousePosition();
-    if (!enableCRT) {
-        return { mouse.x / guiScale, mouse.y / guiScale };
-    }
-
-    float screenW = static_cast<float>(GetScreenWidth());
-    float screenH = static_cast<float>(GetScreenHeight());
-    if (screenW <= 0.0f || screenH <= 0.0f) return { mouse.x / guiScale, mouse.y / guiScale };
-
-    Vector2 centered = { (mouse.x / screenW) - 0.5f, (mouse.y / screenH) - 0.5f };
-    float r2 = (centered.x * centered.x) + (centered.y * centered.y);
-
-    Vector2 crtMouse = {
-        (mouse.x / screenW + centered.x * (r2 * 0.05f)) * screenW,
-        (mouse.y / screenH + centered.y * (r2 * 0.05f)) * screenH
-    };
-
-    return { crtMouse.x / guiScale, crtMouse.y / guiScale };
+    float s = (guiScale > 0.01f) ? guiScale : 1.0f;
+    return { mouse.x / s, mouse.y / s };
 }
 
 bool Widgets::button(const char* label, Rectangle rect, Color baseCol, Color hoverCol, bool locked, int fontSize) {
@@ -65,7 +51,11 @@ bool Widgets::button(const char* label, Rectangle rect, Color baseCol, Color hov
     int textW = MeasureText(label, fontSize);
     DrawText(label, static_cast<int>(rect.x + (rect.width - textW) * 0.5f), static_cast<int>(rect.y + (rect.height - fontSize) * 0.5f), fontSize, fg);
 
-    return (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON));
+    bool clicked = (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON));
+    if (clicked) {
+        audio::SoundManager::playButton();
+    }
+    return clicked;
 }
 
 bool Widgets::checkbox(const char* label, Vector2 pos, bool& checked, bool locked) {
@@ -76,6 +66,7 @@ bool Widgets::checkbox(const char* label, Vector2 pos, bool& checked, bool locke
 
     if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         checked = !checked;
+        audio::SoundManager::playIncrement();
     }
 
     Color bg = locked ? Colors::Zinc800 : (hover ? Colors::Zinc700 : BLANK);
@@ -204,6 +195,12 @@ bool Widgets::slider(const char* label, Rectangle rect, float& value, float minV
             if (std::abs(newVal - value) > 0.001f) {
                 value = newVal;
                 changed = true;
+                static double lastSliderSoundTime = 0.0;
+                double curTime = GetTime();
+                if (curTime - lastSliderSoundTime > 0.07) {
+                    audio::SoundManager::playIncrement();
+                    lastSliderSoundTime = curTime;
+                }
             }
         } else {
             activeSliderLabel = nullptr;
@@ -261,8 +258,11 @@ bool Widgets::segmented(const char* label, Rectangle rect, int& selectedIdx, con
         bool hover = CheckCollisionPointRec(mouse, itemRect);
 
         if (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            selectedIdx = i;
-            changed = true;
+            if (selectedIdx != i) {
+                selectedIdx = i;
+                changed = true;
+                audio::SoundManager::playIncrement();
+            }
         }
 
         Color bg = isSelected ? Colors::Zinc800 : (hover ? Colors::Zinc900 : Colors::Zinc950);
@@ -446,7 +446,11 @@ bool Widgets::mindustryButton(const char* label, const char* sublabel, Rectangle
         DrawText(label, static_cast<int>(r.x + (r.width - textW) * 0.5f + (hover ? 2.0f : 0.0f)), static_cast<int>(r.y + (r.height - fontSize) * 0.5f), fontSize, textCol);
     }
 
-    return (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON));
+    bool clicked = (hover && IsMouseButtonPressed(MOUSE_LEFT_BUTTON));
+    if (clicked) {
+        audio::SoundManager::playButton();
+    }
+    return clicked;
 }
 
 void Widgets::mindustryPanel(Rectangle rect, const char* headerTitle, Color accentCol) {

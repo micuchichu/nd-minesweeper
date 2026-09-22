@@ -60,6 +60,10 @@ Texture2D AssetManager::loadTexture(const std::string& path) {
         return Texture2D{ 0 };
     }
 
+    if (!IsWindowReady()) {
+        return Texture2D{ 0, 64, 32, 1, 7 };
+    }
+
     Texture2D tex = LoadTexture(resolved.c_str());
     if (tex.id != 0) {
         SetTextureFilter(tex, TEXTURE_FILTER_POINT);
@@ -159,7 +163,7 @@ std::vector<ShopShipAsset> AssetManager::loadShopShipAssets() {
         std::string stem = p.stem().string(); // e.g. "shop1"
 
         Texture2D tex = loadTexture(pathStr);
-        if (tex.id != 0) {
+        if (tex.id != 0 || !IsWindowReady()) {
             std::string displayName;
             if (stem.rfind("shop", 0) == 0 && stem.length() > 4) {
                 displayName = "SHOP " + stem.substr(4);

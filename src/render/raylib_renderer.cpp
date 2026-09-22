@@ -2,6 +2,7 @@
 #include "asset_manager.hpp"
 #include "procedural_textures.hpp"
 #include "../core/item.hpp"
+#include "../core/campaign.hpp"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -583,7 +584,10 @@ void RaylibRenderer::drawOffscreenToScreen() {
         float timeVal = static_cast<float>(GetTime());
         SetShaderValue(postProcessShader, ppTimeLoc, &timeVal, SHADER_UNIFORM_FLOAT);
 
-        float resVal[2] = { static_cast<float>(offscreenTarget.texture.width), static_cast<float>(offscreenTarget.texture.height) };
+        float outW = static_cast<float>(offscreenTarget.texture.width);
+        float outH = static_cast<float>(offscreenTarget.texture.height);
+
+        float resVal[2] = { outW, outH };
         SetShaderValue(postProcessShader, ppResLoc, resVal, SHADER_UNIFORM_VEC2);
 
         if (ppBubbleBlurLoc >= 0) {
@@ -594,15 +598,34 @@ void RaylibRenderer::drawOffscreenToScreen() {
             SetShaderValue(postProcessShader, ppCrtEnabledLoc, &crtVal, SHADER_UNIFORM_FLOAT);
         }
 
-        Rectangle source = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), -static_cast<float>(offscreenTarget.texture.height) };
-        Rectangle dest = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), static_cast<float>(offscreenTarget.texture.height) };
+        float renderW = static_cast<float>(GetRenderWidth());
+        float renderH = static_cast<float>(GetRenderHeight());
+
+        Rectangle source = { 0.0f, 0.0f, outW, -outH };
+        Rectangle dest = { 0.0f, 0.0f, renderW, renderH };
         DrawTexturePro(offscreenTarget.texture, source, dest, { 0, 0 }, 0.0f, WHITE);
 
         EndShaderMode();
     } else {
-        Rectangle source = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), -static_cast<float>(offscreenTarget.texture.height) };
-        Rectangle dest = { 0.0f, 0.0f, static_cast<float>(offscreenTarget.texture.width), static_cast<float>(offscreenTarget.texture.height) };
+        float outW = static_cast<float>(offscreenTarget.texture.width);
+        float outH = static_cast<float>(offscreenTarget.texture.height);
+        float renderW = static_cast<float>(GetRenderWidth());
+        float renderH = static_cast<float>(GetRenderHeight());
+
+        Rectangle source = { 0.0f, 0.0f, outW, -outH };
+        Rectangle dest = { 0.0f, 0.0f, renderW, renderH };
         DrawTexturePro(offscreenTarget.texture, source, dest, { 0, 0 }, 0.0f, WHITE);
+    }
+}
+
+void RaylibRenderer::saveScreenshot(const char* filename) {
+    if (offscreenTarget.id != 0) {
+        Image img = LoadImageFromTexture(offscreenTarget.texture);
+        ImageFlipVertical(&img);
+        ExportImage(img, filename);
+        UnloadImage(img);
+    } else {
+        TakeScreenshot(filename);
     }
 }
 
@@ -700,7 +723,7 @@ Vector2 RaylibRenderer::getCellWorldPosition(size_t index, const core::Board& bo
     }
 }
 
-void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex) {
+void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset) {
     float boardWidth = board.config.size * cellSize;
 
     // Background base slice
@@ -801,7 +824,7 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                         DrawRectangleRounded(cellRect, 0.2f, 4, ui::Colors::CellHidden);
                     }
 
-                    auto animIt = flagDropAnims.find(idx);
+                    auto animIt = flagDropAnims.find(idx + globalOffset);
                     bool isMidFlight = false;
                     float dropY = 0.0f;
                     float squashX = 1.0f;
@@ -1094,15 +1117,233 @@ void RaylibRenderer::updateShopAnchor(const core::Board& board) {
     }
 }
 
+void RaylibRenderer::updateShopAnchorCampaign(const core::CampaignManager& campaign) {
+    const auto* curSec = campaign.getSectorByIndex(campaign.activeSectorIndex);
+    if (!curSec && !campaign.sectors.empty()) curSec = &campaign.sectors[0];
+
+    float arenaH = curSec ? curSec->arenaBounds.height : 800.0f;
+
+    // Heterogeneous merchant docks from data-driven configuration
+    if (curSec && !curSec->merchantSpawns.empty()) {
+        auto shopAssets = AssetManager::instance().loadShopShipAssets();
+
+        std::vector<core::MerchantSpawn> nonRouletteSpawns;
+        const core::MerchantSpawn* rouletteSpawn = nullptr;
+        if (curSec->allowShops) {
+            for (const auto& ms : curSec->merchantSpawns) {
+                if (ms.type != "roulette") {
+                    nonRouletteSpawns.push_back(ms);
+                }
+            }
+        }
+        if (curSec->allowRoulette) {
+            for (const auto& ms : curSec->merchantSpawns) {
+                if (ms.type == "roulette") {
+                    rouletteSpawn = &ms;
+                    break;
+                }
+            }
+        }
+
+        if (nonRouletteSpawns.empty()) {
+            for (auto& s : shopShips) {
+                s.anchorPosition = { -9999.0f, -9999.0f };
+                s.position = { -9999.0f, -9999.0f };
+                s.velocity = { 0.0f, 0.0f };
+                s.isInitialized = false;
+            }
+        } else {
+            // Check if shopShips needs to be re-instantiated
+            bool needsRebuild = (shopShips.size() != nonRouletteSpawns.size());
+            if (!needsRebuild) {
+                for (size_t i = 0; i < nonRouletteSpawns.size(); ++i) {
+                    if (shopShips[i].typeId != nonRouletteSpawns[i].type) {
+                        needsRebuild = true;
+                        break;
+                    }
+                }
+            }
+
+        if (needsRebuild) {
+            shopShips.clear();
+            for (size_t i = 0; i < nonRouletteSpawns.size(); ++i) {
+                const auto& spawn = nonRouletteSpawns[i];
+                const ShopShipAsset* foundAsset = nullptr;
+                for (const auto& a : shopAssets) {
+                    if (a.config.name == spawn.type || a.id == spawn.type) {
+                        foundAsset = &a;
+                        break;
+                    }
+                }
+                if (!foundAsset && !shopAssets.empty()) {
+                    foundAsset = &shopAssets.front();
+                }
+
+                if (foundAsset) {
+                    Vector2 anchor = spawn.pos;
+                    if (anchor.y < 0.0f) anchor.y = arenaH + anchor.y;
+
+                    shopShips.emplace_back(foundAsset->texture, anchor, foundAsset->config);
+                    shopShips.back().typeId = foundAsset->id;
+                    shopShips.back().setAnchor(anchor, spawn.angle);
+                    shopShips.back().angle = spawn.angle;
+                    shopShips.back().isInitialized = true;
+                }
+            }
+            if (!shopShips.empty()) {
+                shopShip = shopShips.front();
+                shopAnchorPos = shopShips.front().anchorPosition;
+            }
+        } else {
+            // Smoothly update anchors for existing shop ships
+            for (size_t i = 0; i < nonRouletteSpawns.size(); ++i) {
+                const auto& spawn = nonRouletteSpawns[i];
+                Vector2 newAnchor = spawn.pos;
+                if (newAnchor.y < 0.0f) newAnchor.y = arenaH + newAnchor.y;
+
+                if (i == 0) shopAnchorPos = newAnchor;
+
+                if (!shopShips[i].isInitialized) {
+                    shopShips[i].setAnchor(newAnchor, spawn.angle);
+                    shopShips[i].position = newAnchor;
+                    shopShips[i].angle = spawn.angle;
+                    shopShips[i].velocity = { 0.0f, 0.0f };
+                    shopShips[i].isInitialized = true;
+                } else {
+                    bool anchorMoved = (std::abs(shopShips[i].anchorPosition.x - newAnchor.x) > 1.0f ||
+                                        std::abs(shopShips[i].anchorPosition.y - newAnchor.y) > 1.0f ||
+                                        std::abs(shopShips[i].restAngle - spawn.angle) > 1.0f);
+                    if (anchorMoved) {
+                        Vector2 diff = { shopShips[i].position.x - shopShips[i].anchorPosition.x,
+                                         shopShips[i].position.y - shopShips[i].anchorPosition.y };
+                        shopShips[i].setAnchor(newAnchor, spawn.angle);
+                        shopShips[i].position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+                    }
+                }
+            }
+            if (!shopShips.empty()) {
+                shopShip = shopShips.front();
+            }
+        }
+    }
+
+    // Handle roulette spawn
+        if (rouletteSpawn) {
+            hasRouletteShip = true;
+            Vector2 rAnchor = rouletteSpawn->pos;
+            if (rAnchor.y < 0.0f) rAnchor.y = arenaH + rAnchor.y;
+
+            if (!rouletteShip.isInitialized) {
+                rouletteShip.setAnchor(rAnchor, rouletteSpawn->angle);
+                rouletteShip.position = rAnchor;
+                rouletteShip.angle = rouletteSpawn->angle;
+                rouletteShip.velocity = { 0.0f, 0.0f };
+                rouletteShip.isInitialized = true;
+            } else {
+                bool anchorMoved = (std::abs(rouletteShip.anchorPosition.x - rAnchor.x) > 1.0f ||
+                                    std::abs(rouletteShip.anchorPosition.y - rAnchor.y) > 1.0f ||
+                                    std::abs(rouletteShip.restAngle - rouletteSpawn->angle) > 1.0f);
+                if (anchorMoved) {
+                    Vector2 diff = { rouletteShip.position.x - rouletteShip.anchorPosition.x,
+                                     rouletteShip.position.y - rouletteShip.anchorPosition.y };
+                    rouletteShip.setAnchor(rAnchor, rouletteSpawn->angle);
+                    rouletteShip.position = { rAnchor.x + diff.x, rAnchor.y + diff.y };
+                }
+            }
+        } else {
+            if (hasRouletteShip) {
+                rouletteShip.anchorPosition = { -9999.0f, -9999.0f };
+                rouletteShip.position = { -9999.0f, -9999.0f };
+                rouletteShip.velocity = { 0.0f, 0.0f };
+                rouletteShip.isInitialized = false;
+                hasRouletteShip = false;
+            }
+        }
+        return;
+    }
+
+    // Fallback for sectors without merchantSpawns
+    bool allowShops = curSec ? curSec->allowShops : false;
+    bool allowRoulette = curSec ? curSec->allowRoulette : false;
+
+    if (!allowShops) {
+        // Shops disabled in this sector: deactivate and push off-screen
+        for (auto& s : shopShips) {
+            s.anchorPosition = { -9999.0f, -9999.0f };
+            s.position = { -9999.0f, -9999.0f };
+            s.velocity = { 0.0f, 0.0f };
+            s.isInitialized = false;
+        }
+    } else {
+        Vector2 baseAnchor = curSec ? curSec->customShopDockPos : Vector2{ 85.0f, 70.0f };
+        if (baseAnchor.y < 0.0f) baseAnchor.y = arenaH + baseAnchor.y;
+
+        for (size_t i = 0; i < shopShips.size(); ++i) {
+            Vector2 newAnchor = { baseAnchor.x - 40.0f * static_cast<float>(i), baseAnchor.y };
+            if (i == 0) shopAnchorPos = newAnchor;
+            if (!shopShips[i].isInitialized) {
+                shopShips[i].setAnchor(newAnchor, 0.0f);
+                shopShips[i].position = newAnchor;
+                shopShips[i].angle = 0.0f;
+                shopShips[i].velocity = { 0.0f, 0.0f };
+                shopShips[i].isInitialized = true;
+            } else {
+                bool anchorMoved = (std::abs(shopShips[i].anchorPosition.x - newAnchor.x) > 1.0f ||
+                                    std::abs(shopShips[i].anchorPosition.y - newAnchor.y) > 1.0f);
+                if (anchorMoved) {
+                    Vector2 diff = { shopShips[i].position.x - shopShips[i].anchorPosition.x,
+                                     shopShips[i].position.y - shopShips[i].anchorPosition.y };
+                    shopShips[i].setAnchor(newAnchor, 0.0f);
+                    shopShips[i].position = { newAnchor.x + diff.x, newAnchor.y + diff.y };
+                }
+            }
+        }
+        if (!shopShips.empty()) {
+            shopShip = shopShips.front();
+        }
+    }
+
+    if (!allowRoulette || !hasRouletteShip) {
+        if (hasRouletteShip) {
+            rouletteShip.anchorPosition = { -9999.0f, -9999.0f };
+            rouletteShip.position = { -9999.0f, -9999.0f };
+            rouletteShip.velocity = { 0.0f, 0.0f };
+            rouletteShip.isInitialized = false;
+        }
+    } else {
+        Vector2 rAnchor = curSec ? curSec->customRouletteDockPos : Vector2{ 85.0f, -70.0f };
+        if (rAnchor.y < 0.0f) rAnchor.y = arenaH + rAnchor.y;
+
+        if (!rouletteShip.isInitialized) {
+            rouletteShip.setAnchor(rAnchor, 0.0f);
+            rouletteShip.position = rAnchor;
+            rouletteShip.angle = 0.0f;
+            rouletteShip.velocity = { 0.0f, 0.0f };
+            rouletteShip.isInitialized = true;
+        } else {
+            bool anchorMoved = (std::abs(rouletteShip.anchorPosition.x - rAnchor.x) > 1.0f ||
+                                std::abs(rouletteShip.anchorPosition.y - rAnchor.y) > 1.0f);
+            if (anchorMoved) {
+                Vector2 diff = { rouletteShip.position.x - rouletteShip.anchorPosition.x,
+                                 rouletteShip.position.y - rouletteShip.anchorPosition.y };
+                rouletteShip.setAnchor(rAnchor, 0.0f);
+                rouletteShip.position = { rAnchor.x + diff.x, rAnchor.y + diff.y };
+            }
+        }
+    }
+}
+
 void RaylibRenderer::resolveShipCollisions() {
-    for (auto& [id, rShip] : remoteShips) {
-        if (core::Ship::resolveCollision(localShip, rShip)) {
-            if (localShip.bumpTimer >= 0.34f) {
-                Vector2 contact = {
-                    (localShip.position.x + rShip.position.x) * 0.5f,
-                    (localShip.position.y + rShip.position.y) * 0.5f
-                };
-                particles.emitDebris(contact, 1, ui::Colors::Amber400);
+    if (localShip.isInitialized) {
+        for (auto& [id, rShip] : remoteShips) {
+            if (core::Ship::resolveCollision(localShip, rShip)) {
+                if (localShip.bumpTimer >= 0.34f) {
+                    Vector2 contact = {
+                        (localShip.position.x + rShip.position.x) * 0.5f,
+                        (localShip.position.y + rShip.position.y) * 0.5f
+                    };
+                    particles.emitDebris(contact, 1, ui::Colors::Amber400);
+                }
             }
         }
     }
@@ -1123,22 +1364,28 @@ void RaylibRenderer::resolveShipCollisions() {
     }
     for (auto& s : shopShips) {
         if (!s.isInitialized) continue;
-        core::Ship::resolveCollision(localShip, s);
+        if (localShip.isInitialized) {
+            core::Ship::resolveCollision(localShip, s);
+        }
         for (auto& [id, rShip] : remoteShips) {
             core::Ship::resolveCollision(rShip, s);
         }
     }
     if (hasRouletteShip && rouletteShip.isInitialized) {
-        core::Ship::resolveCollision(localShip, rouletteShip);
+        if (localShip.isInitialized) {
+            core::Ship::resolveCollision(localShip, rouletteShip);
+        }
         for (auto& [id, rShip] : remoteShips) {
             core::Ship::resolveCollision(rShip, rouletteShip);
         }
         for (auto& s : shopShips) {
-            core::Ship::resolveCollision(s, rouletteShip);
+            if (s.isInitialized) core::Ship::resolveCollision(s, rouletteShip);
         }
     }
     for (size_t i = 0; i < shopShips.size(); ++i) {
+        if (!shopShips[i].isInitialized) continue;
         for (size_t j = i + 1; j < shopShips.size(); ++j) {
+            if (!shopShips[j].isInitialized) continue;
             core::Ship::resolveCollision(shopShips[i], shopShips[j]);
         }
     }
@@ -1149,19 +1396,24 @@ void RaylibRenderer::resolveShipCollisions() {
 
 void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
     // 1. Update player / local ship physics at fixed timestep
-    localShip.skinId = activeCursorSkin;
-    localShip.texture = getCursorSkinTexture(activeCursorSkin);
-    if (controlMode == 1) {
-        float inputLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
-        if (inputLen > 0.05f) {
-            localShip.updateDirect(moveInput, fixedDt, hasAim, aimAngle);
-        } else if (isMouseActive) {
-            localShip.update(targetPos, fixedDt);
+    if (localShip.isInitialized) {
+        localShip.skinId = activeCursorSkin;
+        localShip.texture = getCursorSkinTexture(activeCursorSkin);
+        if (controlMode == 1) {
+            float inputLen = std::sqrt(moveInput.x * moveInput.x + moveInput.y * moveInput.y);
+            if (inputLen > 0.05f) {
+                localShip.updateDirect(moveInput, fixedDt, hasAim, aimAngle);
+            } else if (isMouseActive) {
+                localShip.update(targetPos, fixedDt);
+            } else {
+                localShip.updateDirect({ 0.0f, 0.0f }, fixedDt, hasAim, aimAngle);
+            }
         } else {
-            localShip.updateDirect({ 0.0f, 0.0f }, fixedDt, hasAim, aimAngle);
+            localShip.update(targetPos, fixedDt);
         }
     } else {
-        localShip.update(targetPos, fixedDt);
+        localShip.velocity = { 0.0f, 0.0f };
+        localShip.isMoving = false;
     }
 
     // 2. Update shop freighters at fixed timestep
@@ -1179,7 +1431,9 @@ void RaylibRenderer::stepPhysics(Vector2 targetPos, float fixedDt) {
     resolveShipCollisions();
 
     // 4. Update held item spring physics at fixed timestep
-    updateHeldItemPhysics(localShip.position, localShip.velocity, fixedDt);
+    if (localShip.isInitialized) {
+        updateHeldItemPhysics(localShip.position, localShip.velocity, fixedDt);
+    }
 }
 
 void RaylibRenderer::updatePhysics(Vector2 targetPos, float dt) {
@@ -1195,6 +1449,7 @@ void RaylibRenderer::updatePhysics(Vector2 targetPos, float dt) {
 }
 
 void RaylibRenderer::updateShip(Vector2 targetPos, float dt) {
+    if (!localShip.isInitialized) return;
     localShip.skinId = activeCursorSkin;
     localShip.texture = getCursorSkinTexture(activeCursorSkin);
     localShip.update(targetPos, dt);
@@ -1297,7 +1552,7 @@ void RaylibRenderer::updateAndDrawBubbles(float dt) {
 }
 
 void RaylibRenderer::drawRadarSweep(Vector2 shipPos, const core::Board& board, float dt) {
-    if (radarTimer <= 0.0f) return;
+    if (!localShip.isInitialized || radarTimer <= 0.0f) return;
 
     float radarAlpha = 1.0f;
     if (radarTimer < 0.8f) {
@@ -1783,7 +2038,9 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     if (hasRouletteShip && rouletteShip.isInitialized) {
         rouletteShip.drawExhaust();
     }
-    localShip.drawExhaust();
+    if (localShip.isInitialized) {
+        localShip.drawExhaust();
+    }
 
     // 2. Draw shop ships on the side of the board
     for (const auto& s : shopShips) {
@@ -1806,10 +2063,12 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     }
 
     // 4. Draw local player ship
-    localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
+    if (localShip.isInitialized) {
+        localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
 
-    // 4b. Draw held item following local player
-    drawHeldItem(localShip.position, localShip.angle, heldSlot, isUsingItem);
+        // 4b. Draw held item following local player
+        drawHeldItem(localShip.position, localShip.angle, heldSlot, isUsingItem);
+    }
 
     // 5. Draw active laser beams (rendered on top of ships)
     float frameDt = GetFrameTime();
@@ -1989,6 +2248,413 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
             DrawTriangle(tip, side1, side2, ui::Colors::Green400);
         }
     }
+}
+
+void RaylibRenderer::drawCampaignWalls(const core::CampaignManager& campaign) {
+    const auto* curSec = campaign.getSectorByIndex(campaign.activeSectorIndex);
+    if (!curSec && !campaign.sectors.empty()) curSec = &campaign.sectors[0];
+    if (!curSec) return;
+
+    for (const auto& wall : curSec->walls) {
+        DrawRectangleRec(wall.rect, ui::Colors::Zinc900);
+        DrawRectangleLinesEx(wall.rect, 2.0f, ui::Colors::Zinc700);
+
+        if (wall.rect.width > 20.0f && wall.rect.height > 20.0f) {
+            Rectangle inner = { wall.rect.x + 4.0f, wall.rect.y + 4.0f, wall.rect.width - 8.0f, wall.rect.height - 8.0f };
+            DrawRectangleLinesEx(inner, 1.0f, Fade(ui::Colors::Zinc800, 0.7f));
+        }
+
+        if (wall.isHazard) {
+            float stripeW = 16.0f;
+            bool horizontal = (wall.rect.width > wall.rect.height);
+            float len = horizontal ? wall.rect.width : wall.rect.height;
+            int count = static_cast<int>(len / stripeW);
+
+            for (int i = 0; i < count; i += 2) {
+                if (horizontal) {
+                    Rectangle sRec = { wall.rect.x + i * stripeW, wall.rect.y + 2.0f, stripeW, wall.rect.height - 4.0f };
+                    DrawRectangleRec(sRec, Fade(ui::Colors::Amber500, 0.40f));
+                } else {
+                    Rectangle sRec = { wall.rect.x + 2.0f, wall.rect.y + i * stripeW, wall.rect.width - 4.0f, stripeW };
+                    DrawRectangleRec(sRec, Fade(ui::Colors::Amber500, 0.40f));
+                }
+            }
+        }
+    }
+}
+
+void RaylibRenderer::drawCampaignLaunchers(const core::CampaignManager& campaign) {
+    const auto* curSec = campaign.getSectorByIndex(campaign.activeSectorIndex);
+    if (!curSec && !campaign.sectors.empty()) curSec = &campaign.sectors[0];
+    if (!curSec || !curSec->hasExitLauncher) return;
+
+    float curTime = static_cast<float>(GetTime());
+    float pulse = 0.5f + 0.5f * std::sin(curTime * 7.0f);
+    const auto& launcher = curSec->exitLauncher;
+
+    float centerY = launcher.openingBounds.y + launcher.openingBounds.height * 0.5f;
+    float trackStartX = launcher.openingBounds.x - 70.0f; // Inside sector apron
+    float trackEndX = launcher.openingBounds.x + launcher.openingBounds.width + 40.0f; // Beyond wall
+    float trackW = trackEndX - trackStartX;
+
+    // 1. Reinforced Industrial Blast Apron & Trench Foundation
+    Rectangle blastApron = {
+        trackStartX - 20.0f,
+        centerY - 95.0f,
+        trackW + 40.0f,
+        190.0f
+    };
+    DrawRectangleRec(blastApron, Fade(ui::Colors::Zinc950, 0.95f));
+    DrawRectangleLinesEx(blastApron, 2.0f, ui::Colors::Zinc700);
+
+    // Hazard cautionary borders along top and bottom apron edges
+    float stripeW = 16.0f;
+    int stripeCount = static_cast<int>(blastApron.width / stripeW);
+    for (int i = 0; i < stripeCount; i += 2) {
+        DrawRectangleRec({ blastApron.x + i * stripeW, blastApron.y + 1.0f, stripeW, 8.0f }, Fade(ui::Colors::Amber500, 0.45f));
+        DrawRectangleRec({ blastApron.x + i * stripeW, blastApron.y + blastApron.height - 9.0f, stripeW, 8.0f }, Fade(ui::Colors::Amber500, 0.45f));
+    }
+
+    // Launch runway trench
+    Rectangle trench = {
+        trackStartX,
+        centerY - 65.0f,
+        trackW,
+        130.0f
+    };
+    DrawRectangleRec(trench, Fade(ui::Colors::Zinc900, 0.90f));
+    DrawRectangleLinesEx(trench, 1.5f, ui::Colors::Zinc800);
+
+    // Trench floor grid plating
+    for (float x = trackStartX + 20.0f; x < trackEndX; x += 30.0f) {
+        DrawLineEx({ x, trench.y }, { x, trench.y + trench.height }, 1.0f, Fade(ui::Colors::Zinc700, 0.35f));
+    }
+
+    // 2. Dual Linear Magnetic Acceleration Rails
+    float railTopY = centerY - 44.0f;
+    float railBotY = centerY + 44.0f;
+    float railThick = 7.0f;
+
+    // Heavy rail beams
+    DrawRectangleRec({ trackStartX, railTopY - railThick * 0.5f, trackW, railThick }, ui::Colors::Zinc700);
+    DrawRectangleLinesEx({ trackStartX, railTopY - railThick * 0.5f, trackW, railThick }, 1.0f, ui::Colors::Zinc500);
+
+    DrawRectangleRec({ trackStartX, railBotY - railThick * 0.5f, trackW, railThick }, ui::Colors::Zinc700);
+    DrawRectangleLinesEx({ trackStartX, railBotY - railThick * 0.5f, trackW, railThick }, 1.0f, ui::Colors::Zinc500);
+
+    // High-voltage power conduits along the rails
+    Color conduitCol = launcher.isLocked ? ui::Colors::Red700 : ui::Colors::Cyan400;
+    DrawLineEx({ trackStartX, railTopY }, { trackEndX, railTopY }, 2.0f, Fade(conduitCol, 0.8f + 0.2f * pulse));
+    DrawLineEx({ trackStartX, railBotY }, { trackEndX, railBotY }, 2.0f, Fade(conduitCol, 0.8f + 0.2f * pulse));
+
+    // 3. Electromagnetic Acceleration Ring Nodes (Coils)
+    const int numCoils = 5;
+    for (int c = 0; c < numCoils; ++c) {
+        float coilX = trackStartX + 25.0f + c * 38.0f;
+
+        // Coil vertical gantry frame
+        DrawRectangleRec({ coilX - 5.0f, railTopY - 14.0f, 10.0f, 14.0f }, ui::Colors::Zinc800);
+        DrawRectangleLinesEx({ coilX - 5.0f, railTopY - 14.0f, 10.0f, 14.0f }, 1.0f, ui::Colors::Zinc600);
+
+        DrawRectangleRec({ coilX - 5.0f, railBotY, 10.0f, 14.0f }, ui::Colors::Zinc800);
+        DrawRectangleLinesEx({ coilX - 5.0f, railBotY, 10.0f, 14.0f }, 1.0f, ui::Colors::Zinc600);
+
+        if (launcher.isLocked) {
+            // Dormant red emitter nodes
+            DrawCircleV({ coilX, railTopY - 7.0f }, 3.5f, ui::Colors::Red500);
+            DrawCircleV({ coilX, railBotY + 7.0f }, 3.5f, ui::Colors::Red500);
+        } else {
+            // Active ripple wave running down the linear mass accelerator
+            float wavePhase = std::fmod(curTime * 9.0f - c * 0.9f, 6.28318f);
+            float coilPulse = 0.5f + 0.5f * std::cos(wavePhase);
+
+            Color activeCoilCol = Fade(ui::Colors::Cyan400, 0.6f + 0.4f * coilPulse);
+            DrawCircleV({ coilX, railTopY - 7.0f }, 4.5f, activeCoilCol);
+            DrawCircleV({ coilX, railBotY + 7.0f }, 4.5f, activeCoilCol);
+            DrawCircleLines(static_cast<int>(coilX), static_cast<int>(railTopY - 7.0f), 7.0f * coilPulse, activeCoilCol);
+            DrawCircleLines(static_cast<int>(coilX), static_cast<int>(railBotY + 7.0f), 7.0f * coilPulse, activeCoilCol);
+
+            // Transverse magnetic induction flux line between upper and lower coils
+            if (coilPulse > 0.65f) {
+                DrawLineEx({ coilX, railTopY }, { coilX, railBotY }, 2.0f, Fade(ui::Colors::Cyan300, (coilPulse - 0.65f) * 2.8f));
+            }
+        }
+    }
+
+    // 4. Twin Heavy Gantry Towers with Rotating Strobes
+    Rectangle towerA = { launcher.beaconPosA.x - 16.0f, launcher.beaconPosA.y - 18.0f, 32.0f, 36.0f };
+    Rectangle towerB = { launcher.beaconPosB.x - 16.0f, launcher.beaconPosB.y - 18.0f, 32.0f, 36.0f };
+    DrawRectangleRec(towerA, ui::Colors::Zinc900);
+    DrawRectangleLinesEx(towerA, 2.0f, ui::Colors::Zinc600);
+    DrawRectangleRec(towerB, ui::Colors::Zinc900);
+    DrawRectangleLinesEx(towerB, 2.0f, ui::Colors::Zinc600);
+
+    // Gantry tower ventilation / structural cross-brace
+    DrawLineEx({ towerA.x + 4.0f, towerA.y + 4.0f }, { towerA.x + towerA.width - 4.0f, towerA.y + towerA.height - 4.0f }, 1.5f, ui::Colors::Zinc700);
+    DrawLineEx({ towerA.x + towerA.width - 4.0f, towerA.y + 4.0f }, { towerA.x + 4.0f, towerA.y + towerA.height - 4.0f }, 1.5f, ui::Colors::Zinc700);
+
+    DrawLineEx({ towerB.x + 4.0f, towerB.y + 4.0f }, { towerB.x + towerB.width - 4.0f, towerB.y + towerB.height - 4.0f }, 1.5f, ui::Colors::Zinc700);
+    DrawLineEx({ towerB.x + towerB.width - 4.0f, towerB.y + 4.0f }, { towerB.x + 4.0f, towerB.y + towerB.height - 4.0f }, 1.5f, ui::Colors::Zinc700);
+
+    Color beaconCol = launcher.isLocked ? ui::Colors::Red500 : ui::Colors::Green400;
+    DrawCircleV(launcher.beaconPosA, 6.0f, beaconCol);
+    DrawCircleV(launcher.beaconPosB, 6.0f, beaconCol);
+    DrawCircleLines(static_cast<int>(launcher.beaconPosA.x), static_cast<int>(launcher.beaconPosA.y), 9.0f + 3.0f * pulse, Fade(beaconCol, 0.7f));
+    DrawCircleLines(static_cast<int>(launcher.beaconPosB.x), static_cast<int>(launcher.beaconPosB.y), 9.0f + 3.0f * pulse, Fade(beaconCol, 0.7f));
+
+    // 5. Retractable Hydraulic Launch Clamps & Containment Barrier
+    if (launcher.openAnim < 0.98f) {
+        float clampFraction = (1.0f - launcher.openAnim);
+        float currentH = launcher.barrierBounds.height * clampFraction;
+        Rectangle activeBarrier = {
+            launcher.barrierBounds.x,
+            centerY - currentH * 0.5f,
+            launcher.barrierBounds.width,
+            currentH
+        };
+
+        // Red magnetic restraint field
+        DrawRectangleRec(activeBarrier, Fade(ui::Colors::Red500, clampFraction * (0.40f + 0.25f * pulse)));
+        DrawRectangleLinesEx(activeBarrier, 2.0f, Fade(ui::Colors::Red400, 0.9f));
+
+        // Scanning restraint lines
+        for (int l = 0; l < 4; ++l) {
+            float scanY = activeBarrier.y + std::fmod(curTime * 50.0f + l * (activeBarrier.height / 4.0f), activeBarrier.height);
+            DrawLineEx({ activeBarrier.x, scanY }, { activeBarrier.x + activeBarrier.width, scanY }, 2.0f, Fade(ui::Colors::Red300, 0.8f));
+        }
+
+        // Mechanical clamp jaws on upper and lower side
+        float jawHeight = std::min(45.0f, currentH * 0.5f);
+        DrawRectangleRec({ activeBarrier.x - 6.0f, activeBarrier.y, activeBarrier.width + 12.0f, jawHeight }, ui::Colors::Zinc800);
+        DrawRectangleLinesEx({ activeBarrier.x - 6.0f, activeBarrier.y, activeBarrier.width + 12.0f, jawHeight }, 1.5f, ui::Colors::Zinc600);
+
+        DrawRectangleRec({ activeBarrier.x - 6.0f, activeBarrier.y + activeBarrier.height - jawHeight, activeBarrier.width + 12.0f, jawHeight }, ui::Colors::Zinc800);
+        DrawRectangleLinesEx({ activeBarrier.x - 6.0f, activeBarrier.y + activeBarrier.height - jawHeight, activeBarrier.width + 12.0f, jawHeight }, 1.5f, ui::Colors::Zinc600);
+
+        // Tactical HUD warning badge
+        if (activeBarrier.height > 40.0f) {
+            const char* lockMsg = "[ ORBITAL LAUNCHER // OFFLINE ]";
+            int fSize = 10;
+            int tW = MeasureText(lockMsg, fSize);
+            int textX = static_cast<int>(launcher.openingBounds.x + (launcher.openingBounds.width - tW) * 0.5f);
+            int textY = static_cast<int>(centerY - 6.0f);
+            DrawRectangle(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Zinc950, 0.92f));
+            DrawRectangleLines(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Red400, 0.7f));
+            DrawText(lockMsg, textX, textY, fSize, ui::Colors::Red200);
+        }
+    } else {
+        // 6. Online Orbital Launcher: Glowing Acceleration Corridor & Runway Chevrons
+        Rectangle launchCradle = launcher.openingBounds;
+        DrawRectangleRec(launchCradle, Fade(ui::Colors::Cyan500, 0.12f + 0.08f * pulse));
+        DrawRectangleLinesEx(launchCradle, 1.5f, Fade(ui::Colors::Cyan400, 0.65f + 0.35f * pulse));
+
+        // Animated orbital injection chevrons (flowing eastward along launch vector)
+        for (int c = 0; c < 5; ++c) {
+            float cx = trackStartX + 20.0f + c * 28.0f;
+            float cPulse = 0.5f + 0.5f * std::sin(curTime * 7.0f - c * 0.7f);
+            Vector2 p1 = { cx - 8.0f, centerY - 20.0f };
+            Vector2 p2 = { cx + 8.0f, centerY };
+            Vector2 p3 = { cx - 8.0f, centerY + 20.0f };
+            Color chevCol = Fade(ui::Colors::Cyan400, 0.35f + 0.65f * cPulse);
+            DrawLineEx(p1, p2, 2.5f, chevCol);
+            DrawLineEx(p3, p2, 2.5f, chevCol);
+        }
+
+        // Holographic readiness beacon banner
+        const char* readyMsg = "[ ORBITAL LAUNCHER // READY ]";
+        int fSize = 10;
+        int tW = MeasureText(readyMsg, fSize);
+        int textX = static_cast<int>(launcher.openingBounds.x + (launcher.openingBounds.width - tW) * 0.5f);
+        int textY = static_cast<int>(centerY - 6.0f);
+        DrawRectangle(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Zinc950, 0.92f));
+        DrawRectangleLines(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Cyan400, 0.75f));
+        DrawText(readyMsg, textX, textY, fSize, Fade(ui::Colors::Cyan300, 0.85f + 0.15f * pulse));
+    }
+}
+
+void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64_t hoveredGlobalCell, const net::NetworkManager& net) {
+    BeginMode2D(camera.camera);
+
+    float oldCellSize = cellSize;
+    cellSize = 40.0f;
+
+    float frameDt = GetFrameTime();
+    float curTime = static_cast<float>(GetTime());
+
+    // 1. Draw Planetary Surface Base / Staging Depot in the active sector
+    if (campaign.stagingDepotBounds.width > 0) {
+        Rectangle depot = campaign.stagingDepotBounds;
+        DrawRectangleRounded(depot, 0.06f, 4, Fade(ui::Colors::Zinc900, 0.85f));
+        DrawRectangleLinesEx(depot, 2.0f, Fade(ui::Colors::Amber500, 0.65f));
+
+        float midX = depot.x + depot.width * 0.5f;
+        float midY = depot.y + depot.height * 0.5f;
+        DrawCircleLines(static_cast<int>(midX), static_cast<int>(midY), 45.0f, Fade(ui::Colors::Amber400, 0.35f));
+        DrawCircleLines(static_cast<int>(midX), static_cast<int>(midY), 70.0f, Fade(ui::Colors::Amber400, 0.20f));
+        DrawLineEx({ midX - 80.0f, midY }, { midX + 80.0f, midY }, 1.5f, Fade(ui::Colors::Amber400, 0.25f));
+        const auto* secForDepot = campaign.getSectorByIndex(campaign.activeSectorIndex);
+        const char* depotTitle = nullptr;
+        if (secForDepot && !secForDepot->stagingDepotTitle.empty()) {
+            depotTitle = secForDepot->stagingDepotTitle.c_str();
+        } else if (secForDepot && secForDepot->allowShops) {
+            depotTitle = "LOGISTICS & REFUELING DOCK // CONTRACTOR HUB";
+        } else {
+            depotTitle = "OUTPOST LZ // RECON DEPLOYMENT ZONE";
+        }
+        DrawText(depotTitle, static_cast<int>(depot.x + 12.0f), static_cast<int>(depot.y + 10.0f), 10, Fade(ui::Colors::Amber400, 0.70f));
+    }
+
+    // 2. Decode hovered cell into sector index and local index
+    int hoveredSectorIdx = -1;
+    size_t hoveredLocalIdx = 0;
+    if (hoveredGlobalCell >= 0) {
+        campaign.fromGlobalCellIndex(static_cast<size_t>(hoveredGlobalCell), hoveredSectorIdx, hoveredLocalIdx);
+    }
+
+    // 3. Draw Active Sector's Arena Floor & Board
+    const auto* curSec = campaign.getSectorByIndex(campaign.activeSectorIndex);
+    if (!curSec && !campaign.sectors.empty()) curSec = &campaign.sectors[0];
+    if (curSec) {
+        int sIdx = campaign.activeSectorIndex;
+        const auto& sec = *curSec;
+
+        // Arena floor backplate
+        DrawRectangleRounded(sec.arenaBounds, 0.03f, 4, Fade(ui::Colors::Zinc950, 0.90f));
+        DrawRectangleLinesEx(sec.arenaBounds, 1.5f, Fade(ui::Colors::Zinc800, 0.80f));
+
+        // Sector stencils / Header inside top buffer of arena
+        float labelY = sec.arenaBounds.y + 14.0f;
+        DrawText(sec.codename.c_str(), static_cast<int>(sec.arenaBounds.x + 20.0f), static_cast<int>(labelY), 16, ui::Colors::Amber400);
+        DrawText(sec.name.c_str(), static_cast<int>(sec.arenaBounds.x + 20.0f), static_cast<int>(labelY + 18.0f), 11, ui::Colors::Zinc400);
+
+        // Status badge
+        const char* statusText = sec.isCleared ? "[ SECURED ]" : (sec.isUnlocked ? "[ HOSTILE // ACTIVE ]" : "[ LOCKED ]");
+        Color statusCol = sec.isCleared ? ui::Colors::Green400 : (sec.isUnlocked ? ui::Colors::Amber400 : ui::Colors::Red500);
+        int stW = MeasureText(statusText, 13);
+        DrawText(statusText, static_cast<int>(sec.arenaBounds.x + sec.arenaBounds.width - stW - 20.0f), static_cast<int>(labelY + 4.0f), 13, statusCol);
+
+        // Minefield grid
+        int64_t cellHover = (hoveredSectorIdx == sIdx) ? static_cast<int64_t>(hoveredLocalIdx) : -1;
+        size_t gOffset = campaign.toGlobalCellIndex(sIdx, 0);
+        drawSlice(sec.board, 0, 0, sec.gridOffset.x, sec.gridOffset.y, cellHover, gOffset);
+
+        // Flying flags for this sector
+        drawFlyingFlags(sec.board);
+
+        // Sector clearance celebration fanfare overlay
+        if (sec.clearAnimTimer > 0.0f) {
+            float alpha = std::min(1.0f, sec.clearAnimTimer / 2.0f);
+            float cPulse = 0.5f + 0.5f * std::sin(curTime * 10.0f);
+            Rectangle glowRec = { sec.arenaBounds.x - 4.0f, sec.arenaBounds.y - 4.0f, sec.arenaBounds.width + 8.0f, sec.arenaBounds.height + 8.0f };
+            DrawRectangleLinesEx(glowRec, 3.0f, Fade(ui::Colors::Green400, (0.5f + 0.5f * cPulse) * alpha));
+        }
+    }
+
+    // 4. Draw Sector Walls
+    drawCampaignWalls(campaign);
+
+    // 5. Draw Orbital Launcher Facility & Launch Rails
+    drawCampaignLaunchers(campaign);
+
+    // 6. Update & draw particles, ships, lasers, radar, bubbles
+    particles.updateAndDraw(frameDt);
+    updateShopAnchorCampaign(campaign);
+    syncRemoteShips(net.remoteCursors);
+
+    for (const auto& [id, rShip] : remoteShips) rShip.drawExhaust();
+    bool allowShops = (curSec ? curSec->allowShops : false) || !shopShips.empty();
+    bool allowRoulette = (curSec ? curSec->allowRoulette : false) || (curSec && !curSec->merchantSpawns.empty());
+
+    if (allowShops) {
+        for (const auto& s : shopShips) {
+            if (s.isInitialized) s.drawExhaust();
+        }
+    }
+    if (allowRoulette && hasRouletteShip && rouletteShip.isInitialized) {
+        rouletteShip.drawExhaust();
+    }
+    if (localShip.isInitialized) {
+        localShip.drawExhaust();
+    }
+
+    if (allowShops) {
+        for (const auto& s : shopShips) {
+            if (s.isInitialized) s.draw(s.name.c_str(), ui::Colors::Amber400);
+        }
+    }
+    if (allowRoulette && hasRouletteShip && rouletteShip.isInitialized) {
+        rouletteShip.draw();
+    }
+
+    for (const auto& [id, rShip] : remoteShips) {
+        Color curCol = (id != 0) ? ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f) : ui::Colors::Red500;
+        const char* tag = !rShip.name.empty() ? rShip.name.c_str() : (id == 0 ? "HOST" : TextFormat("P%u", id));
+        rShip.draw(tag, curCol, rShip.isSpeaking);
+    }
+
+    if (localShip.isInitialized) {
+        localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
+        drawHeldItem(localShip.position, localShip.angle, heldSlot, isUsingItem);
+    }
+
+    // Draw active lasers
+    for (size_t i = 0; i < lasers.size(); ) {
+        lasers[i].life -= frameDt;
+        if (lasers[i].life <= 0.0f) {
+            lasers[i] = lasers.back();
+            lasers.pop_back();
+        } else {
+            float alpha = lasers[i].life / lasers[i].maxLife;
+            auto& procTex = ProceduralTextures::instance();
+            Vector2 delta = { lasers[i].to.x - lasers[i].from.x, lasers[i].to.y - lasers[i].from.y };
+            float beamLen = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+            float beamAngle = std::atan2(delta.y, delta.x) * RAD2DEG;
+            float beamW = 6.0f;
+
+            if (procTex.laserBeamTexture.id != 0) {
+                Rectangle bSrc = { 0.0f, 0.0f, static_cast<float>(procTex.laserBeamTexture.width), static_cast<float>(procTex.laserBeamTexture.height) };
+                Rectangle bDst = { lasers[i].from.x, lasers[i].from.y, beamLen, beamW };
+                Vector2 bOrig = { 0.0f, beamW * 0.5f };
+                DrawTexturePro(procTex.laserBeamTexture, bSrc, bDst, bOrig, beamAngle, Fade(lasers[i].color, alpha));
+            } else {
+                DrawLineEx(lasers[i].from, lasers[i].to, 4.0f, Fade(lasers[i].color, 0.55f * alpha));
+                DrawLineEx(lasers[i].from, lasers[i].to, 1.5f, Fade(WHITE, 0.95f * alpha));
+            }
+            ++i;
+        }
+    }
+
+    // Out of reach warning in world space
+    if (outOfReachTimer > 0.0f && outOfReachCell >= 0) {
+        float alpha = std::min(1.0f, outOfReachTimer * 2.5f);
+        float pulse = 0.5f + 0.5f * std::sin(curTime * 12.0f);
+        const char* label = "Cell out of reach, js wait a bit";
+        int fontSize = 11;
+        int textW = MeasureText(label, fontSize);
+        float badgeW = static_cast<float>(textW + 20);
+        float badgeH = 20.0f;
+        float badgeX = outOfReachPos.x + (cellSize * 0.5f) - badgeW * 0.5f;
+        float badgeY = outOfReachPos.y - badgeH - 8.0f;
+
+        Rectangle shadowRect = { badgeX + 1.5f, badgeY + 2.0f, badgeW, badgeH };
+        DrawRectangleRounded(shadowRect, 0.4f, 4, Fade(BLACK, 0.45f * alpha));
+        Rectangle badgeRect = { badgeX, badgeY, badgeW, badgeH };
+        DrawRectangleRounded(badgeRect, 0.4f, 4, Fade(ui::Colors::Zinc950, 0.95f * alpha));
+        DrawRectangleLinesEx(badgeRect, 1.0f, Fade(ui::Colors::Red500, (0.8f + 0.2f * pulse) * alpha));
+        DrawCircle(static_cast<int>(badgeX + 8.0f), static_cast<int>(badgeY + badgeH * 0.5f), 2.5f, Fade(ui::Colors::Red500, alpha));
+        DrawText(label, static_cast<int>(badgeX + 16.0f), static_cast<int>(badgeY + 4.0f), fontSize, Fade(ui::Colors::Red300, alpha));
+
+        Vector2 arrowP1 = { outOfReachPos.x + (cellSize * 0.5f) - 4.5f, badgeY + badgeH };
+        Vector2 arrowP2 = { outOfReachPos.x + (cellSize * 0.5f) + 4.5f, badgeY + badgeH };
+        Vector2 arrowP3 = { outOfReachPos.x + (cellSize * 0.5f), badgeY + badgeH + 5.0f };
+        DrawTriangle(arrowP1, arrowP3, arrowP2, Fade(ui::Colors::Red500, alpha));
+    }
+
+    // Bubbles
+    updateAndDrawBubbles(frameDt);
+
+    cellSize = oldCellSize;
+    EndMode2D();
 }
 
 void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex) {

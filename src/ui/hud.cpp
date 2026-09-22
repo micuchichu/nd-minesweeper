@@ -2,6 +2,7 @@
 #include "widgets.hpp"
 #include "theme.hpp"
 #include "../net/steam_manager.hpp"
+#include "../core/campaign.hpp"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -399,11 +400,202 @@ HUDActions GameHUD::drawAndProcess(int screenW, int screenH, const core::Board& 
     return actions;
 }
 
-bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale) const {
-    return isMouseOver(screenW, screenH, guiScale, GetMousePosition());
+HUDActions GameHUD::drawAndProcessCampaign(int screenW, int screenH, const core::CampaignManager& campaign, float timePlayed, net::NetworkManager& net, bool isTransmitting, bool voiceEnabled, bool isPushToTalk) {
+    HUDActions actions;
+
+    float topBarH = 70.0f;
+    float topBarY = 0.0f;
+
+    // 1. Top Header Bar
+    DrawRectangle(0, static_cast<int>(topBarY), screenW, static_cast<int>(topBarH), Colors::Zinc900Translucent);
+    DrawRectangle(0, static_cast<int>(topBarY + topBarH - 1), screenW, 1, Colors::Zinc800);
+
+    float btnH = 36.0f;
+    float btnY = topBarY + (topBarH - btnH) * 0.5f;
+
+    if (Widgets::button("<- MENU", { 20, btnY, 96, btnH }, Colors::Zinc800, Colors::Zinc700, false, 16)) {
+        actions.returnToMenu = true;
+    }
+
+    // Scrap Currency Display Pill
+    if (scrapPulseTimer > 0.0f) {
+        scrapPulseTimer -= GetFrameTime();
+    }
+
+    float scrapBadgeH = 28.0f;
+    float scrapBadgeY = topBarY + (topBarH - scrapBadgeH) * 0.5f;
+    float scrapBadgeX = 126.0f;
+
+    const char* scrapStr = TextFormat("%llu", scrapCount);
+    int scrapTextW = MeasureText(scrapStr, 14);
+    float scrapBadgeW = static_cast<float>(28 + scrapTextW + 12);
+    Rectangle scrapRect = { scrapBadgeX, scrapBadgeY, scrapBadgeW, scrapBadgeH };
+    scrapBadgeScreenPos = { scrapBadgeX + 14.0f, scrapBadgeY + scrapBadgeH * 0.5f };
+
+    Color scrapBorder = (scrapPulseTimer > 0.0f) ? Colors::Amber400 : Colors::Zinc700;
+    Color scrapBg = (scrapPulseTimer > 0.0f) ? Fade(Colors::Amber500, 0.25f) : Colors::Zinc900;
+    DrawRectangleRec(scrapRect, scrapBg);
+    DrawRectangleLinesEx(scrapRect, 1.0f, scrapBorder);
+
+    float iconScale = 1.0f;
+    if (scrapPulseTimer > 0.0f) {
+        float p = scrapPulseTimer / 0.35f;
+        iconScale = 1.0f + 0.35f * std::sin(p * 3.14159f);
+    }
+    float iconSize = 18.0f * iconScale;
+    float iconCenterX = scrapBadgeX + 14.0f;
+    float iconCenterY = scrapBadgeY + scrapBadgeH * 0.5f;
+    if (scrapTexture.id != 0) {
+        Rectangle sSrc = { 0.0f, 0.0f, static_cast<float>(scrapTexture.width), static_cast<float>(scrapTexture.height) };
+        Rectangle sDst = { iconCenterX, iconCenterY, iconSize, iconSize };
+        Vector2 sOrigin = { iconSize * 0.5f, iconSize * 0.5f };
+        DrawTexturePro(scrapTexture, sSrc, sDst, sOrigin, 0.0f, WHITE);
+    }
+    DrawText(scrapStr, static_cast<int>(scrapBadgeX + 28), static_cast<int>(scrapBadgeY + (scrapBadgeH - 14) * 0.5f), 14, Colors::Amber400);
+
+    // Planet Clearance & Active Sector Pill (Center)
+    float clearPct = campaign.planetClearPercentage * 100.0f;
+    const core::CampaignSector* activeSec = campaign.getSectorByIndex(campaign.activeSectorIndex);
+
+    std::string secInfo = activeSec ? TextFormat("%s (%d MINES)", activeSec->codename.c_str(), activeSec->bombCount) : "ALL SECTORS";
+    const char* centerStr = TextFormat("PLANET %s • %.1f%% SECURED | ACTIVE: %s", campaign.planetName.c_str(), clearPct, secInfo.c_str());
+    int cTextW = MeasureText(centerStr, 15);
+    float centerPillW = static_cast<float>(cTextW + 36);
+    float centerPillX = (static_cast<float>(screenW) - centerPillW) * 0.5f;
+    float centerPillY = topBarY + (topBarH - 34.0f) * 0.5f;
+
+    DrawRectangleRounded({ centerPillX, centerPillY, centerPillW, 34.0f }, 0.25f, 4, Colors::Zinc900);
+    DrawRectangleLinesEx({ centerPillX, centerPillY, centerPillW, 34.0f }, 1.0f, (clearPct >= 100.0f) ? Colors::Green400 : Colors::Amber500);
+    DrawText(centerStr, static_cast<int>(centerPillX + 18.0f), static_cast<int>(centerPillY + 9.0f), 15, Colors::Zinc100);
+
+    // Right Side: Voice, Timer, Disconnect
+    float rightX = static_cast<float>(screenW) - 20.0f;
+
+    bool isClient = (net.role == net::NetRole::Client);
+    if (isClient) {
+        float dcW = 90.0f;
+        rightX -= dcW;
+        if (Widgets::button("LEAVE", { rightX, btnY, dcW, btnH }, Colors::Red500, Colors::Red600, false, 14)) {
+            actions.disconnect = true;
+        }
+        rightX -= 12.0f;
+    }
+
+    // Mission timer
+    int minutes = static_cast<int>(timePlayed) / 60;
+    int seconds = static_cast<int>(timePlayed) % 60;
+    const char* timeStr = TextFormat("%02d:%02d", minutes, seconds);
+    int tW = MeasureText(timeStr, 20);
+    rightX -= tW + 16.0f;
+    DrawRectangleRounded({ rightX, btnY, static_cast<float>(tW + 16), btnH }, 0.2f, 4, Colors::Zinc800);
+    DrawText(timeStr, static_cast<int>(rightX + 8), static_cast<int>(btnY + (btnH - 20) * 0.5f), 20, Colors::Zinc200);
+
+    // Voice transmitting badge
+    if (voiceEnabled) {
+        rightX -= 40.0f;
+        Color vCol = isTransmitting ? Colors::Green400 : (isPushToTalk ? Colors::Zinc600 : Colors::Cyan400);
+        DrawCircle(static_cast<int>(rightX + 16.0f), static_cast<int>(topBarY + topBarH * 0.5f), 7.0f, vCol);
+        if (isTransmitting) {
+            DrawCircleLines(static_cast<int>(rightX + 16.0f), static_cast<int>(topBarY + topBarH * 0.5f), 10.0f, Colors::Green400);
+        }
+    }
+
+    // 2. Sector Clearance Fanfare Banner
+    for (size_t i = 0; i < campaign.sectors.size(); ++i) {
+        const auto& sec = campaign.sectors[i];
+        if (sec.clearAnimTimer > 0.0f) {
+            float bannerW = 540.0f;
+            float bannerH = 46.0f;
+            float bannerX = (static_cast<float>(screenW) - bannerW) * 0.5f;
+            float bannerY = topBarH + 16.0f;
+            float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 8.0f);
+
+            Rectangle bRec = { bannerX, bannerY, bannerW, bannerH };
+            DrawRectangleRounded(bRec, 0.3f, 4, Fade(Colors::Zinc950, 0.94f));
+            DrawRectangleLinesEx(bRec, 2.0f, Fade(Colors::Green400, 0.8f + 0.2f * pulse));
+
+            const char* msg = TextFormat("%s SECURED! ORBITAL LAUNCHER ARMED", sec.name.c_str());
+            int mW = MeasureText(msg, 16);
+            DrawText(msg, static_cast<int>(bannerX + (bannerW - mW) * 0.5f), static_cast<int>(bannerY + 14.0f), 16, Colors::Green400);
+            break;
+        }
+    }
+
+    // 3. Planet Clearance 100% Victory Modal
+    if (campaign.isPlanetCleared && !endModalDismissed) {
+        float modalW = 480.0f;
+        float modalH = 260.0f;
+        float modalX = (static_cast<float>(screenW) - modalW) * 0.5f;
+        float modalY = (static_cast<float>(screenH) - modalH) * 0.5f;
+
+        DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.65f));
+        Widgets::mindustryPanel({ modalX, modalY, modalW, modalH }, "MISSION ACCOMPLISHED", Colors::Green400);
+
+        const char* vicTitle = "PLANETARY DEFENSE CLEARANCE 100%";
+        int vtw = MeasureText(vicTitle, 20);
+        DrawText(vicTitle, static_cast<int>(modalX + (modalW - vtw) * 0.5f), static_cast<int>(modalY + 48.0f), 20, Colors::Green400);
+
+        const char* sub1 = TextFormat("Planet %s has been fully secured by contractor crew.", campaign.planetName.c_str());
+        int s1w = MeasureText(sub1, 14);
+        DrawText(sub1, static_cast<int>(modalX + (modalW - s1w) * 0.5f), static_cast<int>(modalY + 80.0f), 14, Colors::Zinc200);
+
+        const char* stat = TextFormat("Total Time: %02d:%02d   |   Scrap Salvaged: %llu", minutes, seconds, campaign.totalScrapEarned);
+        int stw = MeasureText(stat, 14);
+        DrawText(stat, static_cast<int>(modalX + (modalW - stw) * 0.5f), static_cast<int>(modalY + 110.0f), 14, Colors::Amber400);
+
+        float mBtnW = 190.0f;
+        float mBtnH = 38.0f;
+        float mBtnY = modalY + modalH - 56.0f;
+
+        if (Widgets::button("RETURN TO MENU", { modalX + 35.0f, mBtnY, mBtnW, mBtnH }, Colors::Green500, Colors::Green400, false, 14)) {
+            actions.returnToMenu = true;
+        }
+
+        if (Widgets::button("FREEROAM", { modalX + modalW - 35.0f - mBtnW, mBtnY, mBtnW, mBtnH }, Colors::Zinc800, Colors::Zinc600, false, 14)) {
+            endModalDismissed = true;
+        }
+    }
+
+    // 4. Sector Defeat / Mine Detonation Modal
+    const core::CampaignSector* curActiveSec = campaign.getSectorByIndex(campaign.activeSectorIndex);
+    if (curActiveSec && curActiveSec->board.isGameOver && !curActiveSec->isCleared) {
+        float modalW = 480.0f;
+        float modalH = 220.0f;
+        float modalX = (static_cast<float>(screenW) - modalW) * 0.5f;
+        float modalY = (static_cast<float>(screenH) - modalH) * 0.5f;
+
+        DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.65f));
+        Widgets::mindustryPanel({ modalX, modalY, modalW, modalH }, "SECTOR CASUALTY // MINE DETONATED", Colors::Red500);
+
+        const char* defTitle = "HULL CRITICALLY DAMAGED";
+        int dtw = MeasureText(defTitle, 20);
+        DrawText(defTitle, static_cast<int>(modalX + (modalW - dtw) * 0.5f), static_cast<int>(modalY + 48.0f), 20, Colors::Red500);
+
+        const char* sub = TextFormat("Sector %s reconnaissance failed. Blast cleared ship field.", curActiveSec->codename.c_str());
+        int sw = MeasureText(sub, 14);
+        DrawText(sub, static_cast<int>(modalX + (modalW - sw) * 0.5f), static_cast<int>(modalY + 80.0f), 14, Colors::Zinc200);
+
+        float mBtnW = 185.0f;
+        float mBtnH = 38.0f;
+        float mBtnY = modalY + modalH - 56.0f;
+
+        if (Widgets::button("RETRY SECTOR", { modalX + 35.0f, mBtnY, mBtnW, mBtnH }, Colors::Amber500, Colors::Amber400, false, 14)) {
+            actions.restartGame = true;
+        }
+
+        if (Widgets::button("RETURN TO ORBIT", { modalX + modalW - 35.0f - mBtnW, mBtnY, mBtnW, mBtnH }, Colors::Zinc800, Colors::Zinc700, false, 14)) {
+            actions.returnToMenu = true;
+        }
+    }
+
+    return actions;
 }
 
-bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale, Vector2 mousePos) const {
+bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale, bool isCampaign) const {
+    return isMouseOver(screenW, screenH, guiScale, GetMousePosition(), isCampaign);
+}
+
+bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale, Vector2 mousePos, bool isCampaign) const {
     float s = (guiScale > 0.01f) ? guiScale : 1.0f;
 
     // 1. Top Header Bar (height is 70px in UI space)
@@ -419,12 +611,14 @@ bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale, Vector2 mous
         return true;
     }
 
-    // 3. Bottom Footer Control Bar (height is 92px in UI space)
-    float footerH = 92.0f * s;
-    float footerY = static_cast<float>(screenH) - footerH;
-    if (mousePos.y >= footerY && mousePos.y <= static_cast<float>(screenH) &&
-        mousePos.x >= 0.0f && mousePos.x <= static_cast<float>(screenW)) {
-        return true;
+    // 3. Bottom Footer Control Bar (height is 92px in UI space) - ONLY in non-campaign mode
+    if (!isCampaign) {
+        float footerH = 92.0f * s;
+        float footerY = static_cast<float>(screenH) - footerH;
+        if (mousePos.y >= footerY && mousePos.y <= static_cast<float>(screenH) &&
+            mousePos.x >= 0.0f && mousePos.x <= static_cast<float>(screenW)) {
+            return true;
+        }
     }
 
     // 4. Large Grid Warning Modal dialog
@@ -433,7 +627,7 @@ bool GameHUD::isMouseOver(int screenW, int screenH, float guiScale, Vector2 mous
     }
 
     // 5. Minimized Victory / Game Over stats banner
-    if (endModalDismissed) {
+    if (endModalDismissed && !isCampaign) {
         float bW = 440.0f * s;
         float bH = 36.0f * s;
         float bX = (static_cast<float>(screenW) - bW) * 0.5f;

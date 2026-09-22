@@ -32,6 +32,7 @@ public:
     Board() = default;
 
     void init(int dim, int size, int bombs, uint64_t seed);
+    void init(const BoardConfig& cfg) { init(cfg.dim, cfg.size, cfg.bombs, cfg.seed); }
     void reset();
     void generateBombs(uint64_t seed);
     void buildCache();

@@ -99,6 +99,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\app.cpp" />
     <ClCompile Include="src\core\board.cpp" />
+    <ClCompile Include="src\core\campaign.cpp" />
     <ClCompile Include="src\core\save_manager.cpp" />
     <ClCompile Include="src\core\ship.cpp" />
     <ClCompile Include="src\core\scout_ship.cpp" />
@@ -110,24 +111,29 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClCompile Include="src\render\asset_manager.cpp" />
     <ClCompile Include="src\render\camera_controller.cpp" />
     <ClCompile Include="src\render\particles.cpp" />
+    <ClCompile Include="src\render\planet_renderer.cpp" />
     <ClCompile Include="src\render\raylib_renderer.cpp" />
     <ClCompile Include="src\render\procedural_textures.cpp" />
     <ClCompile Include="src\render\scrap_system.cpp" />
     <ClCompile Include="src\audio\voice_manager.cpp" />
+    <ClCompile Include="src\audio\sound_manager.cpp" />
     <ClCompile Include="src\ui\widgets.cpp" />
     <ClCompile Include="src\ui\hud.cpp" />
     <ClCompile Include="src\ui\menu.cpp" />
     <ClCompile Include="src\ui\shop_menu.cpp" />
     <ClCompile Include="src\ui\roulette_ui.cpp" />
+    <ClCompile Include="src\ui\sector_editor.cpp" />
     <ClCompile Include="src\core\item.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app.hpp" />
     <ClInclude Include="src\audio\voice_manager.hpp" />
+    <ClInclude Include="src\audio\sound_manager.hpp" />
     <ClInclude Include="src\core\types.hpp" />
     <ClInclude Include="src\core\coord.hpp" />
     <ClInclude Include="src\core\bitboard.hpp" />
     <ClInclude Include="src\core\board.hpp" />
+    <ClInclude Include="src\core\campaign.hpp" />
     <ClInclude Include="src\core\item.hpp" />
     <ClInclude Include="src\core\save_manager.hpp" />
     <ClInclude Include="src\core\ship.hpp" />
@@ -147,6 +153,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\render\asset_manager.hpp" />
     <ClInclude Include="src\render\camera_controller.hpp" />
     <ClInclude Include="src\render\particles.hpp" />
+    <ClInclude Include="src\render\planet_renderer.hpp" />
     <ClInclude Include="src\render\raylib_renderer.hpp" />
     <ClInclude Include="src\render\procedural_textures.hpp" />
     <ClInclude Include="src\render\scrap_system.hpp" />
@@ -156,6 +163,7 @@ if exist "$(ProjectDir)steam_appid.txt" copy /Y "$(ProjectDir)steam_appid.txt" "
     <ClInclude Include="src\ui\menu.hpp" />
     <ClInclude Include="src\ui\shop_menu.hpp" />
     <ClInclude Include="src\ui\roulette_ui.hpp" />
+    <ClInclude Include="src\ui\sector_editor.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

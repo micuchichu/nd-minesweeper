@@ -7,6 +7,8 @@
 
 namespace minesweeper::core {
 
+class CampaignManager;
+
 struct SaveSlotMetadata {
     int slotIndex = 1;
     std::string slotName = "Save Slot";
@@ -50,6 +52,14 @@ struct GlobalSettings {
 
     int lastActiveSlot = 1;
     int controlMode = 0; // 0 = Mouse Follower, 1 = Keyboard / Controller
+
+    // Background sound / Music settings
+    bool bgmEnabled = true;
+    float bgmVolume = 0.20f;
+
+    // Sound Effects (SFX) settings
+    bool sfxEnabled = true;
+    float sfxVolume = 0.80f;
 };
 
 class SaveManager {
@@ -73,6 +83,12 @@ public:
     bool saveSlot(int slotIndex, const std::string& slotName, const core::Board& board, float timePlayed, uint64_t scrapCount);
     bool createSlot(int slotIndex, const std::string& slotName, const core::BoardConfig& cfg);
     bool deleteSlot(int slotIndex);
+
+    // Campaign Mode
+    bool hasCampaignSave() const;
+    bool loadCampaign(CampaignManager& campaign, float& timePlayed, uint64_t& scrapCount);
+    bool saveCampaign(const CampaignManager& campaign, float timePlayed, uint64_t scrapCount);
+    void deleteCampaignSave();
 
 private:
     std::string getSlotPath(int slotIndex) const;

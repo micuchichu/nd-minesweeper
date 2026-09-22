@@ -1,5 +1,6 @@
 #include "shop_menu.hpp"
 #include "theme.hpp"
+#include "../audio/sound_manager.hpp"
 #include <cmath>
 #include <cstdio>
 #include <algorithm>
@@ -183,6 +184,7 @@ bool ShopMenu::drawHoverMenu(
                 playerInv.addItem(slot.item);
                 slot.isPurchased = true;
                 purchasedItem = true;
+                audio::SoundManager::playButton();
             }
         }
 
@@ -262,6 +264,7 @@ bool ShopMenu::drawInventoryDock(
                 playerInv.selectedSlot = i;
             }
             itemClicked = true;
+            audio::SoundManager::playButton();
         }
 
         // Slot Background

@@ -5,6 +5,10 @@
 #include "../net/network_manager.hpp"
 #include <cstdint>
 
+namespace minesweeper::core {
+    class CampaignManager;
+}
+
 namespace minesweeper::ui {
 
 struct HUDActions {
@@ -41,9 +45,10 @@ public:
 
     void init(const core::BoardConfig& cfg);
     HUDActions drawAndProcess(int screenW, int screenH, const core::Board& board, float timePlayed, net::NetworkManager& net, bool isTransmitting = false, bool voiceEnabled = true, bool isPushToTalk = true);
+    HUDActions drawAndProcessCampaign(int screenW, int screenH, const core::CampaignManager& campaign, float timePlayed, net::NetworkManager& net, bool isTransmitting = false, bool voiceEnabled = true, bool isPushToTalk = true);
 
-    bool isMouseOver(int screenW, int screenH, float guiScale) const;
-    bool isMouseOver(int screenW, int screenH, float guiScale, Vector2 mousePos) const;
+    bool isMouseOver(int screenW, int screenH, float guiScale, bool isCampaign = false) const;
+    bool isMouseOver(int screenW, int screenH, float guiScale, Vector2 mousePos, bool isCampaign = false) const;
 };
 
 

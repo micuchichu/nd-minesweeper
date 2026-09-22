@@ -4,6 +4,8 @@
 #include "../render/raylib_renderer.hpp"
 #include "../net/steam_manager.hpp"
 #include "../core/save_manager.hpp"
+#include "../core/campaign.hpp"
+#include "../audio/sound_manager.hpp"
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
@@ -64,8 +66,8 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
 
         DrawText(title2, static_cast<int>(centerX - t2W * 0.5f + 4), static_cast<int>(centerY - 146), 70, Fade(BLACK, 0.85f));
         DrawText(title2, static_cast<int>(centerX - t2W * 0.5f), static_cast<int>(centerY - 150), 70, Colors::Amber500);
-    } else {
-        const char* subTitle = (currentScreen == MenuScreen::Play) ? "// SAVED WORLDS //"
+    } else if (currentScreen != MenuScreen::Campaign) {
+        const char* subTitle = (currentScreen == MenuScreen::Play) ? "// CUSTOM GAME • SAVED WORLDS //"
             : ((currentScreen == MenuScreen::NewSave) ? "// CONFIGURE NEW SAVE //"
             : ((currentScreen == MenuScreen::HostConfirm) ? "// HOST CO-OP LOBBY //"
             : ((currentScreen == MenuScreen::Join) ? "// JOIN MULTIPLAYER //"
@@ -83,20 +85,32 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     static bool nameInputActive = false;
 
     if (currentScreen == MenuScreen::Main) {
-        float panelW = 360.0f;
-        float panelH = 268.0f;
+        float panelW = 340.0f;
+        float panelH = 340.0f;
         float panelX = centerX - panelW * 0.5f;
-        float panelY = centerY - 54.0f;
+        float panelY = centerY - 65.0f;
 
-        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "COMMAND CONSOLE", Colors::Amber500);
+        Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "MAIN DIRECTIVE", Colors::Amber500);
 
         float mBtnW = panelW - 36.0f;
-        float mBtnH = 46.0f;
+        float mBtnH = 44.0f;
         float mBtnX = panelX + 18.0f;
-        float curBtnY = panelY + 48.0f;
+        float curBtnY = panelY + 44.0f;
         float btnGap = 8.0f;
 
-        if (Widgets::mindustryButton("PLAY", "START OR JOIN A GAME", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Amber500, false, 18)) {
+        if (Widgets::mindustryButton("CAMPAIGN", "CLEAR THE PLANET // SECTORS 01-04", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Amber500, false, 18)) {
+            currentScreen = MenuScreen::Campaign;
+            statusMessage.clear();
+            if (campaignManager) {
+                int fIdx = campaignManager->activeSectorIndex;
+                int sIdx = planetRenderer.getSectorIdxForFortress(fIdx);
+                campaignSelectedSector = (sIdx >= 0) ? sIdx : 0;
+            }
+            planetRenderer.focusSector(campaignSelectedSector);
+        }
+        curBtnY += mBtnH + btnGap;
+
+        if (Widgets::mindustryButton("CUSTOM GAME", "CUSTOM GRIDS // 2D - 4D FREE-PLAY", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Cyan500, false, 18)) {
             currentScreen = MenuScreen::Play;
             statusMessage.clear();
         }
@@ -108,7 +122,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         }
         curBtnY += mBtnH + btnGap;
 
-        if (Widgets::mindustryButton("SETTINGS", "SCALING & GRAPHICS", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Cyan500, false, 18)) {
+        if (Widgets::mindustryButton("SETTINGS", "SCALING & GRAPHICS", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Zinc400, false, 18)) {
             currentScreen = MenuScreen::Settings;
             statusMessage.clear();
         }
@@ -128,6 +142,393 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
 
         const char* verText = "DIMENSION SWEEPER v1.0.0";
         DrawText(verText, 16, screenH - 24, 12, Colors::Zinc600);
+    }
+    else if (currentScreen == MenuScreen::Campaign) {
+        float dt = GetFrameTime();
+        planetRenderer.update(dt);
+
+        Rectangle planetArea = { 0.0f, 0.0f, static_cast<float>(GetScreenWidth()), static_cast<float>(GetScreenHeight()) };
+        
+        Rectangle topLeftBox = { 24.0f, 24.0f, 220.0f, 168.0f };
+        Rectangle diffBox = { 24.0f, 202.0f, 220.0f, 58.0f };
+        float rightPanelW = 310.0f;
+        Rectangle rightPanel = { static_cast<float>(screenW) - rightPanelW - 24.0f, 24.0f, rightPanelW, static_cast<float>(screenH) - 48.0f };
+        Rectangle backBtnRec = { 24.0f, static_cast<float>(screenH) - 64.0f, 110.0f, 40.0f };
+
+        Vector2 uiMouse = Widgets::getUIMousePos();
+#if defined(_DEBUG) || !defined(NDEBUG)
+        Rectangle editorBtnRec = { 24.0f, 270.0f, 220.0f, 40.0f };
+        bool overEditorBtn = CheckCollisionPointRec(uiMouse, editorBtnRec);
+#else
+        bool overEditorBtn = false;
+#endif
+        bool overUI = CheckCollisionPointRec(uiMouse, topLeftBox) ||
+                      CheckCollisionPointRec(uiMouse, diffBox) ||
+                      overEditorBtn ||
+                      CheckCollisionPointRec(uiMouse, rightPanel) ||
+                      CheckCollisionPointRec(uiMouse, backBtnRec) ||
+                      showDifficultyModal;
+
+        if (!overUI || planetRenderer.isDragging) {
+            int clicked = planetRenderer.handleInput(planetArea, campaignHoveredSector);
+            if (clicked >= 0) {
+                campaignSelectedSector = clicked;
+                audio::SoundManager::playButton();
+            }
+        } else {
+            campaignHoveredSector = -1;
+        }
+
+        // 1. Exit 2D UI camera to render 3D low-poly faceted planet & starfield at 1:1 screen resolution
+        EndMode2D();
+
+        planetRenderer.drawGlobe(*campaignManager, campaignSelectedSector, campaignHoveredSector);
+        planetRenderer.drawSectorOverlays(*campaignManager, campaignSelectedSector, campaignHoveredSector);
+
+        // 2. Re-enter 2D UI camera so all HUD panels and buttons match Widgets::getUIMousePos() exactly
+        Camera2D uiCam = { 0 };
+        uiCam.zoom = Widgets::guiScale;
+        BeginMode2D(uiCam);
+
+        // -------------------------------------------------------------
+        // 1. TOP-LEFT PLANET LIST PANEL (Planetary System Lore)
+        // -------------------------------------------------------------
+        DrawRectangleRec(topLeftBox, Fade(Colors::Zinc950, 0.90f));
+        DrawRectangleLinesEx(topLeftBox, 1.5f, Colors::Zinc700);
+
+        struct PlanetEntry {
+            const char* name;
+            const char* tag;
+            Color iconCol;
+            bool isUnlocked;
+        };
+        PlanetEntry planets[3] = {
+            { "Tartarus-IV", "QUARANTINE MINING ARRAY", Color{ 239, 68, 68, 255 }, true },
+            { "Acheron-Prime", "SUB-CLUSTER FOUNDRY", Color{ 251, 146, 60, 255 }, false },
+            { "Caelum-VII", "CRYO-VAULT ARSENAL", Color{ 56, 189, 248, 255 }, false }
+        };
+
+        float entryH = 48.0f;
+        for (int p = 0; p < 3; ++p) {
+            float entryY = topLeftBox.y + 6.0f + static_cast<float>(p) * (entryH + 4.0f);
+            Rectangle eRec = { topLeftBox.x + 8.0f, entryY, topLeftBox.width - 16.0f, entryH };
+
+            bool isSelectedPlanet = (p == currentPlanetIdx);
+
+            if (isSelectedPlanet) {
+                DrawRectangleRec(eRec, Fade(Colors::Red600, 0.15f));
+                DrawRectangleLinesEx(eRec, 2.0f, Color{ 239, 68, 68, 255 }); // Red highlight box
+            }
+
+            Vector2 iconPos = { eRec.x + 18.0f, eRec.y + eRec.height * 0.5f };
+            DrawCircleV(iconPos, 10.0f, planets[p].iconCol);
+            DrawCircleLines(static_cast<int>(iconPos.x), static_cast<int>(iconPos.y), 10, WHITE);
+            DrawCircle(static_cast<int>(iconPos.x - 3), static_cast<int>(iconPos.y - 2), 2, Fade(BLACK, 0.45f));
+            DrawCircle(static_cast<int>(iconPos.x + 2), static_cast<int>(iconPos.y + 3), 1.5f, Fade(BLACK, 0.45f));
+
+            Color nameCol = planets[p].isUnlocked ? WHITE : Colors::Zinc500;
+            DrawText(planets[p].name, static_cast<int>(eRec.x + 36.0f), static_cast<int>(eRec.y + 8.0f), 15, nameCol);
+            DrawText(planets[p].tag, static_cast<int>(eRec.x + 36.0f), static_cast<int>(eRec.y + 26.0f), 9, Colors::Zinc400);
+
+            if (!planets[p].isUnlocked) {
+                DrawText("[LOCKED]", static_cast<int>(eRec.x + eRec.width - 56.0f), static_cast<int>(eRec.y + 18.0f), 9, Colors::Zinc600);
+            } else {
+                bool eHover = CheckCollisionPointRec(uiMouse, eRec);
+                if (eHover) {
+                    if (!isSelectedPlanet) DrawRectangleLinesEx(eRec, 1.0f, Colors::Zinc500);
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        currentPlanetIdx = p;
+                        audio::SoundManager::playButton();
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 2. PLANET INTEL BOX
+        // -------------------------------------------------------------
+        DrawRectangleRec(diffBox, Fade(Colors::Zinc950, 0.90f));
+        DrawRectangleLinesEx(diffBox, 1.5f, Colors::Zinc700);
+
+        // Tactical sensor radar icon
+        Vector2 radarC = { diffBox.x + 22.0f, diffBox.y + diffBox.height * 0.5f };
+        DrawCircleLines(static_cast<int>(radarC.x), static_cast<int>(radarC.y), 11, Colors::Amber500);
+        DrawCircle(static_cast<int>(radarC.x), static_cast<int>(radarC.y), 2, Colors::Amber400);
+        DrawLine(static_cast<int>(radarC.x), static_cast<int>(radarC.y - 11), static_cast<int>(radarC.x), static_cast<int>(radarC.y + 11), Fade(Colors::Amber500, 0.5f));
+        DrawLine(static_cast<int>(radarC.x - 11), static_cast<int>(radarC.y), static_cast<int>(radarC.x + 11), static_cast<int>(radarC.y), Fade(Colors::Amber500, 0.5f));
+
+        DrawText("PLANET INTEL", static_cast<int>(diffBox.x + 42.0f), static_cast<int>(diffBox.y + 10.0f), 14, Colors::Amber400);
+        DrawText("SECTOR TOPOLOGY & MANDATE", static_cast<int>(diffBox.x + 42.0f), static_cast<int>(diffBox.y + 27.0f), 10, Colors::Zinc400);
+        DrawText("VIEW DOSSIER >", static_cast<int>(diffBox.x + 42.0f), static_cast<int>(diffBox.y + 41.0f), 10, Colors::Cyan400);
+
+        bool diffHover = CheckCollisionPointRec(uiMouse, diffBox);
+        if (diffHover) {
+            DrawRectangleLinesEx(diffBox, 1.5f, Colors::Amber400);
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                showDifficultyModal = !showDifficultyModal;
+                audio::SoundManager::playButton();
+            }
+        }
+
+#if defined(_DEBUG) || !defined(NDEBUG)
+        if (Widgets::mindustryButton("[F6] SECTOR EDITOR", "DEV TACTICAL SUITE", editorBtnRec, Colors::Amber500, false, 12)) {
+            actions.toggleSectorEditor = true;
+        }
+#endif
+
+        // -------------------------------------------------------------
+        // 3. TOP-CENTER PLANETARY PROGRESS BAR
+        // -------------------------------------------------------------
+        float clearPct = campaignManager ? (campaignManager->planetClearPercentage * 100.0f) : 0.0f;
+        float leftEdge = topLeftBox.x + topLeftBox.width;
+        float centerGap = rightPanel.x - leftEdge;
+        float topBarW = std::clamp(centerGap - 32.0f, 160.0f, 230.0f);
+        float topBarH = 32.0f;
+        float topBarX = leftEdge + (centerGap - topBarW) * 0.5f;
+        float topBarY = 24.0f;
+
+        DrawRectangleRec({ topBarX, topBarY, topBarW, topBarH }, Fade(Colors::Zinc950, 0.90f));
+        DrawRectangleLinesEx({ topBarX, topBarY, topBarW, topBarH }, 1.5f, (clearPct >= 100.0f) ? Colors::Green400 : Colors::Amber500);
+
+        if (clearPct > 0.0f) {
+            float fillW = (topBarW - 4.0f) * std::clamp(clearPct / 100.0f, 0.0f, 1.0f);
+            DrawRectangleRec({ topBarX + 2.0f, topBarY + topBarH - 4.0f, fillW, 2.0f }, Colors::Green400);
+        }
+
+        const char* topBarText = TextFormat("TARTARUS-IV // %.1f%% SECURED", clearPct);
+        int tbTextW = MeasureText(topBarText, 11);
+        DrawText(topBarText, static_cast<int>(topBarX + (topBarW - tbTextW) * 0.5f), static_cast<int>(topBarY + 9.0f), 11, (clearPct >= 100.0f) ? Colors::Green400 : Colors::Zinc200);
+
+        // -------------------------------------------------------------
+        // 4. RIGHT-SIDE SELECTED SECTOR DOSSIER PANEL
+        // -------------------------------------------------------------
+        Widgets::mindustryPanel(rightPanel, "SECTOR TACTICAL INTEL", Colors::Amber500);
+
+        if (campaignSelectedSector < 0 || campaignSelectedSector >= static_cast<int>(planetRenderer.sectors.size())) {
+            campaignSelectedSector = 0;
+        }
+
+        const auto& hexSec = planetRenderer.sectors[campaignSelectedSector];
+        bool isFortress = hexSec.isFortress;
+        int fortressIdx = hexSec.fortressIdx;
+
+        const core::CampaignSector* sec = (isFortress && campaignManager) ? campaignManager->getSectorByIndex(fortressIdx) : nullptr;
+        bool isSecured = sec ? sec->isCleared : false;
+        bool isHostile = sec ? (sec->isUnlocked && !sec->isCleared) : (!isFortress ? false : (fortressIdx == 0));
+        bool isLocked = sec ? !sec->isUnlocked : false;
+
+        float rContentX = rightPanel.x + 20.0f;
+        float curY = rightPanel.y + 48.0f;
+
+        // Sector Codename & Status Badge
+        const char* codeStr = hexSec.codename.c_str();
+        Color codeCol = isFortress ? (isSecured ? Colors::Green400 : (isHostile ? Colors::Red400 : Colors::Zinc400)) : Colors::Cyan400;
+        DrawText(codeStr, static_cast<int>(rContentX), static_cast<int>(curY), 20, codeCol);
+
+        const char* badgeStr = isFortress ? (isSecured ? "[ SECURED ]" : (isHostile ? "[ ACTIVE THREAT ]" : "[ LOCKED ]")) : "[ TERRITORIAL HEX ]";
+        Color badgeCol = isFortress ? (isSecured ? Colors::Green400 : (isHostile ? Colors::Red400 : Colors::Zinc600)) : Colors::Cyan400;
+        int badgeW = MeasureText(badgeStr, 12);
+        DrawText(badgeStr, static_cast<int>(rightPanel.x + rightPanel.width - 20.0f - badgeW), static_cast<int>(curY + 4.0f), 12, badgeCol);
+        curY += 28.0f;
+
+        // Sector Name
+        const char* sTitle = hexSec.name.c_str();
+        DrawText(sTitle, static_cast<int>(rContentX), static_cast<int>(curY), 16, WHITE);
+        curY += 24.0f;
+
+        // Subtitle / Environment type
+        const char* subStr = hexSec.subtitle.c_str();
+        DrawText(subStr, static_cast<int>(rContentX), static_cast<int>(curY), 12, Colors::Zinc400);
+        curY += 20.0f;
+
+        // Horizontal divider
+        DrawLineEx({ rContentX, curY }, { rightPanel.x + rightPanel.width - 20.0f, curY }, 1.0f, Colors::Zinc800);
+        curY += 12.0f;
+
+        // Tactical Briefing lore text (word-wrapped)
+        std::string briefingStr;
+        if (sec) {
+            briefingStr = sec->loreBriefing;
+        } else {
+            briefingStr = "Unoccupied territorial sector on Tartarus-IV. Geodesic dual facet with basalt crust. Perimeter walls protect adjacent fortress zones.";
+        }
+
+        float maxLoreW = rightPanel.width - 40.0f;
+        std::vector<std::string> words;
+        std::string curWord;
+        for (char ch : briefingStr) {
+            if (ch == ' ') {
+                if (!curWord.empty()) { words.push_back(curWord); curWord.clear(); }
+            } else {
+                curWord += ch;
+            }
+        }
+        if (!curWord.empty()) words.push_back(curWord);
+
+        std::string curLine;
+        for (const auto& w : words) {
+            std::string testLine = curLine.empty() ? w : (curLine + " " + w);
+            if (MeasureText(testLine.c_str(), 11) > maxLoreW) {
+                DrawText(curLine.c_str(), static_cast<int>(rContentX), static_cast<int>(curY), 11, Colors::Zinc300);
+                curY += 15.0f;
+                curLine = w;
+            } else {
+                curLine = testLine;
+            }
+        }
+        if (!curLine.empty()) {
+            DrawText(curLine.c_str(), static_cast<int>(rContentX), static_cast<int>(curY), 11, Colors::Zinc300);
+            curY += 15.0f;
+        }
+        curY += 8.0f;
+
+        // Specs Grid Box
+        float boxW = rightPanel.width - 40.0f;
+        float boxH = 82.0f;
+        DrawRectangleRec({ rContentX, curY, boxW, boxH }, Fade(Colors::Zinc900, 0.70f));
+        DrawRectangleLinesEx({ rContentX, curY, boxW, boxH }, 1.0f, Colors::Zinc800);
+
+        if (sec) {
+            int gSize = sec->gridSize;
+            int bCount = sec->bombCount;
+            DrawText("FORTRESS MINEFIELD SPECIFICATIONS", static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 8.0f), 10, Colors::Amber400);
+            DrawText(TextFormat("Grid Dimension: %dx%d (%d cells)", gSize, gSize, gSize * gSize), static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 24.0f), 12, Colors::Zinc200);
+            DrawText(TextFormat("Threat Density: %d Subterranean Bombs", bCount), static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 42.0f), 12, Colors::Zinc300);
+            DrawText(TextFormat("Clearance Progress: %llu / %llu Safe Cells", sec->board.revealedCount, sec->board.safeCells()), static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 62.0f), 12, (isSecured ? Colors::Green400 : Colors::Amber300));
+        } else {
+            DrawText("TERRITORIAL SECTOR SPECIFICATIONS", static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 8.0f), 10, Colors::Cyan400);
+            DrawText(TextFormat("Topology: %zu-Sided Geodesic Facet", hexSec.corners.size()), static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 24.0f), 12, Colors::Zinc200);
+            DrawText("Geological Status: Volcanic Basalt & Obsidian Crust", static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 42.0f), 12, Colors::Zinc300);
+            DrawText("Perimeter Barrier: Heavy Encased Forcefield Wall", static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 62.0f), 12, Colors::Zinc400);
+        }
+        curY += boxH + 14.0f;
+
+        // Quick Fortress Selector Steppers (< PREV / NEXT >)
+        float navW = (boxW - 10.0f) * 0.5f;
+        float navH = 28.0f;
+        int activeFIdx = isFortress ? fortressIdx : -1;
+        int numF = campaignManager ? static_cast<int>(campaignManager->sectors.size()) : 4;
+        if (Widgets::button("< PREV FORTRESS", { rContentX, curY, navW, navH }, Colors::Zinc800, Colors::Zinc700, (activeFIdx == 0), 12)) {
+            int prevF = (activeFIdx <= 0) ? (numF - 1) : (activeFIdx - 1);
+            int sIdx = planetRenderer.getSectorIdxForFortress(prevF);
+            if (sIdx >= 0) {
+                campaignSelectedSector = sIdx;
+                planetRenderer.focusSector(campaignSelectedSector);
+            }
+        }
+        if (Widgets::button("NEXT FORTRESS >", { rContentX + navW + 10.0f, curY, navW, navH }, Colors::Zinc800, Colors::Zinc700, (activeFIdx == numF - 1), 12)) {
+            int nextF = (activeFIdx < 0) ? 0 : (activeFIdx + 1);
+            if (nextF >= numF) nextF = 0;
+            int sIdx = planetRenderer.getSectorIdxForFortress(nextF);
+            if (sIdx >= 0) {
+                campaignSelectedSector = sIdx;
+                planetRenderer.focusSector(campaignSelectedSector);
+            }
+        }
+        curY += navH + 18.0f;
+
+        // Action Launch Buttons
+        float actBtnH = 40.0f;
+        float actGap = 8.0f;
+
+        if (isFortress) {
+            // DEPLOY SOLO
+            bool canLaunch = !isLocked;
+            if (Widgets::mindustryButton(isSecured ? "RE-ENTER SECTOR" : "DEPLOY SOLO", canLaunch ? "LAUNCH SHIP INTO SECTOR" : "REQUIRES CLEARANCE", { rContentX, curY, boxW, actBtnH }, Colors::Green500, !canLaunch, 16)) {
+                if (canLaunch) {
+                    if (campaignManager) {
+                        campaignManager->activeSectorIndex = fortressIdx;
+                    }
+                    actions.playCampaignSolo = true;
+                }
+            }
+            curY += actBtnH + actGap;
+
+            // HOST CO-OP
+            if (Widgets::mindustryButton("HOST CO-OP", canLaunch ? "LAUNCH HOST WITH STEAM LOBBY" : "REQUIRES CLEARANCE", { rContentX, curY, boxW, actBtnH }, Colors::Amber500, !canLaunch, 16)) {
+                if (canLaunch) {
+                    if (campaignManager) {
+                        campaignManager->activeSectorIndex = fortressIdx;
+                    }
+                    actions.playCampaignHost = true;
+                }
+            }
+            curY += actBtnH + actGap;
+
+            // JOIN CO-OP
+            if (Widgets::mindustryButton("JOIN CO-OP", "ENTER REMOTE HOST SERVER", { rContentX, curY, boxW, actBtnH }, Colors::Cyan500, false, 16)) {
+                currentScreen = MenuScreen::Join;
+            }
+            curY += actBtnH + actGap;
+        } else {
+            // Jump to nearest active campaign fortress
+            int targetF = campaignManager ? campaignManager->activeSectorIndex : 0;
+            int sIdx = planetRenderer.getSectorIdxForFortress(targetF);
+            if (Widgets::mindustryButton("TARGET PRIMARY FORTRESS", "FOCUS ACTIVE CAMPAIGN FORTRESS", { rContentX, curY, boxW, actBtnH }, Colors::Amber500, false, 16)) {
+                if (sIdx >= 0) {
+                    campaignSelectedSector = sIdx;
+                    planetRenderer.focusSector(campaignSelectedSector);
+                }
+            }
+            curY += actBtnH + actGap;
+
+            // Seismic Sensor ping
+            if (Widgets::mindustryButton("SEISMIC SCAN", "SURVEY PERIMETER TECTONICS", { rContentX, curY, boxW, actBtnH }, Colors::Cyan500, false, 16)) {
+                audio::SoundManager::playIncrement();
+            }
+            curY += actBtnH + actGap;
+
+            // JOIN CO-OP
+            if (Widgets::mindustryButton("JOIN CO-OP", "ENTER REMOTE HOST SERVER", { rContentX, curY, boxW, actBtnH }, Colors::Cyan500, false, 16)) {
+                currentScreen = MenuScreen::Join;
+            }
+            curY += actBtnH + actGap;
+        }
+
+        // RESET CAMPAIGN
+        if (confirmingResetCampaign) {
+            if (Widgets::button("CONFIRM RESET ALL PROGRESS?", { rContentX, curY, boxW, 32.0f }, Colors::Red500, Colors::Red600, false, 12)) {
+                actions.resetCampaign = true;
+                confirmingResetCampaign = 0;
+            }
+        } else {
+            if (Widgets::button("RESET CAMPAIGN", { rContentX, curY, boxW, 32.0f }, Colors::Zinc900, Colors::Zinc700, false, 12)) {
+                confirmingResetCampaign = 1;
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 5. BOTTOM-LEFT BACK BUTTON
+        // -------------------------------------------------------------
+        if (Widgets::button("< BACK", backBtnRec, Colors::Zinc800, Colors::Zinc600, false, 14)) {
+            currentScreen = MenuScreen::Main;
+            confirmingResetCampaign = 0;
+            showDifficultyModal = false;
+        }
+
+        // -------------------------------------------------------------
+        // 6. PLANET INTEL MODAL OVERLAY (if active)
+        // -------------------------------------------------------------
+        if (showDifficultyModal) {
+            float mWidth = 440.0f;
+            float mHeight = 250.0f;
+            float mX = (screenW - mWidth) * 0.5f;
+            float mY = (screenH - mHeight) * 0.5f;
+
+            DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.65f));
+            Widgets::mindustryPanel({ mX, mY, mWidth, mHeight }, "PLANETARY INTEL // TARTARUS-IV", Colors::Amber500);
+
+            DrawText("EXPEDITION MANDATE: QUARANTINE CLEANSING", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 48.0f), 13, Colors::Amber400);
+            DrawText("• Surface Topology: Dual Geodesic Hexagonal Lattice (42 Sectors)", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 72.0f), 12, Colors::Zinc200);
+            DrawText("• 4 Strategic Fortress Hubs with Subterranean Minefields", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 92.0f), 12, Colors::Zinc200);
+            DrawText("• 38 Territorial Hexes Encased in Heavy Basalt Barrier Walls", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 112.0f), 12, Colors::Zinc200);
+            DrawText("• Full Orbital Support: Casino Supply Ships & Scrap Collection", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 132.0f), 12, Colors::Zinc200);
+            DrawText("• Clear All 4 Primary Fortresses to Secure the Planet", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 152.0f), 12, Colors::Green400);
+
+            if (Widgets::button("CLOSE INTEL", { mX + (mWidth - 120.0f) * 0.5f, mY + mHeight - 44.0f, 120.0f, 32.0f }, Colors::Zinc800, Colors::Zinc700, false, 13)) {
+                showDifficultyModal = false;
+            }
+        }
     }
     else if (currentScreen == MenuScreen::Play) {
         float panelW = 680.0f;
@@ -659,9 +1060,9 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
     }
     else if (currentScreen == MenuScreen::Settings) {
         float panelW = 620.0f;
-        float panelH = 460.0f;
+        float panelH = 500.0f;
         float panelX = centerX - panelW * 0.5f;
-        float panelY = centerY - 230.0f;
+        float panelY = centerY - 250.0f;
 
         Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "SYSTEM SETTINGS", Colors::Cyan500);
 
@@ -737,27 +1138,70 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             DrawText("KEYBOARD [ F11 ]", static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 13, Colors::Cyan400);
         }
         else if (activeSettingsTab == SettingsTab::Audio) {
-            // Section: Proximity Voice Chat
+            // 1. Background Music / Ambience
+            Widgets::checkbox("ENABLE BACKGROUND SOUNDS", { rowX, curY }, bgmEnabled, false);
+            curY += 28.0f;
+
+            if (bgmEnabled) {
+                Rectangle bgmVolRect = { rowX + 16.0f, curY, rowW - 32.0f, 22.0f };
+                Widgets::slider("MUSIC VOLUME", bgmVolRect, bgmVolume, 0.0f, 1.0f, 160, "%.0f%%", true);
+                curY += 28.0f;
+
+                if (!bgmStatusText.empty()) {
+                    DrawText(bgmStatusText.c_str(), static_cast<int>(rowX + 16.0f), static_cast<int>(curY + 3.0f), 12, Colors::Zinc400);
+                    float skipBtnW = 100.0f;
+                    float skipBtnH = 22.0f;
+                    Rectangle skipRect = { rowX + rowW - skipBtnW - 16.0f, curY, skipBtnW, skipBtnH };
+                    if (Widgets::button("SKIP TRACK", skipRect, Colors::Zinc800, Colors::Cyan400, false, 11)) {
+                        actions.bgmSkip = true;
+                    }
+                    curY += 28.0f;
+                }
+            } else {
+                DrawText("Background ambience and music are disabled.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
+                curY += 24.0f;
+            }
+
+            DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
+            curY += 12.0f;
+
+            // 2. Sound Effects (SFX)
+            Widgets::checkbox("ENABLE SOUND EFFECTS (SFX)", { rowX, curY }, sfxEnabled, false);
+            curY += 28.0f;
+
+            if (sfxEnabled) {
+                Rectangle sfxVolRect = { rowX + 16.0f, curY, rowW - 32.0f, 22.0f };
+                Widgets::slider("SFX VOLUME", sfxVolRect, sfxVolume, 0.0f, 1.0f, 160, "%.0f%%", true);
+                curY += 28.0f;
+            } else {
+                DrawText("Gameplay and interface sound effects are muted.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
+                curY += 24.0f;
+            }
+
+            DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
+            curY += 12.0f;
+
+            // 3. Section: Proximity Voice Chat
             Widgets::checkbox("ENABLE PROXIMITY VOICE CHAT", { rowX, curY }, voiceSettings.enabled, false);
-            curY += 30.0f;
+            curY += 26.0f;
 
             if (voiceSettings.enabled) {
                 Widgets::checkbox("SPATIAL 3D/4D PROXIMITY ATTENUATION", { rowX + 16.0f, curY }, voiceSettings.proximity, false);
-                curY += 28.0f;
+                curY += 24.0f;
 
                 Widgets::checkbox("PUSH-TO-TALK (HOLD [V] TO SPEAK)", { rowX + 16.0f, curY }, voiceSettings.pushToTalk, false);
-                curY += 32.0f;
+                curY += 26.0f;
 
-                Rectangle volRect = { rowX + 16.0f, curY, rowW - 32.0f, 24.0f };
+                Rectangle volRect = { rowX + 16.0f, curY, rowW - 32.0f, 22.0f };
                 Widgets::slider("VOICE VOLUME", volRect, voiceSettings.voiceVolume, 0.0f, 1.5f, 160, "%.0f%%", true);
-                curY += 30.0f;
+                curY += 26.0f;
 
-                Rectangle micRect = { rowX + 16.0f, curY, rowW - 32.0f, 24.0f };
+                Rectangle micRect = { rowX + 16.0f, curY, rowW - 32.0f, 22.0f };
                 Widgets::slider("MIC INPUT GAIN", micRect, voiceSettings.micGain, 0.5f, 2.5f, 160, "%.0f%%", true);
-                curY += 32.0f;
+                curY += 26.0f;
 
                 // Live Microphone Level Meter
-                DrawText("MIC TEST LEVEL:", static_cast<int>(rowX + 16.0f), static_cast<int>(curY + 3.0f), 15, Colors::Zinc300);
+                DrawText("MIC TEST LEVEL:", static_cast<int>(rowX + 16.0f), static_cast<int>(curY + 3.0f), 13, Colors::Zinc300);
                 float meterX = rowX + 180.0f;
                 float meterW = rowW - 200.0f;
                 float meterH = 14.0f;
@@ -771,18 +1215,18 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
                     Color meterCol = (levelClamped > 0.85f) ? Colors::Red500 : ((levelClamped > 0.6f) ? Colors::Amber500 : Colors::Green500);
                     DrawRectangleRec({ meterX + 2.0f, meterY + 2.0f, (meterW - 4.0f) * levelClamped, meterH - 4.0f }, meterCol);
                 }
-                curY += 28.0f;
+                curY += 22.0f;
             } else {
-                DrawText("Voice chat is disabled. No audio capture or playback will occur.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 13, Colors::Zinc500);
-                curY += 36.0f;
+                DrawText("Voice chat is disabled. No audio capture or playback will occur.", static_cast<int>(rowX + 28.0f), static_cast<int>(curY), 12, Colors::Zinc500);
+                curY += 24.0f;
             }
 
             DrawLineEx({ rowX, curY }, { rowX + rowW, curY }, 1.0f, Colors::PanelBorder);
-            curY += 14.0f;
+            curY += 10.0f;
 
-            DrawText("PUSH-TO-TALK KEY", static_cast<int>(rowX), static_cast<int>(curY), 13, Colors::Zinc400);
-            int valW = MeasureText("KEYBOARD [ V ]", 13);
-            DrawText("KEYBOARD [ V ]", static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 13, Colors::Cyan400);
+            DrawText("PUSH-TO-TALK KEY", static_cast<int>(rowX), static_cast<int>(curY), 12, Colors::Zinc400);
+            int valW = MeasureText("KEYBOARD [ V ]", 12);
+            DrawText("KEYBOARD [ V ]", static_cast<int>(rowX + rowW - valW), static_cast<int>(curY), 12, Colors::Cyan400);
         }
         else if (activeSettingsTab == SettingsTab::Controls) {
             // 1. Movement Mode Toggle

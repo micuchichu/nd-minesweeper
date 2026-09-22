@@ -1,0 +1,40 @@
+{
+  "id": 3,
+  "name": "Sector 03: Chemical Basin",
+  "codename": "CHEMICAL-BASIN",
+  "subtitle": "Bio-Coolant Reservoirs & Waste Sump",
+  "description": "Volatile cooling fluid sump. Mine clusters here have corroded into proximity detonators. Orbital launcher gantry clamps remain locked until full chemical stability is secured.",
+  "threatLevel": 3,
+  "map": {
+    "gridSize": 12,
+    "bombCount": 28,
+    "dimension": 2,
+    "wallThickness": 28.0,
+    "westMargin": 180.0,
+    "eastMargin": 180.0,
+    "vertMargin": 120.0,
+    "spawnPos": [80.0, -1.0],
+    "stagingDepotPos": [90.0, -1.0],
+    "stagingDepotTitle": "LOGISTICS & REFUELING DOCK // CONTRACTOR HUB",
+    "customWalls": []
+  },
+  "progression": {
+    "isUnlocked": false,
+    "unlocks": [4],
+    "hasExitLauncher": true,
+    "launcherTargetSector": 4,
+    "launcherOpeningHeight": 140.0
+  },
+  "ships": {
+    "allowShops": true,
+    "allowRoulette": true,
+    "allowedShipTypes": ["shop1", "shop2", "shop3", "roulette"],
+    "shopDockPos": [85.0, 90.0],
+    "rouletteDockPos": [85.0, -70.0],
+    "merchantSpawns": [
+      { "type": "shop2", "x": 85.0, "y": 90.0, "angle": 0.0 },
+      { "type": "shop1", "x": 85.0, "y": 290.0, "angle": 0.0 },
+      { "type": "roulette", "x": 85.0, "y": -70.0, "angle": 0.0 }
+    ]
+  }
+}

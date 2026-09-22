@@ -9,7 +9,9 @@ set(SOURCES
     src/main.cpp
     src/app.cpp
     src/audio/voice_manager.cpp
+    src/audio/sound_manager.cpp
     src/core/board.cpp
+    src/core/campaign.cpp
     src/core/save_manager.cpp
     src/core/ship.cpp
     src/core/scout_ship.cpp
@@ -21,6 +23,7 @@ set(SOURCES
     src/render/asset_manager.cpp
     src/render/camera_controller.cpp
     src/render/particles.cpp
+    src/render/planet_renderer.cpp
     src/render/raylib_renderer.cpp
     src/render/procedural_textures.cpp
     src/render/scrap_system.cpp
@@ -29,6 +32,7 @@ set(SOURCES
     src/ui/menu.cpp
     src/ui/shop_menu.cpp
     src/ui/roulette_ui.cpp
+    src/ui/sector_editor.cpp
     src/core/item.cpp
 )
 

@@ -2,10 +2,9 @@
 
 #include "merchant_ship.hpp"
 #include "item.hpp"
+#include "ship_config.hpp"
 
 namespace minesweeper::core {
-
-struct ShipConfig;
 
 // ============================================================================
 // Shop Freighter Ship Class (Docked Merchant)
@@ -15,6 +14,8 @@ public:
     ShopInventory inventory;
     int shopTier = 0;
     int itemCapacity = 0;
+    std::string typeId = "shop1";
+    ShipConfig config;
 
     ShopShip();
     ShopShip(Texture2D texture, Vector2 anchor, const std::string& shipName = "SHOP");

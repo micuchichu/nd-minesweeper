@@ -1,5 +1,6 @@
 #include "roulette_ui.hpp"
 #include "theme.hpp"
+#include "../audio/sound_manager.hpp"
 #include <cmath>
 #include <cstdio>
 #include <algorithm>
@@ -198,6 +199,7 @@ bool RouletteUI::draw(
             DrawText(lbl, static_cast<int>(sRect.x + (bW - lW) * 0.5f), static_cast<int>(sRect.y + 5), 10, Fade(sHover ? WHITE : Colors::Zinc300, alpha));
 
             if (sHover && mousePressed) {
+                audio::SoundManager::playIncrement();
                 if (isMax) {
                     customBetAmount = scrapCount;
                 } else if (mult > 0.0f) {
@@ -258,10 +260,10 @@ bool RouletteUI::draw(
         Color border = isActive ? activeBorder : (isHover ? Colors::Zinc500 : Colors::Zinc700);
 
         DrawRectangleRec(rect, Fade(bg, alpha));
-        DrawRectangleLinesEx(rect, isActive ? 1.5f : 1.0f, Fade(border, alpha));
+        DrawRectangleLinesEx(rect, isActive ? 2.0f : 1.0f, Fade(border, alpha));
 
-        int tW = MeasureText(title, fontSize);
-        float textX = rect.x + (rect.width - tW) * 0.5f;
+        int textW = MeasureText(title, fontSize);
+        float textX = rect.x + (rect.width - textW) * 0.5f;
         float textY = rect.y + (rect.height - fontSize) * 0.5f;
         DrawText(title, static_cast<int>(textX), static_cast<int>(textY), fontSize, Fade(WHITE, alpha));
 
@@ -275,6 +277,7 @@ bool RouletteUI::draw(
         }
 
         if (isHover && mousePressed) {
+            audio::SoundManager::playButton();
             if (isActive) {
                 // Clicking same bet increments by customBetAmount
                 uint64_t newAmount = shop.roulette.activeBet.amount + customBetAmount;
@@ -434,6 +437,7 @@ bool RouletteUI::draw(
         DrawRectangleLinesEx(clearBtn, 1.0f, Fade(clearHover ? Colors::Zinc500 : Colors::Zinc700, alpha));
         DrawText("CLEAR", static_cast<int>(clearBtn.x + 16), static_cast<int>(clearBtn.y + 12), 11, Fade(canClear ? Colors::Zinc200 : Colors::Zinc600, alpha));
         if (clearHover && mousePressed) {
+            audio::SoundManager::playButton();
             shop.roulette.activeBet = {};
             actionTaken = true;
         }
@@ -481,6 +485,7 @@ bool RouletteUI::draw(
         DrawText(spinLabel.c_str(), static_cast<int>(spinBtn.x + (spinBtn.width - spW) * 0.5f), static_cast<int>(spinBtn.y + 11), 12, Fade(WHITE, alpha));
 
         if (spinHover && mousePressed) {
+            audio::SoundManager::playButton();
             // Deduct bet amount immediately
             scrapCount -= shop.roulette.activeBet.amount;
             shop.startSpin(-1, 5.0f);

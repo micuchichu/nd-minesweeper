@@ -4,17 +4,20 @@
 #include "../net/network_manager.hpp"
 #include "../audio/voice_manager.hpp"
 #include "../core/types.hpp"
+#include "../render/planet_renderer.hpp"
 #include <string>
 
 namespace minesweeper::core {
     class SaveManager;
+    class CampaignManager;
 }
 
 namespace minesweeper::ui {
 
 enum class MenuScreen {
     Main,
-    Play, // Save / World selection
+    Campaign,
+    Play, // Save / World selection (Custom Game)
     NewSave,
     HostConfirm,
     Join,
@@ -34,6 +37,9 @@ enum class SettingsTab {
 };
 
 struct MenuActions {
+    bool playCampaignSolo = false;
+    bool playCampaignHost = false;
+    bool resetCampaign = false;
     bool playSolo = false;
     bool hostGame = false;
     bool joinGame = false;
@@ -49,6 +55,10 @@ struct MenuActions {
     bool fpsLimitChanged = false;
     bool guiScaleChanged = false;
     bool controlModeChanged = false;
+    bool bgmSkip = false;
+#if defined(_DEBUG) || !defined(NDEBUG)
+    bool toggleSectorEditor = false;
+#endif
 };
 
 class MainMenu {
@@ -68,6 +78,13 @@ public:
     float guiScale = 1.0f;
     int controlMode = 0; // 0 = Mouse Follower, 1 = Keyboard / Controller
 
+    bool bgmEnabled = true;
+    float bgmVolume = 0.20f;
+    std::string bgmStatusText = "";
+
+    bool sfxEnabled = true;
+    float sfxVolume = 0.80f;
+
     int cursorSkin = 0;
     int flagSkin = 0;
     int playerSkin = 0;
@@ -76,8 +93,17 @@ public:
     Texture2D scrapTexture{};
 
     core::SaveManager* saveManager = nullptr;
+    core::CampaignManager* campaignManager = nullptr;
     int selectedSlot = 1;
     int confirmingDeleteSlot = 0;
+    int confirmingResetCampaign = 0;
+
+    // Mindustry 3D Planet Selection
+    render::PlanetRenderer planetRenderer;
+    int campaignSelectedSector = 0;
+    int campaignHoveredSector = -1;
+    int currentPlanetIdx = 0; // 0 = Tartarus-IV (Active), 1 = Acheron-Prime (Locked), 2 = Caelum-VII (Locked)
+    bool showDifficultyModal = false;
 
     // New Save Configuration fields
     char newSaveNameBuf[32] = "World 1";
