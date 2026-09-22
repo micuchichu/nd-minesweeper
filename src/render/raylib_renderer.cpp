@@ -2293,6 +2293,167 @@ void RaylibRenderer::drawCampaignLaunchers(const core::CampaignManager& campaign
     const auto& launcher = curSec->exitLauncher;
 
     float centerY = launcher.openingBounds.y + launcher.openingBounds.height * 0.5f;
+    float wallX = launcher.barrierBounds.x;
+    float wallThick = launcher.barrierBounds.width;
+
+    // Load orbital launcher sprite from assets/buildings/launcher.png
+    Texture2D launcherTex = AssetManager::instance().loadTexture("assets/buildings/launcher.png");
+
+    if (launcherTex.id != 0) {
+        float scale = launcher.openingBounds.height / static_cast<float>(launcherTex.height);
+        float drawW = static_cast<float>(launcherTex.width) * scale;
+        float drawH = static_cast<float>(launcherTex.height) * scale;
+        float drawY = centerY - drawH * 0.5f;
+
+        // In launcher.png (128x64), the front nose and front struts start at X=33.
+        // Aligning pixel 33 with wallX places the entrance flush with the sector interior,
+        // and extends the main accelerator hull out into space.
+        float drawX = wallX - 33.0f * scale;
+
+        // 1. Reinforced Approach Runway & Launch Apron inside the sector (X < wallX)
+        float apronW = 90.0f;
+        float apronH = launcher.openingBounds.height - 16.0f;
+        Rectangle approachApron = {
+            wallX - apronW,
+            centerY - apronH * 0.5f,
+            apronW,
+            apronH
+        };
+        DrawRectangleRec(approachApron, Fade(ui::Colors::Zinc950, 0.85f));
+        DrawRectangleLinesEx(approachApron, 1.5f, Fade(ui::Colors::Zinc700, 0.60f));
+
+        // Hazard borders on top and bottom edges of the approach runway
+        float stripeW = 12.0f;
+        int stripeCount = static_cast<int>(apronW / stripeW);
+        for (int i = 0; i < stripeCount; i += 2) {
+            DrawRectangleRec({ approachApron.x + i * stripeW, approachApron.y, stripeW, 4.0f }, Fade(ui::Colors::Amber500, 0.45f));
+            DrawRectangleRec({ approachApron.x + i * stripeW, approachApron.y + apronH - 4.0f, stripeW, 4.0f }, Fade(ui::Colors::Amber500, 0.45f));
+        }
+
+        // Runway grid lines on approach floor
+        for (float gx = approachApron.x + 15.0f; gx < wallX; gx += 20.0f) {
+            DrawLineEx({ gx, approachApron.y + 4.0f }, { gx, approachApron.y + apronH - 4.0f }, 1.0f, Fade(ui::Colors::Zinc800, 0.45f));
+        }
+
+        // Structural wall mounting brackets where the launcher pylons bolt into the east wall
+        DrawRectangleRec({ wallX - 4.0f, centerY - drawH * 0.5f - 4.0f, wallThick + 8.0f, 16.0f }, ui::Colors::Zinc800);
+        DrawRectangleLinesEx({ wallX - 4.0f, centerY - drawH * 0.5f - 4.0f, wallThick + 8.0f, 16.0f }, 1.0f, ui::Colors::Zinc600);
+
+        DrawRectangleRec({ wallX - 4.0f, centerY + drawH * 0.5f - 12.0f, wallThick + 8.0f, 16.0f }, ui::Colors::Zinc800);
+        DrawRectangleLinesEx({ wallX - 4.0f, centerY + drawH * 0.5f - 12.0f, wallThick + 8.0f, 16.0f }, 1.0f, ui::Colors::Zinc600);
+
+        // 2. Render the Orbital Launcher Building Sprite
+        Rectangle srcRec = { 0.0f, 0.0f, static_cast<float>(launcherTex.width), static_cast<float>(launcherTex.height) };
+        Rectangle dstRec = { drawX, drawY, drawW, drawH };
+        DrawTexturePro(launcherTex, srcRec, dstRec, { 0.0f, 0.0f }, 0.0f, WHITE);
+
+        // Key feature anchor positions in world space
+        Vector2 corePos = { drawX + 77.0f * scale, centerY };
+        Vector2 exhaustPos = { drawX + 107.0f * scale, centerY };
+        Vector2 frontStrutUpper = { drawX + 38.0f * scale, drawY + 12.0f * scale };
+        Vector2 frontStrutLower = { drawX + 38.0f * scale, drawY + 52.0f * scale };
+        Vector2 rearPylonUpper = { drawX + 92.0f * scale, drawY + 8.0f * scale };
+        Vector2 rearPylonLower = { drawX + 92.0f * scale, drawY + 56.0f * scale };
+
+        // 3. Dynamic Visual FX based on Online/Offline State
+        if (launcher.openAnim < 0.98f) {
+            // Locked / Offline:
+            float clampFraction = (1.0f - launcher.openAnim);
+            float barrierH = (launcher.openingBounds.height - 20.0f) * clampFraction;
+            Rectangle activeBarrier = {
+                wallX - 3.0f,
+                centerY - barrierH * 0.5f,
+                wallThick,
+                barrierH
+            };
+
+            // Magnetic laser restraint grid across entrance bay
+            DrawRectangleRec(activeBarrier, Fade(ui::Colors::Red500, clampFraction * (0.35f + 0.20f * pulse)));
+            DrawRectangleLinesEx(activeBarrier, 1.5f, Fade(ui::Colors::Red400, 0.85f));
+
+            // Scanning restraint laser lines
+            for (int l = 0; l < 3; ++l) {
+                float scanY = activeBarrier.y + std::fmod(curTime * 40.0f + l * (activeBarrier.height / 3.0f), std::max(1.0f, activeBarrier.height));
+                DrawLineEx({ activeBarrier.x, scanY }, { activeBarrier.x + activeBarrier.width, scanY }, 1.5f, Fade(ui::Colors::Red300, 0.75f));
+            }
+
+            // Red warning strobes on pylons
+            DrawCircleV(rearPylonUpper, 4.0f, ui::Colors::Red500);
+            DrawCircleV(rearPylonLower, 4.0f, ui::Colors::Red500);
+            DrawCircleV(frontStrutUpper, 3.0f, ui::Colors::Red500);
+            DrawCircleV(frontStrutLower, 3.0f, ui::Colors::Red500);
+            DrawCircleLines(static_cast<int>(rearPylonUpper.x), static_cast<int>(rearPylonUpper.y), 7.0f + 2.5f * pulse, Fade(ui::Colors::Red400, 0.65f));
+            DrawCircleLines(static_cast<int>(rearPylonLower.x), static_cast<int>(rearPylonLower.y), 7.0f + 2.5f * pulse, Fade(ui::Colors::Red400, 0.65f));
+
+            // Idle core: subtle dim purple glow
+            DrawCircleGradient(static_cast<int>(corePos.x), static_cast<int>(corePos.y), 16.0f * scale, Fade(Color{ 180, 50, 220, 255 }, 0.25f + 0.10f * pulse), Fade(Color{ 100, 20, 150, 0 }, 0.0f));
+
+            // HUD Offline warning badge (positioned nicely inside the approach runway)
+            if (activeBarrier.height > 25.0f) {
+                const char* lockMsg = "[ ORBITAL LAUNCHER // OFFLINE ]";
+                int fSize = 10;
+                int tW = MeasureText(lockMsg, fSize);
+                int textX = static_cast<int>(approachApron.x + (approachApron.width - tW) * 0.5f);
+                int textY = static_cast<int>(centerY - 6.0f);
+                DrawRectangle(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Zinc950, 0.92f));
+                DrawRectangleLines(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Red400, 0.7f));
+                DrawText(lockMsg, textX, textY, fSize, ui::Colors::Red200);
+            }
+        } else {
+            // Online / Armed:
+            // 1. High-energy pulsating purple core
+            float coreGlowRadius = 24.0f * scale * (0.85f + 0.15f * pulse);
+            DrawCircleGradient(static_cast<int>(corePos.x), static_cast<int>(corePos.y), coreGlowRadius, Fade(Color{ 230, 80, 255, 255 }, 0.70f + 0.30f * pulse), Fade(Color{ 140, 20, 200, 0 }, 0.0f));
+            DrawCircleV(corePos, 4.0f * scale, Color{ 255, 220, 255, 255 });
+
+            // 2. Animated launch runway chevrons leading straight into the entrance bay
+            for (int c = 0; c < 4; ++c) {
+                float cx = (approachApron.x + 12.0f) + c * 20.0f;
+                float cPulse = 0.5f + 0.5f * std::sin(curTime * 8.0f - c * 0.8f);
+                Vector2 p1 = { cx - 6.0f, centerY - 14.0f };
+                Vector2 p2 = { cx + 6.0f, centerY };
+                Vector2 p3 = { cx - 6.0f, centerY + 14.0f };
+                Color chevCol = Fade(ui::Colors::Cyan400, 0.30f + 0.70f * cPulse);
+                DrawLineEx(p1, p2, 2.0f, chevCol);
+                DrawLineEx(p3, p2, 2.0f, chevCol);
+            }
+
+            // 3. Exhaust plasma jet / magnetic induction trails venting to space
+            float jetLen = 55.0f * (0.8f + 0.2f * pulse);
+            DrawTriangle(
+                { exhaustPos.x, exhaustPos.y - 12.0f * scale },
+                { exhaustPos.x + jetLen, exhaustPos.y },
+                { exhaustPos.x, exhaustPos.y + 12.0f * scale },
+                Fade(ui::Colors::Cyan400, 0.55f + 0.35f * pulse)
+            );
+            DrawTriangle(
+                { exhaustPos.x, exhaustPos.y - 6.0f * scale },
+                { exhaustPos.x + jetLen * 0.65f, exhaustPos.y },
+                { exhaustPos.x, exhaustPos.y + 6.0f * scale },
+                Fade(Color{ 255, 255, 255, 255 }, 0.80f)
+            );
+
+            // 4. Green ready strobes on mounting pylons
+            DrawCircleV(rearPylonUpper, 4.0f, ui::Colors::Green400);
+            DrawCircleV(rearPylonLower, 4.0f, ui::Colors::Green400);
+            DrawCircleV(frontStrutUpper, 3.0f, ui::Colors::Green400);
+            DrawCircleV(frontStrutLower, 3.0f, ui::Colors::Green400);
+            DrawCircleLines(static_cast<int>(rearPylonUpper.x), static_cast<int>(rearPylonUpper.y), 7.0f + 2.5f * pulse, Fade(ui::Colors::Green400, 0.75f));
+            DrawCircleLines(static_cast<int>(rearPylonLower.x), static_cast<int>(rearPylonLower.y), 7.0f + 2.5f * pulse, Fade(ui::Colors::Green400, 0.75f));
+
+            // 5. Tactical HUD Ready badge (positioned nicely inside the approach runway)
+            const char* readyMsg = "[ ORBITAL LAUNCHER // READY ]";
+            int fSize = 10;
+            int tW = MeasureText(readyMsg, fSize);
+            int textX = static_cast<int>(approachApron.x + (approachApron.width - tW) * 0.5f);
+            int textY = static_cast<int>(centerY - 6.0f);
+            DrawRectangle(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Zinc950, 0.92f));
+            DrawRectangleLines(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Cyan400, 0.75f));
+            DrawText(readyMsg, textX, textY, fSize, Fade(ui::Colors::Cyan300, 0.85f + 0.15f * pulse));
+        }
+        return;
+    }
+
     float trackStartX = launcher.openingBounds.x - 70.0f; // Inside sector apron
     float trackEndX = launcher.openingBounds.x + launcher.openingBounds.width + 40.0f; // Beyond wall
     float trackW = trackEndX - trackStartX;
