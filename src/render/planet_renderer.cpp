@@ -5,10 +5,19 @@
 #include <algorithm>
 #include <map>
 
+#if defined(_WIN32)
 #ifdef GetMouseRay
 #undef GetMouseRay
 #endif
 extern "C" RLAPI Ray GetMouseRay(Vector2 mousePosition, Camera camera);
+static inline Ray castCameraRay(Vector2 pos, Camera cam) {
+    return GetMouseRay(pos, cam);
+}
+#else
+static inline Ray castCameraRay(Vector2 pos, Camera cam) {
+    return GetScreenToWorldRay(pos, cam);
+}
+#endif
 
 namespace minesweeper::render {
 
@@ -377,7 +386,7 @@ int PlanetRenderer::handleInput(Rectangle viewport, int& outHoveredSector) {
 
     if (insideViewport) {
         // 1. Precise 3D ray collision on the planet sphere
-        Ray mouseRay = GetMouseRay(mousePos, camera);
+        Ray mouseRay = castCameraRay(mousePos, camera);
         RayCollision hit = GetRayCollisionSphere(mouseRay, { 0.0f, 0.0f, 0.0f }, PLANET_RADIUS);
 
         if (hit.hit) {
