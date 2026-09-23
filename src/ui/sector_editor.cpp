@@ -120,7 +120,9 @@ void SectorEditor::applyLive(core::CampaignManager& campaignMgr) {
 void SectorEditor::saveToDisk(core::CampaignManager& campaignMgr) {
     syncConfigFromBuffers();
     campaignMgr.rebuildSector(selectedSectorIndex, workingConfig);
-    if (core::CampaignManager::saveSectorConfigToJson(workingConfig)) {
+    const auto* pCfg = campaignMgr.getActivePlanetConfig();
+    std::string targetDir = pCfg ? pCfg->sectorDataPath : "assets/campaign/sectors/planet1";
+    if (core::CampaignManager::saveSectorConfigToJson(workingConfig, targetDir)) {
         toastMessage = TextFormat("SAVED TO DISK (sector_%02d.json)", workingConfig.id);
         toastColor = Colors::Green400;
         toastTimer = 3.0f;
@@ -133,7 +135,9 @@ void SectorEditor::saveToDisk(core::CampaignManager& campaignMgr) {
 }
 
 void SectorEditor::reloadFromDisk(core::CampaignManager& campaignMgr) {
-    auto freshConfigs = core::CampaignManager::loadSectorConfigs();
+    const auto* pCfg = campaignMgr.getActivePlanetConfig();
+    std::string targetDir = pCfg ? pCfg->sectorDataPath : "assets/campaign/sectors/planet1";
+    auto freshConfigs = core::CampaignManager::loadSectorConfigs(targetDir);
     for (const auto& cfg : freshConfigs) {
         if (cfg.id == workingConfig.id) {
             workingConfig = cfg;

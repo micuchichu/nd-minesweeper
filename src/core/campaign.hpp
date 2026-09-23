@@ -102,6 +102,7 @@ struct PlanetConfig {
     uint64_t seed = 12345;
     bool isUnlocked = true;
     std::vector<int> unlocksPlanets;
+    std::string sectorDataPath = "assets/campaign/sectors/planet1";
     std::vector<int> sectors = { 1, 2, 3, 4 };
     PlanetVisualConfig visual;
     std::vector<std::string> intelDossier;
@@ -201,7 +202,7 @@ public:
     const PlanetConfig* getPlanetById(int planetId) const;
     PlanetConfig* getPlanetById(int planetId);
 
-    static std::vector<SectorConfig> loadSectorConfigs(const std::string& directoryPath = "assets/campaign/sectors");
+    static std::vector<SectorConfig> loadSectorConfigs(const std::string& directoryPath = "assets/campaign/sectors/planet1");
     static bool parseSectorJson(const std::string& jsonContent, SectorConfig& outConfig);
     static std::string exportSectorConfigToJson(const SectorConfig& cfg);
     static bool saveSectorConfigToJson(const SectorConfig& cfg, const std::string& filePath = "");

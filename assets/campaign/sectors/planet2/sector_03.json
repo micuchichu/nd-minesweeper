@@ -1,0 +1,39 @@
+{
+  "id": 3,
+  "name": "Sector 03: Magma Conduit Siphon",
+  "codename": "ACHERON-03",
+  "subtitle": "Geothermal Cooling Arrays",
+  "description": "Dense network of pressurized coolant pipes and subterranean tectonic siphons.",
+  "threatLevel": 2,
+  "map": {
+    "gridSize": 9,
+    "bombCount": 16,
+    "dimension": 2,
+    "wallThickness": 28,
+    "westMargin": 200,
+    "eastMargin": 200,
+    "vertMargin": 200,
+    "spawnPos": [80, 380],
+    "stagingDepotPos": [90, 380],
+    "stagingDepotTitle": "COOLING SUB-STATION",
+    "customWalls": []
+  },
+  "progression": {
+    "isUnlocked": false,
+    "unlocks": [4],
+    "hasExitLauncher": true,
+    "launcherTargetSector": 4,
+    "launcherOpeningHeight": 140
+  },
+  "ships": {
+    "allowShops": true,
+    "allowRoulette": true,
+    "allowedShipTypes": ["shop1", "roulette"],
+    "shopDockPos": [85, 90],
+    "rouletteDockPos": [85, -70],
+    "merchantSpawns": [
+      { "type": "shop1", "pos": [85, 90], "heading": 0 },
+      { "type": "roulette", "pos": [85, -70], "heading": 0 }
+    ]
+  }
+}

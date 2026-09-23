@@ -1,0 +1,38 @@
+{
+  "id": 3,
+  "name": "Sector 03: Superconductor Silo",
+  "codename": "CAELUM-03",
+  "subtitle": "Magnetic Accelerator Arrays",
+  "description": "Massive superconducting coils maintain localized quantum stasis fields over hazardous ordnance.",
+  "threatLevel": 3,
+  "map": {
+    "gridSize": 11,
+    "bombCount": 20,
+    "dimension": 2,
+    "wallThickness": 28,
+    "westMargin": 200,
+    "eastMargin": 200,
+    "vertMargin": 200,
+    "spawnPos": [80, 440],
+    "stagingDepotPos": [90, 440],
+    "stagingDepotTitle": "COIL CONTROL MATRIX",
+    "customWalls": []
+  },
+  "progression": {
+    "isUnlocked": false,
+    "unlocks": [4],
+    "hasExitLauncher": true,
+    "launcherTargetSector": 4,
+    "launcherOpeningHeight": 140
+  },
+  "ships": {
+    "allowShops": true,
+    "allowRoulette": false,
+    "allowedShipTypes": ["shop2"],
+    "shopDockPos": [85, 90],
+    "rouletteDockPos": [85, -70],
+    "merchantSpawns": [
+      { "type": "shop2", "pos": [85, 90], "heading": 0 }
+    ]
+  }
+}

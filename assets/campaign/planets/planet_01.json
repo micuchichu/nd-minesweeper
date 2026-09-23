@@ -10,6 +10,7 @@
   "seed": 12345,
   "isUnlocked": true,
   "unlocksPlanets": [2],
+  "sectorDataPath": "assets/campaign/sectors/planet1",
   "sectors": [1, 2, 3, 4],
   "visual": {
     "iconColor": [239, 68, 68],

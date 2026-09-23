@@ -343,9 +343,14 @@ std::vector<SectorConfig> CampaignManager::loadSectorConfigs(const std::string& 
     namespace fs = std::filesystem;
     std::vector<std::string> candidateDirs = {
         directoryPath,
-        "assets/campaign/sectors",
-        "../assets/campaign/sectors",
-        "../../assets/campaign/sectors"
+        "assets/" + directoryPath,
+        "../assets/" + directoryPath,
+        "../../assets/" + directoryPath,
+        "../" + directoryPath,
+        "../../" + directoryPath,
+        "assets/campaign/sectors/planet1",
+        "../assets/campaign/sectors/planet1",
+        "../../assets/campaign/sectors/planet1"
     };
 
     std::vector<SectorConfig> result;
@@ -360,6 +365,20 @@ std::vector<SectorConfig> CampaignManager::loadSectorConfigs(const std::string& 
                     files.push_back(entry.path());
                 }
             }
+
+            // Fallback: If no .json files were found directly in p (e.g. legacy assets/campaign/sectors path),
+            // check for planet1 subfolder
+            if (files.empty()) {
+                fs::path p1 = p / "planet1";
+                if (fs::exists(p1, ec) && fs::is_directory(p1, ec)) {
+                    for (const auto& entry : fs::directory_iterator(p1, ec)) {
+                        if (entry.is_regular_file(ec) && entry.path().extension() == ".json") {
+                            files.push_back(entry.path());
+                        }
+                    }
+                }
+            }
+
             std::sort(files.begin(), files.end());
 
             for (const auto& f : files) {
@@ -470,7 +489,7 @@ std::string CampaignManager::exportSectorConfigToJson(const SectorConfig& cfg) {
 
 bool CampaignManager::saveSectorConfigToJson(const SectorConfig& cfg, const std::string& customPath) {
     std::string jsonStr = exportSectorConfigToJson(cfg);
-    if (!customPath.empty()) {
+    if (!customPath.empty() && customPath.size() > 5 && customPath.substr(customPath.size() - 5) == ".json") {
         std::ofstream ofs(customPath);
         if (ofs.is_open()) {
             ofs << jsonStr;
@@ -482,16 +501,23 @@ bool CampaignManager::saveSectorConfigToJson(const SectorConfig& cfg, const std:
     char fname[64];
     std::snprintf(fname, sizeof(fname), "sector_%02d.json", cfg.id);
 
+    std::string baseDir = customPath.empty() ? "assets/campaign/sectors/planet1" : customPath;
     const std::vector<std::string> candidateDirs = {
-        "assets/campaign/sectors",
-        "../assets/campaign/sectors",
-        "../../assets/campaign/sectors"
+        baseDir,
+        "assets/" + baseDir,
+        "../assets/" + baseDir,
+        "../../assets/" + baseDir,
+        "../" + baseDir,
+        "../../" + baseDir,
+        "assets/campaign/sectors/planet1",
+        "../assets/campaign/sectors/planet1",
+        "../../assets/campaign/sectors/planet1"
     };
 
     bool savedAny = false;
     for (const auto& dir : candidateDirs) {
         std::error_code ec;
-        if (std::filesystem::exists(dir, ec)) {
+        if (std::filesystem::exists(dir, ec) && std::filesystem::is_directory(dir, ec)) {
             std::string fullPath = dir + "/" + fname;
             std::ofstream ofs(fullPath);
             if (ofs.is_open()) {
@@ -542,6 +568,7 @@ std::vector<PlanetConfig> CampaignManager::getDefaultPlanetConfigs() {
     p1.seed = 12345;
     p1.isUnlocked = true;
     p1.unlocksPlanets = { 2 };
+    p1.sectorDataPath = "assets/campaign/sectors/planet1";
     p1.sectors = { 1, 2, 3, 4 };
     p1.visual.iconColor = Color{ 239, 68, 68, 255 };
     p1.visual.atmosphereColor = Color{ 244, 63, 94, 255 };
@@ -579,6 +606,7 @@ std::vector<PlanetConfig> CampaignManager::getDefaultPlanetConfigs() {
     p2.seed = 54321;
     p2.isUnlocked = false;
     p2.unlocksPlanets = { 3 };
+    p2.sectorDataPath = "assets/campaign/sectors/planet2";
     p2.sectors = { 1, 2, 3, 4 };
     p2.visual.iconColor = Color{ 251, 146, 60, 255 };
     p2.visual.atmosphereColor = Color{ 251, 146, 60, 255 };
@@ -615,6 +643,7 @@ std::vector<PlanetConfig> CampaignManager::getDefaultPlanetConfigs() {
     p3.seed = 98765;
     p3.isUnlocked = false;
     p3.unlocksPlanets = {};
+    p3.sectorDataPath = "assets/campaign/sectors/planet3";
     p3.sectors = { 1, 2, 3, 4 };
     p3.visual.iconColor = Color{ 56, 189, 248, 255 };
     p3.visual.atmosphereColor = Color{ 56, 189, 248, 255 };
@@ -658,6 +687,7 @@ bool CampaignManager::parsePlanetJson(const std::string& jsonContent, PlanetConf
     if (root.contains("threatLevel")) outConfig.threatLevel = root["threatLevel"].asInt(outConfig.threatLevel);
     if (root.contains("seed")) outConfig.seed = static_cast<uint64_t>(root["seed"].asInt(static_cast<int>(outConfig.seed)));
     if (root.contains("isUnlocked")) outConfig.isUnlocked = root["isUnlocked"].asBool(outConfig.isUnlocked);
+    if (root.contains("sectorDataPath")) outConfig.sectorDataPath = root["sectorDataPath"].asString(outConfig.sectorDataPath);
 
     if (root.contains("unlocksPlanets") && root["unlocksPlanets"].isArray()) {
         outConfig.unlocksPlanets.clear();
@@ -720,6 +750,7 @@ std::string CampaignManager::exportPlanetConfigToJson(const PlanetConfig& cfg) {
         ss << cfg.unlocksPlanets[i];
     }
     ss << "],\n";
+    ss << "  \"sectorDataPath\": \"" << escapeJsonString(cfg.sectorDataPath) << "\",\n";
     ss << "  \"sectors\": [";
     for (size_t i = 0; i < cfg.sectors.size(); ++i) {
         if (i > 0) ss << ", ";
@@ -951,7 +982,8 @@ bool CampaignManager::selectPlanet(int planetIdx) {
     missionDirective = p.missionDirective;
     loreBackground = p.description;
 
-    auto allSectorConfigs = loadSectorConfigs();
+    std::string sPath = p.sectorDataPath.empty() ? "assets/campaign/sectors/planet1" : p.sectorDataPath;
+    auto allSectorConfigs = loadSectorConfigs(sPath);
     if (allSectorConfigs.empty()) {
         allSectorConfigs = getDefaultSectorConfigs();
     }

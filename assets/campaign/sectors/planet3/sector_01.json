@@ -1,0 +1,36 @@
+{
+  "id": 1,
+  "name": "Sector 01: Glacial Permafrost Approach",
+  "codename": "CAELUM-01",
+  "subtitle": "Sub-Zero Staging Zone",
+  "description": "Glacial entry coordinates. Surface temperatures approach absolute zero, causing sensor calibration drift.",
+  "threatLevel": 3,
+  "map": {
+    "gridSize": 9,
+    "bombCount": 14,
+    "dimension": 2,
+    "wallThickness": 28,
+    "westMargin": 180,
+    "eastMargin": 180,
+    "vertMargin": 180,
+    "spawnPos": [80, 360],
+    "stagingDepotPos": [80, 360],
+    "stagingDepotTitle": "PERMAFROST STAGING LZ",
+    "customWalls": []
+  },
+  "progression": {
+    "isUnlocked": true,
+    "unlocks": [2],
+    "hasExitLauncher": true,
+    "launcherTargetSector": 2,
+    "launcherOpeningHeight": 140
+  },
+  "ships": {
+    "allowShops": false,
+    "allowRoulette": false,
+    "allowedShipTypes": ["shop1", "shop2", "shop3"],
+    "shopDockPos": [85, 70],
+    "rouletteDockPos": [85, -70],
+    "merchantSpawns": []
+  }
+}

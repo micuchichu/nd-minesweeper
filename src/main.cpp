@@ -2259,19 +2259,22 @@ static int runCampaignTests() {
         }
 
         // Verify Planet 1 (Tartarus-IV)
-        if (loadedPlanets[0].id != 1 || loadedPlanets[0].name != "Tartarus-IV" || !loadedPlanets[0].isUnlocked) {
+        if (loadedPlanets[0].id != 1 || loadedPlanets[0].name != "Tartarus-IV" || !loadedPlanets[0].isUnlocked ||
+            loadedPlanets[0].sectorDataPath != "assets/campaign/sectors/planet1") {
             std::cerr << "  [FAIL] Planet 01 (Tartarus-IV) configuration mismatch in loaded assets!" << std::endl;
             return 81;
         }
 
         // Verify Planet 2 (Acheron-Prime)
-        if (loadedPlanets[1].id != 2 || loadedPlanets[1].name != "Acheron-Prime" || loadedPlanets[1].threatLevel != 2) {
+        if (loadedPlanets[1].id != 2 || loadedPlanets[1].name != "Acheron-Prime" || loadedPlanets[1].threatLevel != 2 ||
+            loadedPlanets[1].sectorDataPath != "assets/campaign/sectors/planet2") {
             std::cerr << "  [FAIL] Planet 02 (Acheron-Prime) configuration mismatch in loaded assets!" << std::endl;
             return 82;
         }
 
         // Verify Planet 3 (Caelum-VII)
-        if (loadedPlanets[2].id != 3 || loadedPlanets[2].name != "Caelum-VII" || loadedPlanets[2].threatLevel != 3) {
+        if (loadedPlanets[2].id != 3 || loadedPlanets[2].name != "Caelum-VII" || loadedPlanets[2].threatLevel != 3 ||
+            loadedPlanets[2].sectorDataPath != "assets/campaign/sectors/planet3") {
             std::cerr << "  [FAIL] Planet 03 (Caelum-VII) configuration mismatch in loaded assets!" << std::endl;
             return 83;
         }
@@ -2283,7 +2286,8 @@ static int runCampaignTests() {
             std::cerr << "  [FAIL] Failed to parse exported planet JSON string!" << std::endl;
             return 84;
         }
-        if (roundtripP.id != 2 || roundtripP.name != "Acheron-Prime" || roundtripP.visual.surfaceTones.size() != loadedPlanets[1].visual.surfaceTones.size()) {
+        if (roundtripP.id != 2 || roundtripP.name != "Acheron-Prime" || roundtripP.sectorDataPath != loadedPlanets[1].sectorDataPath ||
+            roundtripP.visual.surfaceTones.size() != loadedPlanets[1].visual.surfaceTones.size()) {
             std::cerr << "  [FAIL] Planet JSON roundtrip data mismatch!" << std::endl;
             return 85;
         }
@@ -2295,7 +2299,13 @@ static int runCampaignTests() {
             std::cerr << "  [FAIL] Default active planet mismatch! Name=" << mgr.planetName << std::endl;
             return 86;
         }
+        // Verify planet 1 loaded its own sectors from planet1/
+        if (mgr.sectors.empty() || mgr.sectors[0].codename != "OUTPOST-ALPHA") {
+            std::cerr << "  [FAIL] Planet 1 failed to load its own sectors! Got codename=" << (mgr.sectors.empty() ? "NONE" : mgr.sectors[0].codename) << std::endl;
+            return 861;
+        }
 
+        // Switch to Planet 2 (Acheron-Prime) and verify it loaded its distinct sectors
         bool switched = mgr.selectPlanet(1);
         if (!switched || mgr.activePlanetIndex != 1 || mgr.planetName != "Acheron-Prime") {
             std::cerr << "  [FAIL] Failed to switch active planet to Acheron-Prime!" << std::endl;
@@ -2305,6 +2315,17 @@ static int runCampaignTests() {
         if (!activeP || activeP->name != "Acheron-Prime") {
             std::cerr << "  [FAIL] getActivePlanetConfig mismatch after switching!" << std::endl;
             return 88;
+        }
+        if (mgr.sectors.empty() || mgr.sectors[0].codename != "ACHERON-01") {
+            std::cerr << "  [FAIL] Planet 2 failed to load its own distinct sectors! Got codename=" << (mgr.sectors.empty() ? "NONE" : mgr.sectors[0].codename) << std::endl;
+            return 881;
+        }
+
+        // Switch to Planet 3 (Caelum-VII) and verify it loaded its distinct sectors
+        bool switchedP3 = mgr.selectPlanet(2);
+        if (!switchedP3 || mgr.sectors.empty() || mgr.sectors[0].codename != "CAELUM-01") {
+            std::cerr << "  [FAIL] Planet 3 failed to load its own distinct sectors! Got codename=" << (mgr.sectors.empty() ? "NONE" : mgr.sectors[0].codename) << std::endl;
+            return 882;
         }
 
         // 4. Test PlanetRenderer dynamic biome and palette application
@@ -2341,7 +2362,7 @@ static int runCampaignTests() {
             return 92;
         }
 
-        std::cout << "  [PASS] Test 14: Data-driven planet JSON parsing, multi-planet selection, dynamic biome palettes, and unlock progression verified." << std::endl;
+        std::cout << "  [PASS] Test 14: Data-driven planet JSON parsing, sectorDataPath routing, multi-planet selection, dynamic biome palettes, and unlock progression verified." << std::endl;
     }
 
     std::cout << "[TEST-CAMPAIGN] ALL CAMPAIGN TESTS PASSED!" << std::endl;

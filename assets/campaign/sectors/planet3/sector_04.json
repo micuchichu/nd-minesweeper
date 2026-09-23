@@ -1,0 +1,39 @@
+{
+  "id": 4,
+  "name": "Sector 04: Apex Orbital Bastion",
+  "codename": "CAELUM-04",
+  "subtitle": "Core Defense Citadel",
+  "description": "The crown installation of Caelum-VII. Neutralization eliminates all defense grid overrides across the sub-cluster.",
+  "threatLevel": 3,
+  "map": {
+    "gridSize": 12,
+    "bombCount": 24,
+    "dimension": 2,
+    "wallThickness": 28,
+    "westMargin": 220,
+    "eastMargin": 220,
+    "vertMargin": 220,
+    "spawnPos": [80, 480],
+    "stagingDepotPos": [90, 480],
+    "stagingDepotTitle": "CITADEL PINNACLE",
+    "customWalls": []
+  },
+  "progression": {
+    "isUnlocked": false,
+    "unlocks": [],
+    "hasExitLauncher": true,
+    "launcherTargetSector": -1,
+    "launcherOpeningHeight": 140
+  },
+  "ships": {
+    "allowShops": true,
+    "allowRoulette": true,
+    "allowedShipTypes": ["shop3", "roulette"],
+    "shopDockPos": [85, 90],
+    "rouletteDockPos": [85, -70],
+    "merchantSpawns": [
+      { "type": "shop3", "pos": [85, 90], "heading": 0 },
+      { "type": "roulette", "pos": [85, -70], "heading": 0 }
+    ]
+  }
+}

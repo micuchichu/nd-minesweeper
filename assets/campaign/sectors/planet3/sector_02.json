@@ -1,0 +1,40 @@
+{
+  "id": 2,
+  "name": "Sector 02: Cryo-Vault Repository",
+  "codename": "CAELUM-02",
+  "subtitle": "Arsenal Deep Storage & Black Market Dock",
+  "description": "Subterranean military research repository. Black market logistics runners operate clandestine supply docks.",
+  "threatLevel": 3,
+  "map": {
+    "gridSize": 10,
+    "bombCount": 17,
+    "dimension": 2,
+    "wallThickness": 28,
+    "westMargin": 200,
+    "eastMargin": 200,
+    "vertMargin": 200,
+    "spawnPos": [80, 400],
+    "stagingDepotPos": [90, 400],
+    "stagingDepotTitle": "BLACK MARKET CRYO DOCK",
+    "customWalls": []
+  },
+  "progression": {
+    "isUnlocked": false,
+    "unlocks": [3],
+    "hasExitLauncher": true,
+    "launcherTargetSector": 3,
+    "launcherOpeningHeight": 140
+  },
+  "ships": {
+    "allowShops": true,
+    "allowRoulette": true,
+    "allowedShipTypes": ["shop1", "shop2", "shop3", "roulette"],
+    "shopDockPos": [85, 90],
+    "rouletteDockPos": [85, -70],
+    "merchantSpawns": [
+      { "type": "shop3", "pos": [85, 90], "heading": 0 },
+      { "type": "shop1", "pos": [85, 300], "heading": 0 },
+      { "type": "roulette", "pos": [85, -70], "heading": 0 }
+    ]
+  }
+}
