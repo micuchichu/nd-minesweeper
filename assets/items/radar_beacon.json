@@ -1,0 +1,9 @@
+{
+  "id": "radar_beacon",
+  "name": "RADAR BEACON",
+  "description": "Deployable • Emits sonar ping showing 5x5 sub-grid mine count",
+  "tier": 3,
+  "cost": 60,
+  "icon": "assets/items/radar.png",
+  "durability": 1.0
+}

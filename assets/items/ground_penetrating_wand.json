@@ -1,0 +1,9 @@
+{
+  "id": "ground_penetrating_wand",
+  "name": "GP-WAND",
+  "description": "Active • Safely reveals target tile or auto-flags if mine",
+  "tier": 2,
+  "cost": 30,
+  "icon": "assets/items/radar.png",
+  "durability": 1.0
+}

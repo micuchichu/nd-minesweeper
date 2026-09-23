@@ -63,6 +63,8 @@ struct SectorConfig {
     int gridSize = 8;
     int bombCount = 10;
     int dimension = 2;
+    TerrainShape terrainShape = TerrainShape::PerlinIsland;
+    std::string terrainShapeName = "PerlinIsland";
     float wallThickness = 28.0f;
     float westMargin = 180.0f;
     float eastMargin = 180.0f;
@@ -167,11 +169,13 @@ struct CampaignSector {
     OrbitalLauncher exitLauncher;
     bool hasExitLauncher = true;
     SectorConfig config;
+    TerrainShape terrainShape = TerrainShape::PerlinIsland;
+    std::string terrainShapeName = "PerlinIsland";
 
     bool containsWorldPos(Vector2 pos) const;
     bool containsGridWorldPos(Vector2 pos) const;
-    Vector2 getCellWorldPosition(size_t cellIndex, float cellSize = 40.0f) const;
-    int64_t getCellIndexAtWorldPos(Vector2 worldPos, float cellSize = 40.0f) const;
+    Vector2 getCellWorldPosition(size_t cellIndex, float cellSize = 30.0f) const;
+    int64_t getCellIndexAtWorldPos(Vector2 worldPos, float cellSize = 30.0f) const;
 };
 
 class CampaignManager {

@@ -9,6 +9,7 @@
     "gridSize": 10,
     "bombCount": 18,
     "dimension": 2,
+    "terrainShape": "CellularAutomata",
     "wallThickness": 28.0,
     "westMargin": 180.0,
     "eastMargin": 180.0,

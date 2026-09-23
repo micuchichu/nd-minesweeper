@@ -1,0 +1,9 @@
+{
+  "id": "blast_shield",
+  "name": "BLAST SHIELD",
+  "description": "Passive • Absorbs 1 mine blast with knockback",
+  "tier": 2,
+  "cost": 50,
+  "icon": "assets/items/bubbles.png",
+  "durability": 1.0
+}

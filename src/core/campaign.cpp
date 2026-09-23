@@ -73,7 +73,7 @@ bool CampaignSector::containsWorldPos(Vector2 pos) const {
 }
 
 bool CampaignSector::containsGridWorldPos(Vector2 pos) const {
-    float boardWidth = gridSize * 40.0f;
+    float boardWidth = gridSize * 30.0f;
     Rectangle gridRect = { gridOffset.x, gridOffset.y, boardWidth, boardWidth };
     return CheckCollisionPointRec(pos, gridRect);
 }
@@ -97,7 +97,9 @@ int64_t CampaignSector::getCellIndexAtWorldPos(Vector2 worldPos, float cellSize)
     int x = static_cast<int>((worldPos.x - gridOffset.x) / cellSize);
     int y = static_cast<int>((worldPos.y - gridOffset.y) / cellSize);
     if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) return -1;
-    return static_cast<int64_t>(y * gridSize + x);
+    int64_t idx = static_cast<int64_t>(y * gridSize + x);
+    if (board.hasTerrainMask && board.isVoid(static_cast<size_t>(idx))) return -1;
+    return idx;
 }
 
 CampaignManager::CampaignManager() {
@@ -122,7 +124,8 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s1.launcherTargetSector = 2;
     s1.allowShops = false;
     s1.allowRoulette = false;
-    s1.stagingDepotTitle = "OUTPOST LZ // RECON DEPLOYMENT ZONE";
+    s1.terrainShape = TerrainShape::PerlinIsland;
+    s1.terrainShapeName = "PerlinIsland";
     list.push_back(s1);
 
     SectorConfig s2;
@@ -134,6 +137,8 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s2.threatLevel = 2;
     s2.gridSize = 10;
     s2.bombCount = 18;
+    s2.terrainShape = TerrainShape::CellularAutomata;
+    s2.terrainShapeName = "CellularAutomata";
     s2.isUnlocked = false;
     s2.unlocks = { 3 };
     s2.hasExitLauncher = true;
@@ -157,6 +162,8 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s3.threatLevel = 3;
     s3.gridSize = 12;
     s3.bombCount = 28;
+    s3.terrainShape = TerrainShape::VoronoiFaultLine;
+    s3.terrainShapeName = "VoronoiFaultLine";
     s3.isUnlocked = false;
     s3.unlocks = { 4 };
     s3.hasExitLauncher = true;
@@ -180,6 +187,8 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s4.threatLevel = 4;
     s4.gridSize = 14;
     s4.bombCount = 42;
+    s4.terrainShape = TerrainShape::PerlinIsland;
+    s4.terrainShapeName = "PerlinIsland";
     s4.isUnlocked = false;
     s4.unlocks = {};
     s4.hasExitLauncher = false;
@@ -268,6 +277,40 @@ bool CampaignManager::parseSectorJson(const std::string& jsonContent, SectorConf
                     wall.isCorridor = wVal["isCorridor"].asBool(false);
                     outConfig.customWalls.push_back(wall);
                 }
+            }
+        }
+
+        bool hasTerrainShape = false;
+        if (mapVal.contains("terrainShape")) {
+            std::string ts = mapVal["terrainShape"].asString("");
+            if (!ts.empty()) {
+                outConfig.terrainShapeName = ts;
+                if (ts == "PerlinIsland" || ts == "perlin" || ts == "island") {
+                    outConfig.terrainShape = TerrainShape::PerlinIsland;
+                    hasTerrainShape = true;
+                } else if (ts == "CellularAutomata" || ts == "cave" || ts == "caves" || ts == "automata") {
+                    outConfig.terrainShape = TerrainShape::CellularAutomata;
+                    hasTerrainShape = true;
+                } else if (ts == "VoronoiFaultLine" || ts == "fault" || ts == "chasm" || ts == "voronoi") {
+                    outConfig.terrainShape = TerrainShape::VoronoiFaultLine;
+                    hasTerrainShape = true;
+                } else if (ts == "Rectangle" || ts == "square") {
+                    outConfig.terrainShape = TerrainShape::Rectangle;
+                    hasTerrainShape = true;
+                }
+            }
+        }
+
+        if (!hasTerrainShape) {
+            if (outConfig.id % 3 == 1) {
+                outConfig.terrainShape = TerrainShape::PerlinIsland;
+                outConfig.terrainShapeName = "PerlinIsland";
+            } else if (outConfig.id % 3 == 2) {
+                outConfig.terrainShape = TerrainShape::CellularAutomata;
+                outConfig.terrainShapeName = "CellularAutomata";
+            } else {
+                outConfig.terrainShape = TerrainShape::VoronoiFaultLine;
+                outConfig.terrainShapeName = "VoronoiFaultLine";
             }
         }
     }
@@ -448,6 +491,7 @@ std::string CampaignManager::exportSectorConfigToJson(const SectorConfig& cfg) {
     ss << "    \"gridSize\": " << cfg.gridSize << ",\n";
     ss << "    \"bombCount\": " << cfg.bombCount << ",\n";
     ss << "    \"dimension\": " << cfg.dimension << ",\n";
+    ss << "    \"terrainShape\": \"" << cfg.terrainShapeName << "\",\n";
     ss << "    \"wallThickness\": " << cfg.wallThickness << ",\n";
     ss << "    \"westMargin\": " << cfg.westMargin << ",\n";
     ss << "    \"eastMargin\": " << cfg.eastMargin << ",\n";
@@ -897,13 +941,15 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
     sec.loreBriefing = cfg.description;
     sec.threatLevel = cfg.threatLevel;
 
-    bool boardParamChanged = (sec.gridSize != cfg.gridSize || sec.bombCount != cfg.bombCount || sec.dimension != cfg.dimension);
+    bool boardParamChanged = (sec.gridSize != cfg.gridSize || sec.bombCount != cfg.bombCount || sec.dimension != cfg.dimension || sec.terrainShape != cfg.terrainShape);
     sec.gridSize = cfg.gridSize;
     sec.bombCount = cfg.bombCount;
     sec.dimension = cfg.dimension;
+    sec.terrainShape = cfg.terrainShape;
+    sec.terrainShapeName = cfg.terrainShapeName;
 
     if (boardParamChanged) {
-        sec.board.init(sec.dimension, sec.gridSize, sec.bombCount, sec.seed);
+        sec.board.init(sec.dimension, sec.gridSize, sec.bombCount, sec.seed, sec.terrainShape);
         sec.isCleared = false;
         sec.clearAnimTimer = 0.0f;
     }
@@ -925,7 +971,7 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
     sec.centralDataNodeIdx = sec.board.totalCells() / 2;
     sec.moltenTimers.clear();
 
-    float boardPx = sec.gridSize * 40.0f;
+    float boardPx = sec.gridSize * 30.0f;
     float arenaW = boardPx + cfg.westMargin + cfg.eastMargin;
     float arenaH = boardPx + 2.0f * cfg.vertMargin;
 
@@ -1062,7 +1108,7 @@ bool CampaignManager::selectPlanet(int planetIdx) {
         sec.customRouletteDockPos = cfg.rouletteDockPos;
         sec.merchantSpawns = cfg.merchantSpawns;
 
-        float boardPx = sec.gridSize * 40.0f;
+        float boardPx = sec.gridSize * 30.0f;
         float arenaW = boardPx + cfg.westMargin + cfg.eastMargin;
         float arenaH = boardPx + 2.0f * cfg.vertMargin;
 
@@ -1079,8 +1125,11 @@ bool CampaignManager::selectPlanet(int planetIdx) {
         sec.stagingDepotPos = { dpX, dpY };
         sec.stagingDepotBounds = { dpX - 75.0f, dpY - 75.0f, 150.0f, 150.0f };
 
-        // Initialize minesweeper board
-        sec.board.init(sec.dimension, sec.gridSize, sec.bombCount, sec.seed);
+        sec.terrainShape = cfg.terrainShape;
+        sec.terrainShapeName = cfg.terrainShapeName;
+
+        // Initialize minesweeper board with procedural terrain mask!
+        sec.board.init(sec.dimension, sec.gridSize, sec.bombCount, sec.seed, sec.terrainShape);
 
         // Build Walls for standalone enclosed sector world
         float wallThick = (cfg.wallThickness > 0.0f) ? cfg.wallThickness : 28.0f;

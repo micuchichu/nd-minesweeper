@@ -9,6 +9,7 @@
     "gridSize": 14,
     "bombCount": 42,
     "dimension": 2,
+    "terrainShape": "PerlinIsland",
     "wallThickness": 28.0,
     "westMargin": 180.0,
     "eastMargin": 180.0,

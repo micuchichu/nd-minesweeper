@@ -736,17 +736,19 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
     float boardWidth = board.config.size * cellSize;
 
     // Background base slice
-    if (gridShader.id != 0 && cellRevealRT.id != 0 && gridShaderGridSizeLoc >= 0) {
-        Vector2 gridSizeVec = { static_cast<float>(board.config.size), static_cast<float>(board.config.size) };
-        SetShaderValue(gridShader, gridShaderGridSizeLoc, &gridSizeVec, SHADER_UNIFORM_VEC2);
+    if (!board.hasTerrainMask) {
+        if (gridShader.id != 0 && cellRevealRT.id != 0 && gridShaderGridSizeLoc >= 0) {
+            Vector2 gridSizeVec = { static_cast<float>(board.config.size), static_cast<float>(board.config.size) };
+            SetShaderValue(gridShader, gridShaderGridSizeLoc, &gridSizeVec, SHADER_UNIFORM_VEC2);
 
-        BeginShaderMode(gridShader);
-        Rectangle source = { 0.0f, 0.0f, static_cast<float>(cellRevealRT.texture.width), -static_cast<float>(cellRevealRT.texture.height) };
-        Rectangle dest = { sliceOriginX, sliceOriginY, boardWidth, boardWidth };
-        DrawTexturePro(cellRevealRT.texture, source, dest, {0, 0}, 0.0f, WHITE);
-        EndShaderMode();
-    } else {
-        DrawRectangleRounded({ sliceOriginX, sliceOriginY, boardWidth, boardWidth }, 0.02f, 4, ui::Colors::BgSlice);
+            BeginShaderMode(gridShader);
+            Rectangle source = { 0.0f, 0.0f, static_cast<float>(cellRevealRT.texture.width), -static_cast<float>(cellRevealRT.texture.height) };
+            Rectangle dest = { sliceOriginX, sliceOriginY, boardWidth, boardWidth };
+            DrawTexturePro(cellRevealRT.texture, source, dest, {0, 0}, 0.0f, WHITE);
+            EndShaderMode();
+        } else {
+            DrawRectangleRounded({ sliceOriginX, sliceOriginY, boardWidth, boardWidth }, 0.02f, 4, ui::Colors::BgSlice);
+        }
     }
 
     // Viewport Culling calculation for cells in this slice
@@ -800,16 +802,18 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
             }
 
             if (board.hasTerrainMask && board.isVoid(idx)) {
-                // Non-clickable void cell: deep abyss vacuum rendering
-                DrawRectangle(static_cast<int>(posX), static_cast<int>(posY), static_cast<int>(cellSize), static_cast<int>(cellSize), Color{ 6, 6, 8, 255 });
+                // Non-clickable void cell: skip rendering so island contours stand out against arena floor
                 continue;
             }
 
             // Empty revealed cells (0 count) are fully cleared unless neighbor-highlighted
             if (state == core::CellState::Revealed && count == 0 && !isNeighbor) {
-                if (board.hasTerrainMask && board.isPlayable(idx) && board.isEdge(idx)) {
+                if (board.hasTerrainMask && board.isPlayable(idx)) {
                     Rectangle cellRect = { posX + cellMargin, posY + cellMargin, cellSize - (cellMargin * 2.0f), cellSize - (cellMargin * 2.0f) };
-                    DrawRectangleLinesEx(cellRect, 1.5f, Color{ 255, 176, 0, 180 });
+                    DrawRectangleRounded(cellRect, 0.15f, 3, Color{ 16, 18, 22, 255 });
+                    if (board.isEdge(idx)) {
+                        DrawRectangleLinesEx(cellRect, 1.5f, Color{ 255, 176, 0, 180 });
+                    }
                 }
                 continue;
             }
@@ -835,6 +839,9 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + 2), 22, ui::Colors::Red700);
                 }
                 else if (state == core::CellState::Revealed) {
+                    if (board.hasTerrainMask) {
+                        DrawRectangleRounded(cellRect, 0.15f, 3, Color{ 16, 18, 22, 255 });
+                    }
                     if (count > 0) {
                         Color tc = ui::getNeighborColor(count);
                         const char* numStr = TextFormat("%d", count);
@@ -2763,9 +2770,6 @@ void RaylibRenderer::drawCampaignLaunchers(const core::CampaignManager& campaign
 void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64_t hoveredGlobalCell, const net::NetworkManager& net) {
     BeginMode2D(camera.camera);
 
-    float oldCellSize = cellSize;
-    cellSize = 40.0f;
-
     float frameDt = GetFrameTime();
     float curTime = static_cast<float>(GetTime());
 
@@ -2833,9 +2837,9 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
         if (sec.modifier == core::SectorModifier::FoundryWastes) {
             for (const auto& mt : sec.moltenTimers) {
                 if (mt.active && mt.timeLeft > 0.0f) {
-                    Vector2 cellPos = sec.getCellWorldPosition(mt.cellIndex, 40.0f);
+                    Vector2 cellPos = sec.getCellWorldPosition(mt.cellIndex, cellSize);
                     float pulse = 0.5f + 0.5f * std::sin(curTime * 10.0f);
-                    Rectangle cellRec = { cellPos.x - 20.0f, cellPos.y - 20.0f, 40.0f, 40.0f };
+                    Rectangle cellRec = { cellPos.x - cellSize * 0.5f, cellPos.y - cellSize * 0.5f, cellSize, cellSize };
                     DrawRectangleRec(cellRec, Fade(ui::Colors::Amber500, 0.35f + 0.15f * pulse));
                     DrawRectangleLinesEx(cellRec, 1.5f, ui::Colors::Red500);
                     const char* tStr = TextFormat("%.1fs", mt.timeLeft);
@@ -2967,7 +2971,6 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
     // Draw Deployable Radar Beacons in World Space
     drawRadarBeacons();
 
-    cellSize = oldCellSize;
     EndMode2D();
 
     // Draw Ion Storm Scanlines in Screen Space

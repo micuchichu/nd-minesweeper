@@ -9,6 +9,7 @@
     "gridSize": 12,
     "bombCount": 28,
     "dimension": 2,
+    "terrainShape": "VoronoiFaultLine",
     "wallThickness": 28.0,
     "westMargin": 180.0,
     "eastMargin": 180.0,

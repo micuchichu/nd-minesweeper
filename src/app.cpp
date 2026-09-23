@@ -255,6 +255,10 @@ bool App::loadSaveSlot(int slotIndex) {
     renderer.camera.reset({ 0.0f, 0.0f }, initialZoom);
     renderer.camera.centerOn(center);
     renderer.updateShopAnchor(board);
+    renderer.localShip.position = center;
+    renderer.localShip.velocity = { 0.0f, 0.0f };
+    renderer.localShip.isMoving = false;
+    renderer.localShip.isInitialized = true;
     return ok;
 }
 
@@ -392,6 +396,10 @@ void App::startNewGame(int dim, int size, int bombs, uint64_t seed) {
     if (size > 30) initialZoom = 30.0f / static_cast<float>(size);
     renderer.camera.reset({ 0.0f, 0.0f }, initialZoom);
     renderer.camera.centerOn(center);
+    renderer.localShip.position = center;
+    renderer.localShip.velocity = { 0.0f, 0.0f };
+    renderer.localShip.isMoving = false;
+    renderer.localShip.isInitialized = true;
 }
 
 void App::restartCurrentGame() {
@@ -963,10 +971,10 @@ void App::update(float dt) {
                         for (size_t cIdx = 0; cIdx < targetBoard->totalCells(); ++cIdx) {
                             if (targetBoard->isBomb(cIdx)) {
                                 Vector2 cPos = (currentMode == GameMode::Campaign)
-                                    ? campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex)->getCellWorldPosition(cIdx, 40.0f)
+                                    ? campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex)->getCellWorldPosition(cIdx, renderer.cellSize)
                                     : renderer.getCellWorldPosition(cIdx, board);
-                                if (std::abs(cPos.x - renderer.localShip.position.x) <= 2.5f * 40.0f &&
-                                    std::abs(cPos.y - renderer.localShip.position.y) <= 2.5f * 40.0f) {
+                                if (std::abs(cPos.x - renderer.localShip.position.x) <= 2.5f * renderer.cellSize &&
+                                    std::abs(cPos.y - renderer.localShip.position.y) <= 2.5f * renderer.cellSize) {
                                     count5x5++;
                                 }
                             }
@@ -1357,7 +1365,7 @@ void App::update(float dt) {
         } else if (currentMode == GameMode::Campaign) {
             auto* sec = campaignMgr.getSectorAtGridWorldPos(worldMouse);
             if (sec && sec->isUnlocked) {
-                int64_t lIdx = sec->getCellIndexAtWorldPos(worldMouse, 40.0f);
+                int64_t lIdx = sec->getCellIndexAtWorldPos(worldMouse, renderer.cellSize);
                 currentHoveredCell = (lIdx >= 0) ? static_cast<int64_t>(core::CampaignManager::toGlobalCellIndex(sec->id - 1, static_cast<size_t>(lIdx))) : -1;
             } else {
                 currentHoveredCell = -1;
@@ -1523,7 +1531,7 @@ void App::update(float dt) {
                 auto* sec = campaignMgr.getSectorByIndex(outSectorIdx);
                 if (sec) {
                     outBoard = &sec->board;
-                    outCenter = sec->getCellWorldPosition(outLocalIdx, 40.0f);
+                    outCenter = sec->getCellWorldPosition(outLocalIdx, renderer.cellSize);
                 } else {
                     outBoard = &board;
                     outCenter = { 0.0f, 0.0f };
@@ -1683,7 +1691,7 @@ void App::update(float dt) {
                                     for (size_t cIdx : newlyRevealed) {
                                         if (!targetBoard->isBomb(cIdx) && render::ScrapSystem::isScrapCell(targetBoard->config.seed, cIdx, targetBoard->totalCells(), targetBoard->config.bombs)) {
                                             Vector2 cPos = (currentMode == GameMode::Campaign)
-                                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, 40.0f)
+                                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, renderer.cellSize)
                                                 : renderer.getCellWorldPosition(cIdx, board);
                                             scrapSystem.spawn(cPos);
                                         }
@@ -1833,7 +1841,7 @@ void App::update(float dt) {
                                     for (size_t cIdx : newlyRevealed) {
                                         if (!targetBoard->isBomb(cIdx) && render::ScrapSystem::isScrapCell(targetBoard->config.seed, cIdx, targetBoard->totalCells(), targetBoard->config.bombs)) {
                                             Vector2 cPos = (currentMode == GameMode::Campaign)
-                                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, 40.0f)
+                                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, renderer.cellSize)
                                                 : renderer.getCellWorldPosition(cIdx, board);
                                             scrapSystem.spawn(cPos);
                                         }
@@ -1925,7 +1933,7 @@ void App::update(float dt) {
                             uint32_t myId = (net.role == net::NetRole::Host) ? net::HOST_PLAYER_ID : 0;
                             core::CellState cs = targetBoard->getState(lI);
                             Vector2 groundPos = (currentMode == GameMode::Campaign)
-                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(lI, 40.0f)
+                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(lI, renderer.cellSize)
                                 : renderer.getFlagBasePosition(hIdx, board);
                             Vector2 shipPos = renderer.localShip.position;
                             if (cs == core::CellState::Flagged) {
@@ -2023,7 +2031,7 @@ void App::update(float dt) {
                                         size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
                                         renderer.removeFlagDrop(gIdx);
                                         Vector2 pos = (currentMode == GameMode::Campaign)
-                                            ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(revIdx, 40.0f)
+                                            ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(revIdx, renderer.cellSize)
                                             : renderer.getCellWorldPosition(revIdx, board);
                                         if (targetBoard->isBomb(revIdx)) {
                                             renderer.emitExplosion(pos, ui::Colors::CellFlag);
@@ -2156,13 +2164,9 @@ void App::update(float dt) {
             }
         }
 
-        // Merchant Pedestals & Hopper
-        bool isMouseDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop && !isEditorOpen;
+        // Sync primary shop ship reference
         if (!renderer.shopShips.empty()) {
-            renderer.shopShips.front().updatePedestals(dt, worldMouse, isMouseDown, scrapCount, playerInventory);
             renderer.shopShip = renderer.shopShips.front();
-        } else {
-            renderer.shopShip.updatePedestals(dt, worldMouse, isMouseDown, scrapCount, playerInventory);
         }
         hud.scrapCount = scrapCount;
         menu.scrapCount = scrapCount;
@@ -2180,7 +2184,7 @@ void App::update(float dt) {
                             if (mt.timeLeft <= 0.0f) {
                                 mt.timeLeft = 0.0f;
                                 mt.active = false;
-                                Vector2 cellPos = curSec->getCellWorldPosition(mt.cellIndex, 40.0f);
+                                Vector2 cellPos = curSec->getCellWorldPosition(mt.cellIndex, renderer.cellSize);
                                 renderer.emitExplosion(cellPos, ui::Colors::Amber500);
                                 soundMgr.playExplosionSound();
                                 renderer.shopShip.triggerBanter("Molten cell collapsed! Watch your hull temperature!");
@@ -2201,6 +2205,7 @@ void App::update(float dt) {
 
         // Update Scrap System with drag-and-drop & hopper deposit
         Vector2 hudScrapPos = hud.getScrapBadgeScreenPos();
+        bool isMouseDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop && !isEditorOpen;
         bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop && !isEditorOpen;
         Rectangle hopperRect = !renderer.shopShips.empty() ? renderer.shopShips.front().getHopperWorldRect() : renderer.shopShip.getHopperWorldRect();
         scrapSystem.update(dt, hudScrapPos, renderer.camera.camera, worldMouse, isMouseDown, mouseClicked, hopperRect);
