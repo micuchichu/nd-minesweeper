@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <vector>
+#include <cmath>
 
 namespace minesweeper::net {
 
@@ -22,7 +23,12 @@ enum class PacketType : uint8_t {
     Handshake = 6,
     Voice = 7,
     Laser = 8,
-    Bubble = 9
+    Bubble = 9,
+    InteractItem = 10,
+    DepositScrap = 11,
+    ItemStateSync = 12,
+    WalletUpdate = 13,
+    DetonationEvent = 14
 };
 
 constexpr uint32_t HOST_PLAYER_ID = 0xFFFFFFFF;
@@ -127,6 +133,43 @@ struct PacketSyncHeader {
     uint32_t flagCount = 0;
 };
 
+struct PacketInteractItem {
+    PacketType type = PacketType::InteractItem;
+    uint32_t playerID = 0;
+    uint8_t itemId = 0;
+    uint8_t action = 0; // 0 = Buy, 1 = Use, 2 = Drop
+    float targetX = 0.0f;
+    float targetY = 0.0f;
+};
+
+struct PacketDepositScrap {
+    PacketType type = PacketType::DepositScrap;
+    uint32_t playerID = 0;
+    uint32_t scrapId = 0;
+    int32_t amount = 1;
+};
+
+struct PacketItemStateSync {
+    PacketType type = PacketType::ItemStateSync;
+    uint32_t itemId = 0;
+    uint32_t carrierPlayerId = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    uint8_t state = 0;
+};
+
+struct PacketWalletUpdate {
+    PacketType type = PacketType::WalletUpdate;
+    uint32_t teamFunds = 0;
+};
+
+struct PacketDetonationEvent {
+    PacketType type = PacketType::DetonationEvent;
+    uint32_t triggeredByPlayerId = 0;
+    uint64_t cellIndex = 0;
+    uint8_t absorbedByShield = 0;
+};
+
 #pragma pack(pop)
 
 struct PacketSyncData {
@@ -143,7 +186,12 @@ enum class NetEventType : uint8_t {
     BoardResult,
     SyncBoard,
     LaserFired,
-    BubbleTriggered
+    BubbleTriggered,
+    ItemInteracted,
+    ScrapDeposited,
+    ItemStateSynced,
+    WalletUpdated,
+    DetonationOccurred
 };
 
 struct NetEvent {
@@ -156,6 +204,11 @@ struct NetEvent {
     PacketSyncData syncData{};
     PacketLaser laserData{};
     PacketBubble bubbleData{};
+    PacketInteractItem interactData{};
+    PacketDepositScrap depositData{};
+    PacketItemStateSync itemSyncData{};
+    PacketWalletUpdate walletData{};
+    PacketDetonationEvent detonationData{};
 };
 
 struct RemoteCursor {
@@ -168,6 +221,17 @@ struct RemoteCursor {
     char name[16] = {0};
     bool isSpeaking = false;
     float speakingTimer = 0.0f;
+
+    // Dead-reckoning interpolation
+    float targetX = 0.0f;
+    float targetY = 0.0f;
+    float targetAngle = 0.0f;
+    void update(float dt) {
+        float f = 1.0f - std::exp(-22.0f * dt);
+        x += (targetX - x) * f;
+        y += (targetY - y) * f;
+        angle += (targetAngle - angle) * f;
+    }
 };
 
 } // namespace minesweeper::net

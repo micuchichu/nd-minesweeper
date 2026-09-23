@@ -213,6 +213,15 @@ bool CampaignManager::parseSectorJson(const std::string& jsonContent, SectorConf
     if (root.contains("threatLevel")) outConfig.threatLevel = root["threatLevel"].asInt(outConfig.threatLevel);
     else if (root.contains("threat")) outConfig.threatLevel = root["threat"].asInt(outConfig.threatLevel);
 
+    if (root.contains("modifier")) {
+        std::string modStr = root["modifier"].asString("None");
+        outConfig.modifierName = modStr;
+        if (modStr == "FoundryWastes" || modStr == "Foundry-Wastes") outConfig.modifier = SectorModifier::FoundryWastes;
+        else if (modStr == "IonStorm" || modStr == "Ion-Storm") outConfig.modifier = SectorModifier::IonStorm;
+        else if (modStr == "JammedComms" || modStr == "Jammed-Comms") outConfig.modifier = SectorModifier::JammedComms;
+        else outConfig.modifier = SectorModifier::None;
+    }
+
     // Map section: check nested object first, else check top-level
     const JsonValue& mapVal = root.contains("map") ? root["map"] : root;
     if (mapVal.isObject()) {
@@ -430,6 +439,11 @@ std::string CampaignManager::exportSectorConfigToJson(const SectorConfig& cfg) {
     ss << "  \"subtitle\": \"" << escapeJsonString(cfg.subtitle) << "\",\n";
     ss << "  \"description\": \"" << escapeJsonString(cfg.description) << "\",\n";
     ss << "  \"threatLevel\": " << cfg.threatLevel << ",\n";
+    const char* modStr = "None";
+    if (cfg.modifier == SectorModifier::FoundryWastes) modStr = "Foundry-Wastes";
+    else if (cfg.modifier == SectorModifier::IonStorm) modStr = "Ion-Storm";
+    else if (cfg.modifier == SectorModifier::JammedComms) modStr = "Jammed-Comms";
+    ss << "  \"modifier\": \"" << modStr << "\",\n";
     ss << "  \"map\": {\n";
     ss << "    \"gridSize\": " << cfg.gridSize << ",\n";
     ss << "    \"bombCount\": " << cfg.bombCount << ",\n";
@@ -905,6 +919,11 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
     sec.customShopDockPos = cfg.shopDockPos;
     sec.customRouletteDockPos = cfg.rouletteDockPos;
     sec.merchantSpawns = cfg.merchantSpawns;
+    sec.modifier = cfg.modifier;
+    sec.threatIndex = 1.0f;
+    sec.centralDataNodeCleared = false;
+    sec.centralDataNodeIdx = sec.board.totalCells() / 2;
+    sec.moltenTimers.clear();
 
     float boardPx = sec.gridSize * 40.0f;
     float arenaW = boardPx + cfg.westMargin + cfg.eastMargin;
@@ -967,6 +986,13 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
 
     updatePlanetClearance();
     return true;
+}
+
+void CampaignManager::handleEmergencyExtraction(int sectorIdx, uint64_t& unbankedScrap) {
+    unbankedScrap /= 2; // Lose 50% of unbanked scrap carried on board
+    if (auto* sec = getSectorByIndex(sectorIdx)) {
+        sec->threatIndex += 0.05f; // Threat index increases by +5%
+    }
 }
 
 bool CampaignManager::selectPlanet(int planetIdx) {

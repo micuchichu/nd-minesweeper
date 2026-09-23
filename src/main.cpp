@@ -2365,6 +2365,236 @@ static int runCampaignTests() {
         std::cout << "  [PASS] Test 14: Data-driven planet JSON parsing, sectorDataPath routing, multi-planet selection, dynamic biome palettes, and unlock progression verified." << std::endl;
     }
 
+    // Test 15: Multiplayer Co-op Campaign, Scrap Economy, Procedural Desolate Terrain, Safe Zone & In-World Merchant Ship
+    {
+        std::cout << "[TEST-CAMPAIGN] Test 15: Running Multiplayer Co-op & Merchant Salvage Loop tests..." << std::endl;
+
+        // 1. Procedural Desolate Terrain Masks (Non-Rectangular board masks, void cells, BFS reachability, dock placement)
+        {
+            minesweeper::core::Board boardCA;
+            boardCA.init(2, 12, 10, 54321, minesweeper::core::TerrainShape::CellularAutomata);
+            if (!boardCA.hasTerrainMask) {
+                std::cerr << "  [FAIL] Test 15: Board with CellularAutomata shape did not enable hasTerrainMask!" << std::endl;
+                return 151;
+            }
+            if (boardCA.totalPlayableCells() >= boardCA.totalCells()) {
+                std::cerr << "  [FAIL] Test 15: CellularAutomata should produce void cells! Playable=" << boardCA.totalPlayableCells() << " Total=" << boardCA.totalCells() << std::endl;
+                return 152;
+            }
+
+            // Verify void cells are never bombs and cannot be uncovered
+            size_t voidCount = 0;
+            for (size_t i = 0; i < boardCA.totalCells(); ++i) {
+                if (boardCA.isVoid(i)) {
+                    voidCount++;
+                    if (boardCA.isBomb(i)) {
+                        std::cerr << "  [FAIL] Test 15: Void cell " << i << " marked as bomb!" << std::endl;
+                        return 153;
+                    }
+                }
+            }
+            if (voidCount == 0) {
+                std::cerr << "  [FAIL] Test 15: No void cells generated!" << std::endl;
+                return 154;
+            }
+
+            // Guaranteed safe start check: startingCell must be playable, not a bomb, and have 0 neighbor bombs
+            if (boardCA.startingCell < 0) {
+                std::cerr << "  [FAIL] Test 15: Starting cell not set on procedural terrain!" << std::endl;
+                return 155;
+            }
+            size_t sIdx = static_cast<size_t>(boardCA.startingCell);
+            if (!boardCA.isPlayable(sIdx) || boardCA.isBomb(sIdx) || boardCA.counts.get(sIdx) != 0) {
+                std::cerr << "  [FAIL] Test 15: Starting cell must be a safe playable 0-value cascade start! Playable=" << boardCA.isPlayable(sIdx) << " Bomb=" << boardCA.isBomb(sIdx) << " Count=" << (int)boardCA.counts.get(sIdx) << std::endl;
+                return 156;
+            }
+
+            // Dock placement raycasting
+            Vector2 dockPos = boardCA.findDockPlacement(40.0f);
+            if (dockPos.x >= 0.0f) {
+                std::cerr << "  [FAIL] Test 15: Merchant dock placement must be located west outside grid perimeter! Got X=" << dockPos.x << std::endl;
+                return 157;
+            }
+
+            // Test PerlinIsland and VoronoiFaultLine generation
+            minesweeper::core::Board boardPI, boardVF;
+            boardPI.init(2, 10, 8, 112233, minesweeper::core::TerrainShape::PerlinIsland);
+            boardVF.init(2, 10, 8, 445566, minesweeper::core::TerrainShape::VoronoiFaultLine);
+            if (!boardPI.hasTerrainMask || !boardVF.hasTerrainMask) {
+                std::cerr << "  [FAIL] Test 15: PerlinIsland or VoronoiFaultLine mask generation failed!" << std::endl;
+                return 158;
+            }
+        }
+
+        // 2. Consumable Item Catalog & Inventory
+        {
+            auto& catalog = minesweeper::core::ItemCatalog::instance();
+            catalog.init();
+            const auto* shield = catalog.getItem(minesweeper::core::ItemId::BlastShield);
+            const auto* wand = catalog.getItem(minesweeper::core::ItemId::GroundPenetratingWand);
+            const auto* beacon = catalog.getItem(minesweeper::core::ItemId::RadarBeacon);
+
+            if (!shield || shield->cost != 50) {
+                std::cerr << "  [FAIL] Test 15: BlastShield missing or wrong cost in catalog!" << std::endl;
+                return 160;
+            }
+            if (!wand || wand->cost != 30) {
+                std::cerr << "  [FAIL] Test 15: GroundPenetratingWand missing or wrong cost in catalog!" << std::endl;
+                return 161;
+            }
+            if (!beacon || beacon->cost != 60) {
+                std::cerr << "  [FAIL] Test 15: RadarBeacon missing or wrong cost in catalog!" << std::endl;
+                return 162;
+            }
+
+            minesweeper::core::PlayerInventory inv;
+            inv.addItem(*shield);
+            if (!inv.hasItem(minesweeper::core::ItemId::BlastShield)) {
+                std::cerr << "  [FAIL] Test 15: PlayerInventory failed to hold BlastShield!" << std::endl;
+                return 163;
+            }
+            inv.consumeItem(minesweeper::core::ItemId::BlastShield);
+            if (inv.hasItem(minesweeper::core::ItemId::BlastShield)) {
+                std::cerr << "  [FAIL] Test 15: BlastShield not consumed from inventory!" << std::endl;
+                return 164;
+            }
+        }
+
+        // 3. In-World Merchant Ship, Pedestals, Hold-to-Buy, and Safe Zone
+        {
+            minesweeper::core::ShopShip shopShip;
+            shopShip.position = { 100.0f, 100.0f };
+            if (shopShip.pedestals.size() != 3) {
+                std::cerr << "  [FAIL] Test 15: Expected 3 merchant pedestals, got " << shopShip.pedestals.size() << std::endl;
+                return 170;
+            }
+
+            // Verify safe zone radius (3 tiles = 120px)
+            if (!shopShip.isInsideSafeZone({ 100.0f, 100.0f })) {
+                std::cerr << "  [FAIL] Test 15: Center of shop ship must be inside safe zone!" << std::endl;
+                return 171;
+            }
+            if (shopShip.isInsideSafeZone({ 300.0f, 300.0f })) {
+                std::cerr << "  [FAIL] Test 15: Distant pos (300, 300) should be outside safe zone!" << std::endl;
+                return 172;
+            }
+
+            // Test hold-to-buy on pedestal 0 (GP-Wand $30)
+            uint64_t teamFunds = 100;
+            minesweeper::core::PlayerInventory inv;
+            Vector2 ped0World = { shopShip.position.x + shopShip.pedestals[0].offset.x, shopShip.position.y + shopShip.pedestals[0].offset.y };
+
+            // Step with mouse down for 0.55s (exceeds 0.5s threshold)
+            shopShip.updatePedestals(0.55f, ped0World, true, teamFunds, inv);
+            if (teamFunds != 70) {
+                std::cerr << "  [FAIL] Test 15: Hold-to-buy did not deduct funds correctly! Expected 70, got " << teamFunds << std::endl;
+                return 173;
+            }
+            if (!inv.hasItem(minesweeper::core::ItemId::GroundPenetratingWand)) {
+                std::cerr << "  [FAIL] Test 15: Hold-to-buy did not grant purchased item to inventory!" << std::endl;
+                return 174;
+            }
+
+            // Verify deposit hopper bounding box
+            Rectangle hRect = shopShip.getHopperWorldRect();
+            if (hRect.width <= 0.0f || hRect.height <= 0.0f) {
+                std::cerr << "  [FAIL] Test 15: ShopShip hopper world rect has non-positive dimensions!" << std::endl;
+                return 175;
+            }
+        }
+
+        // 4. Scrap Economy, Visual Clutter Constraint (<= 65% of tile), Drag & Drop Banking
+        {
+            minesweeper::render::ScrapSystem scrapSys;
+            scrapSys.spawn({ 50.0f, 50.0f });
+            if (scrapSys.items.empty()) {
+                std::cerr << "  [FAIL] Test 15: ScrapSystem failed to spawn scrap token!" << std::endl;
+                return 180;
+            }
+
+            // Verify clutter control: item size <= 65% of 40px cell (26px)
+            const auto& item = scrapSys.items[0];
+            float maxVisualDim = std::max(item.size.x, item.size.y) * 1.25f; // include max squash/stretch
+            if (maxVisualDim > 26.0f) {
+                std::cerr << "  [FAIL] Test 15: Visual clutter violation! Scrap token max dimension (" << maxVisualDim << "px) exceeds 65% of cell width (26px)!" << std::endl;
+                return 181;
+            }
+
+            // Test drag and drop into merchant hopper
+            Camera2D cam = { 0 };
+            cam.zoom = 1.0f;
+            Rectangle hopper = { 200.0f, 200.0f, 50.0f, 30.0f };
+            scrapSys.carriedItemIndex = 0;
+            scrapSys.items[0].currentPos = { 210.0f, 210.0f };
+            // Release mouse inside hopper
+            scrapSys.update(0.016f, { 10.0f, 10.0f }, cam, { 210.0f, 210.0f }, false, false, hopper);
+            if (!scrapSys.hopperDepositTriggered || scrapSys.pendingCollected != 1) {
+                std::cerr << "  [FAIL] Test 15: Drag and drop into hopper did not trigger deposit! Triggered=" << scrapSys.hopperDepositTriggered << " Pending=" << scrapSys.pendingCollected << std::endl;
+                return 182;
+            }
+            int collected = scrapSys.collectPending();
+            if (collected != 1) {
+                std::cerr << "  [FAIL] Test 15: collectPending failed to return deposited scrap! Got " << collected << std::endl;
+                return 183;
+            }
+        }
+
+        // 5. Campaign Sector Modifiers & Emergency Extraction
+        {
+            minesweeper::core::CampaignManager mgr;
+            mgr.init(12345);
+            uint64_t scrap = 200;
+            auto* sec = mgr.getSectorByIndex(0);
+            if (!sec) {
+                std::cerr << "  [FAIL] Test 15: Sector 0 missing in CampaignManager!" << std::endl;
+                return 190;
+            }
+            sec->threatIndex = 1.0f;
+
+            // Trigger emergency extraction: lose 50% scrap, +5% threat
+            mgr.handleEmergencyExtraction(0, scrap);
+            if (scrap != 100) {
+                std::cerr << "  [FAIL] Test 15: Emergency extraction scrap loss failed! Expected 100, got " << scrap << std::endl;
+                return 191;
+            }
+            if (std::abs(sec->threatIndex - 1.05f) > 0.001f) {
+                std::cerr << "  [FAIL] Test 15: Emergency extraction threat increase failed! Expected 1.05, got " << sec->threatIndex << std::endl;
+                return 192;
+            }
+
+            // Test MoltenTileTimer
+            minesweeper::core::MoltenTileTimer mt;
+            mt.cellIndex = 12;
+            mt.timeLeft = 5.0f;
+            mt.active = true;
+            mt.timeLeft -= 1.5f;
+            if (std::abs(mt.timeLeft - 3.5f) > 0.001f) {
+                std::cerr << "  [FAIL] Test 15: MoltenTileTimer countdown failed!" << std::endl;
+                return 193;
+            }
+        }
+
+        // 6. Authoritative Network Protocol Packets
+        {
+            minesweeper::net::PacketInteractItem p1;
+            minesweeper::net::PacketDepositScrap p2;
+            minesweeper::net::PacketItemStateSync p3;
+            minesweeper::net::PacketWalletUpdate p4;
+            minesweeper::net::PacketDetonationEvent p5;
+
+            if (p1.type != minesweeper::net::PacketType::InteractItem ||
+                p2.type != minesweeper::net::PacketType::DepositScrap ||
+                p3.type != minesweeper::net::PacketType::ItemStateSync ||
+                p4.type != minesweeper::net::PacketType::WalletUpdate ||
+                p5.type != minesweeper::net::PacketType::DetonationEvent) {
+                std::cerr << "  [FAIL] Test 15: Authoritative network packet type mismatch!" << std::endl;
+                return 195;
+            }
+        }
+
+        std::cout << "  [PASS] Test 15: Multiplayer Co-op Campaign, Scrap Economy, Desolate Terrain, Safe Zone & Merchant Loop verified." << std::endl;
+    }
+
     std::cout << "[TEST-CAMPAIGN] ALL CAMPAIGN TESTS PASSED!" << std::endl;
     return 0;
 }

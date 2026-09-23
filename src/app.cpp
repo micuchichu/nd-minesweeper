@@ -953,6 +953,29 @@ void App::update(float dt) {
                     renderer.triggerRadar(4.0f);
                     playerInventory.clearSlot(playerInventory.selectedSlot);
                 }
+            } else if (held->item.id == core::ItemId::RadarBeacon) {
+                if (IsKeyPressed(KEY_E)) {
+                    int count5x5 = 0;
+                    core::Board* targetBoard = (currentMode == GameMode::Campaign)
+                        ? (campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex) ? &campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex)->board : nullptr)
+                        : &board;
+                    if (targetBoard) {
+                        for (size_t cIdx = 0; cIdx < targetBoard->totalCells(); ++cIdx) {
+                            if (targetBoard->isBomb(cIdx)) {
+                                Vector2 cPos = (currentMode == GameMode::Campaign)
+                                    ? campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex)->getCellWorldPosition(cIdx, 40.0f)
+                                    : renderer.getCellWorldPosition(cIdx, board);
+                                if (std::abs(cPos.x - renderer.localShip.position.x) <= 2.5f * 40.0f &&
+                                    std::abs(cPos.y - renderer.localShip.position.y) <= 2.5f * 40.0f) {
+                                    count5x5++;
+                                }
+                            }
+                        }
+                    }
+                    renderer.deployRadarBeacon(renderer.localShip.position, count5x5, 12.0f);
+                    soundMgr.playUncoverSound();
+                    playerInventory.clearSlot(playerInventory.selectedSlot);
+                }
             } else if (held->item.id == core::ItemId::Banana) {
                 if (IsKeyPressed(KEY_E)) {
                     playerInventory.bananaBoostTimer = 20.0f;
@@ -1370,6 +1393,27 @@ void App::update(float dt) {
         }
     }
 
+    if (state == AppState::InGame) {
+        bool localInSafeZone = false;
+        if (!renderer.shopShips.empty()) {
+            localInSafeZone = renderer.shopShips.front().isInsideSafeZone(renderer.localShip.position);
+        } else {
+            localInSafeZone = renderer.shopShip.isInsideSafeZone(renderer.localShip.position);
+        }
+        voiceMgr.getSettings().intercomReverb = localInSafeZone;
+
+        if (currentMode == GameMode::Campaign) {
+            auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+            if (curSec && curSec->modifier == core::SectorModifier::JammedComms && !curSec->centralDataNodeCleared) {
+                voiceMgr.getSettings().proximityRadiusMultiplier = 0.3f;
+            } else {
+                voiceMgr.getSettings().proximityRadiusMultiplier = 1.0f;
+            }
+        } else {
+            voiceMgr.getSettings().proximityRadiusMultiplier = 1.0f;
+        }
+    }
+
     if (renderer.localShip.isInitialized) {
         voiceMgr.setLocalCursorPos(renderer.localShip.position.x, renderer.localShip.position.y);
     }
@@ -1576,6 +1620,31 @@ void App::update(float dt) {
                                 pc.flagSkin = 0;
                                 net.sendToServer(&pc, sizeof(pc));
                             } else {
+                            bool inSafeZone = false;
+                            if (!renderer.shopShips.empty()) {
+                                inSafeZone = renderer.shopShips.front().isInsideSafeZone(cellCenter) || renderer.shopShips.front().isInsideSafeZone(renderer.localShip.position);
+                            } else {
+                                inSafeZone = renderer.shopShip.isInsideSafeZone(cellCenter) || renderer.shopShip.isInsideSafeZone(renderer.localShip.position);
+                            }
+                            auto* held = playerInventory.getSelectedSlot();
+                            if (inSafeZone && targetBoard->isBomb(lI)) {
+                                targetBoard->setFlag(lI, 0, static_cast<uint8_t>(renderer.activeFlagSkin));
+                                soundMgr.playFlagSound();
+                                renderer.shopShip.triggerBanter("Safe zone field deflected that detonator. Steady on.");
+                                if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Safe zone field deflected that detonator. Steady on.");
+                            } else if (held && held->occupied && held->item.id == core::ItemId::GroundPenetratingWand) {
+                                if (targetBoard->isBomb(lI)) {
+                                    targetBoard->setFlag(lI, 0, static_cast<uint8_t>(renderer.activeFlagSkin));
+                                    soundMgr.playFlagSound();
+                                    renderer.shopShip.triggerBanter("Wand detected explosive charge. Cell auto-flagged.");
+                                    if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Wand detected explosive charge. Cell auto-flagged.");
+                                } else {
+                                    std::vector<size_t> wandRev;
+                                    targetBoard->reveal(lI, &wandRev);
+                                    soundMgr.playUncoverSound();
+                                }
+                                playerInventory.clearSlot(playerInventory.selectedSlot);
+                            } else {
                                 std::vector<size_t> newlyRevealed;
                                 core::RevealResult res = targetBoard->reveal(lI, &newlyRevealed);
                                 for (size_t revIdx : newlyRevealed) {
@@ -1584,8 +1653,30 @@ void App::update(float dt) {
                                 }
                                 Vector2 pos = cellCenter;
                                 if (res == core::RevealResult::HitBomb) {
-                                    renderer.emitExplosion(pos, ui::Colors::CellFlag);
-                                    soundMgr.playExplosionSound();
+                                    if (playerInventory.hasItem(core::ItemId::BlastShield)) {
+                                        playerInventory.consumeItem(core::ItemId::BlastShield);
+                                        targetBoard->isGameOver = false;
+                                        renderer.camera.shake(0.65f);
+                                        Vector2 knockDir = Vector2Normalize(Vector2Subtract(renderer.localShip.position, cellCenter));
+                                        renderer.localShip.velocity = Vector2Scale(knockDir, 460.0f);
+                                        renderer.emitExplosion(pos, ui::Colors::Amber500);
+                                        soundMgr.playExplosionSound();
+                                        renderer.shopShip.triggerBanter("Oof, that sounded expensive! Thank your shields.");
+                                        if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Oof, that sounded expensive! Thank your shields.");
+                                        targetBoard->setFlag(lI, 0, static_cast<uint8_t>(renderer.activeFlagSkin));
+                                    } else {
+                                        renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                                        soundMgr.playExplosionSound();
+                                        renderer.shopShip.triggerBanter("Oof, that sounded expensive!");
+                                        if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Oof, that sounded expensive!");
+                                        if (currentMode == GameMode::Campaign) {
+                                            campaignMgr.handleEmergencyExtraction(sI, scrapCount);
+                                            hud.scrapCount = scrapCount;
+                                            menu.scrapCount = scrapCount;
+                                            renderer.shopShip.triggerBanter("Engines spooling up! Get to the ship!");
+                                            if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Engines spooling up! Get to the ship!");
+                                        }
+                                    }
                                 } else {
                                     renderer.emitDebris(pos, ui::Colors::Zinc400);
                                     soundMgr.playUncoverSound();
@@ -1595,6 +1686,32 @@ void App::update(float dt) {
                                                 ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, 40.0f)
                                                 : renderer.getCellWorldPosition(cIdx, board);
                                             scrapSystem.spawn(cPos);
+                                        }
+                                    }
+                                }
+
+                                if (currentMode == GameMode::Campaign) {
+                                    auto* curSec = campaignMgr.getSectorByIndex(sI);
+                                    if (curSec && curSec->modifier == core::SectorModifier::FoundryWastes) {
+                                        for (size_t rev : newlyRevealed) {
+                                            if (!targetBoard->isBomb(rev)) {
+                                                core::MoltenTileTimer mt;
+                                                mt.cellIndex = rev;
+                                                mt.timeLeft = 5.0f;
+                                                mt.active = true;
+                                                curSec->moltenTimers.push_back(mt);
+                                            }
+                                        }
+                                    }
+                                    if (curSec && curSec->modifier == core::SectorModifier::JammedComms && !curSec->centralDataNodeCleared) {
+                                        for (size_t rev : newlyRevealed) {
+                                            if (rev == curSec->centralDataNodeIdx) {
+                                                curSec->centralDataNodeCleared = true;
+                                                soundMgr.playUncoverSound();
+                                                renderer.shopShip.triggerBanter("Central relay decrypted! Communications online.");
+                                                if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Central relay decrypted! Communications online.");
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1629,8 +1746,9 @@ void App::update(float dt) {
                     }
                 }
             }
+        }
 
-            // Pending uncover when ship arrives within reach (mouse follower mode)
+        // Pending uncover when ship arrives within reach (mouse follower mode)
             if (pendingUncoverCell >= 0) {
                 size_t pIdx = static_cast<size_t>(pendingUncoverCell);
                 int sI = 0; size_t lI = 0; core::Board* targetBoard = nullptr; Vector2 cellCenter;
@@ -1652,52 +1770,126 @@ void App::update(float dt) {
                             pc.flagSkin = 0;
                             net.sendToServer(&pc, sizeof(pc));
                         } else {
-                            std::vector<size_t> newlyRevealed;
-                            core::RevealResult res = targetBoard->reveal(lI, &newlyRevealed);
-                            for (size_t revIdx : newlyRevealed) {
-                                size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
-                                renderer.removeFlagDrop(gIdx);
-                            }
-                            Vector2 pos = cellCenter;
-                            if (res == core::RevealResult::HitBomb) {
-                                renderer.emitExplosion(pos, ui::Colors::CellFlag);
-                                soundMgr.playExplosionSound();
+                            bool inSafeZone = false;
+                            if (!renderer.shopShips.empty()) {
+                                inSafeZone = renderer.shopShips.front().isInsideSafeZone(cellCenter) || renderer.shopShips.front().isInsideSafeZone(renderer.localShip.position);
                             } else {
-                                renderer.emitDebris(pos, ui::Colors::Zinc400);
-                                soundMgr.playUncoverSound();
-                                for (size_t cIdx : newlyRevealed) {
-                                    if (!targetBoard->isBomb(cIdx) && render::ScrapSystem::isScrapCell(targetBoard->config.seed, cIdx, targetBoard->totalCells(), targetBoard->config.bombs)) {
-                                        Vector2 cPos = (currentMode == GameMode::Campaign)
-                                            ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, 40.0f)
-                                            : renderer.getCellWorldPosition(cIdx, board);
-                                        scrapSystem.spawn(cPos);
-                                    }
-                                }
+                                inSafeZone = renderer.shopShip.isInsideSafeZone(cellCenter) || renderer.shopShip.isInsideSafeZone(renderer.localShip.position);
                             }
-
-                            if (currentMode == GameMode::Campaign) {
-                                bool justSecured = campaignMgr.checkSectorClear(sI);
-                                if (justSecured) {
-                                    scrapCount += static_cast<uint64_t>(50 * (sI + 1));
-                                    hud.scrapCount = scrapCount;
-                                    menu.scrapCount = scrapCount;
-                                    hud.triggerScrapPulse();
+                            auto* held = playerInventory.getSelectedSlot();
+                            if (inSafeZone && targetBoard->isBomb(lI)) {
+                                targetBoard->setFlag(lI, 0, static_cast<uint8_t>(renderer.activeFlagSkin));
+                                soundMgr.playFlagSound();
+                                renderer.shopShip.triggerBanter("Safe zone field deflected that detonator. Steady on.");
+                                if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Safe zone field deflected that detonator. Steady on.");
+                            } else if (held && held->occupied && held->item.id == core::ItemId::GroundPenetratingWand) {
+                                if (targetBoard->isBomb(lI)) {
+                                    targetBoard->setFlag(lI, 0, static_cast<uint8_t>(renderer.activeFlagSkin));
+                                    soundMgr.playFlagSound();
+                                    renderer.shopShip.triggerBanter("Wand detected explosive charge. Cell auto-flagged.");
+                                    if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Wand detected explosive charge. Cell auto-flagged.");
+                                } else {
+                                    std::vector<size_t> wandRev;
+                                    targetBoard->reveal(lI, &wandRev);
                                     soundMgr.playUncoverSound();
                                 }
-                                saveCampaignProgress();
+                                playerInventory.clearSlot(playerInventory.selectedSlot);
                             } else {
-                                saveCurrentSlot();
-                            }
-
-                            if (net.role == net::NetRole::Host) {
+                                std::vector<size_t> newlyRevealed;
+                                core::RevealResult res = targetBoard->reveal(lI, &newlyRevealed);
                                 for (size_t revIdx : newlyRevealed) {
                                     size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
-                                    net::PacketResult pr;
-                                    pr.index = gIdx;
-                                    pr.state = 0;
-                                    pr.placerId = 0;
-                                    pr.flagSkin = 0;
-                                    net.broadcast(&pr, sizeof(pr));
+                                    renderer.removeFlagDrop(gIdx);
+                                }
+                                Vector2 pos = cellCenter;
+                                if (res == core::RevealResult::HitBomb) {
+                                    if (playerInventory.hasItem(core::ItemId::BlastShield)) {
+                                        playerInventory.consumeItem(core::ItemId::BlastShield);
+                                        targetBoard->isGameOver = false;
+                                        renderer.camera.shake(0.65f);
+                                        Vector2 knockDir = Vector2Normalize(Vector2Subtract(renderer.localShip.position, cellCenter));
+                                        renderer.localShip.velocity = Vector2Scale(knockDir, 460.0f);
+                                        renderer.emitExplosion(pos, ui::Colors::Amber500);
+                                        soundMgr.playExplosionSound();
+                                        renderer.shopShip.triggerBanter("Oof, that sounded expensive! Thank your shields.");
+                                        if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Oof, that sounded expensive! Thank your shields.");
+                                        targetBoard->setFlag(lI, 0, static_cast<uint8_t>(renderer.activeFlagSkin));
+                                    } else {
+                                        renderer.emitExplosion(pos, ui::Colors::CellFlag);
+                                        soundMgr.playExplosionSound();
+                                        renderer.shopShip.triggerBanter("Oof, that sounded expensive!");
+                                        if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Oof, that sounded expensive!");
+                                        if (currentMode == GameMode::Campaign) {
+                                            campaignMgr.handleEmergencyExtraction(sI, scrapCount);
+                                            hud.scrapCount = scrapCount;
+                                            menu.scrapCount = scrapCount;
+                                            renderer.shopShip.triggerBanter("Engines spooling up! Get to the ship!");
+                                            if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Engines spooling up! Get to the ship!");
+                                        }
+                                    }
+                                } else {
+                                    renderer.emitDebris(pos, ui::Colors::Zinc400);
+                                    soundMgr.playUncoverSound();
+                                    for (size_t cIdx : newlyRevealed) {
+                                        if (!targetBoard->isBomb(cIdx) && render::ScrapSystem::isScrapCell(targetBoard->config.seed, cIdx, targetBoard->totalCells(), targetBoard->config.bombs)) {
+                                            Vector2 cPos = (currentMode == GameMode::Campaign)
+                                                ? campaignMgr.getSectorByIndex(sI)->getCellWorldPosition(cIdx, 40.0f)
+                                                : renderer.getCellWorldPosition(cIdx, board);
+                                            scrapSystem.spawn(cPos);
+                                        }
+                                    }
+                                }
+
+                                if (currentMode == GameMode::Campaign) {
+                                    auto* curSec = campaignMgr.getSectorByIndex(sI);
+                                    if (curSec && curSec->modifier == core::SectorModifier::FoundryWastes) {
+                                        for (size_t rev : newlyRevealed) {
+                                            if (!targetBoard->isBomb(rev)) {
+                                                core::MoltenTileTimer mt;
+                                                mt.cellIndex = rev;
+                                                mt.timeLeft = 5.0f;
+                                                mt.active = true;
+                                                curSec->moltenTimers.push_back(mt);
+                                            }
+                                        }
+                                    }
+                                    if (curSec && curSec->modifier == core::SectorModifier::JammedComms && !curSec->centralDataNodeCleared) {
+                                        for (size_t rev : newlyRevealed) {
+                                            if (rev == curSec->centralDataNodeIdx) {
+                                                curSec->centralDataNodeCleared = true;
+                                                soundMgr.playUncoverSound();
+                                                renderer.shopShip.triggerBanter("Central relay decrypted! Communications online.");
+                                                if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Central relay decrypted! Communications online.");
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (currentMode == GameMode::Campaign) {
+                                    bool justSecured = campaignMgr.checkSectorClear(sI);
+                                    if (justSecured) {
+                                        scrapCount += static_cast<uint64_t>(50 * (sI + 1));
+                                        hud.scrapCount = scrapCount;
+                                        menu.scrapCount = scrapCount;
+                                        hud.triggerScrapPulse();
+                                        soundMgr.playUncoverSound();
+                                    }
+                                    saveCampaignProgress();
+                                } else {
+                                    saveCurrentSlot();
+                                }
+
+                                if (net.role == net::NetRole::Host) {
+                                    for (size_t revIdx : newlyRevealed) {
+                                        size_t gIdx = (currentMode == GameMode::Campaign) ? core::CampaignManager::toGlobalCellIndex(sI, revIdx) : revIdx;
+                                        net::PacketResult pr;
+                                        pr.index = gIdx;
+                                        pr.state = 0;
+                                        pr.placerId = 0;
+                                        pr.flagSkin = 0;
+                                        net.broadcast(&pr, sizeof(pr));
+                                    }
                                 }
                             }
                         }
@@ -1802,7 +1994,28 @@ void App::update(float dt) {
                                 bool hitBomb = false;
                                 if (targetBoard->chord(lI, newlyRevealed, hitBomb)) {
                                     if (hitBomb) {
-                                        soundMgr.playExplosionSound();
+                                        if (playerInventory.hasItem(core::ItemId::BlastShield)) {
+                                            playerInventory.consumeItem(core::ItemId::BlastShield);
+                                            targetBoard->isGameOver = false;
+                                            renderer.camera.shake(0.65f);
+                                            Vector2 knockDir = Vector2Normalize(Vector2Subtract(renderer.localShip.position, cellCenter));
+                                            renderer.localShip.velocity = Vector2Scale(knockDir, 460.0f);
+                                            renderer.emitExplosion(cellCenter, ui::Colors::Amber500);
+                                            soundMgr.playExplosionSound();
+                                            renderer.shopShip.triggerBanter("Oof, that sounded expensive! Thank your shields.");
+                                            if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Oof, that sounded expensive! Thank your shields.");
+                                        } else {
+                                            soundMgr.playExplosionSound();
+                                            renderer.shopShip.triggerBanter("Oof, that sounded expensive!");
+                                            if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Oof, that sounded expensive!");
+                                            if (currentMode == GameMode::Campaign) {
+                                                campaignMgr.handleEmergencyExtraction(sI, scrapCount);
+                                                hud.scrapCount = scrapCount;
+                                                menu.scrapCount = scrapCount;
+                                                renderer.shopShip.triggerBanter("Engines spooling up! Get to the ship!");
+                                                if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Engines spooling up! Get to the ship!");
+                                            }
+                                        }
                                     } else if (!newlyRevealed.empty()) {
                                         soundMgr.playUncoverSound();
                                     }
@@ -1828,6 +2041,31 @@ void App::update(float dt) {
                                             pr.placerId = 0;
                                             pr.flagSkin = 0;
                                             net.broadcast(&pr, sizeof(pr));
+                                        }
+                                    }
+                                    if (currentMode == GameMode::Campaign) {
+                                        auto* curSec = campaignMgr.getSectorByIndex(sI);
+                                        if (curSec && curSec->modifier == core::SectorModifier::FoundryWastes) {
+                                            for (size_t rev : newlyRevealed) {
+                                                if (!targetBoard->isBomb(rev)) {
+                                                    core::MoltenTileTimer mt;
+                                                    mt.cellIndex = rev;
+                                                    mt.timeLeft = 5.0f;
+                                                    mt.active = true;
+                                                    curSec->moltenTimers.push_back(mt);
+                                                }
+                                            }
+                                        }
+                                        if (curSec && curSec->modifier == core::SectorModifier::JammedComms && !curSec->centralDataNodeCleared) {
+                                            for (size_t rev : newlyRevealed) {
+                                                if (rev == curSec->centralDataNodeIdx) {
+                                                    curSec->centralDataNodeCleared = true;
+                                                    soundMgr.playUncoverSound();
+                                                    renderer.shopShip.triggerBanter("Central relay decrypted! Communications online.");
+                                                    if (!renderer.shopShips.empty()) renderer.shopShips.front().triggerBanter("Central relay decrypted! Communications online.");
+                                                    break;
+                                                }
+                                            }
                                         }
                                     }
                                     if (currentMode == GameMode::Campaign) {
@@ -1918,10 +2156,60 @@ void App::update(float dt) {
             }
         }
 
-        // Update Scrap System
+        // Merchant Pedestals & Hopper
+        bool isMouseDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop && !isEditorOpen;
+        if (!renderer.shopShips.empty()) {
+            renderer.shopShips.front().updatePedestals(dt, worldMouse, isMouseDown, scrapCount, playerInventory);
+            renderer.shopShip = renderer.shopShips.front();
+        } else {
+            renderer.shopShip.updatePedestals(dt, worldMouse, isMouseDown, scrapCount, playerInventory);
+        }
+        hud.scrapCount = scrapCount;
+        menu.scrapCount = scrapCount;
+
+        // Sector Modifiers in Campaign Mode
+        if (currentMode == GameMode::Campaign) {
+            auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+            if (curSec) {
+                renderer.ionStormActive = (curSec->modifier == core::SectorModifier::IonStorm);
+
+                if (curSec->modifier == core::SectorModifier::FoundryWastes && !curSec->isCleared && !curSec->board.isGameOver) {
+                    for (auto& mt : curSec->moltenTimers) {
+                        if (mt.active && mt.timeLeft > 0.0f) {
+                            mt.timeLeft -= dt;
+                            if (mt.timeLeft <= 0.0f) {
+                                mt.timeLeft = 0.0f;
+                                mt.active = false;
+                                Vector2 cellPos = curSec->getCellWorldPosition(mt.cellIndex, 40.0f);
+                                renderer.emitExplosion(cellPos, ui::Colors::Amber500);
+                                soundMgr.playExplosionSound();
+                                renderer.shopShip.triggerBanter("Molten cell collapsed! Watch your hull temperature!");
+                                if (!renderer.shopShips.empty()) {
+                                    renderer.shopShips.front().triggerBanter("Molten cell collapsed! Watch your hull temperature!");
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                renderer.ionStormActive = false;
+            }
+        } else {
+            renderer.ionStormActive = false;
+        }
+        renderer.updateIonStorm(dt);
+
+        // Update Scrap System with drag-and-drop & hopper deposit
         Vector2 hudScrapPos = hud.getScrapBadgeScreenPos();
         bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isOverUI && !mouseHandledByShop && !isEditorOpen;
-        scrapSystem.update(dt, hudScrapPos, renderer.camera.camera, worldMouse, mouseClicked);
+        Rectangle hopperRect = !renderer.shopShips.empty() ? renderer.shopShips.front().getHopperWorldRect() : renderer.shopShip.getHopperWorldRect();
+        scrapSystem.update(dt, hudScrapPos, renderer.camera.camera, worldMouse, isMouseDown, mouseClicked, hopperRect);
+        if (scrapSystem.hopperDepositTriggered) {
+            renderer.shopShip.triggerBanter("Scrap received! Banking to team account.");
+            if (!renderer.shopShips.empty()) {
+                renderer.shopShips.front().triggerBanter("Scrap received! Banking to team account.");
+            }
+        }
 
         int collected = scrapSystem.collectPending();
         if (collected > 0) {

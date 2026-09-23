@@ -259,8 +259,9 @@ void VoiceManager::Impl::playbackCallback(ma_device* pDevice, void* pOutput, con
     float localY = impl->localCursorY.load(std::memory_order_relaxed);
     float masterVol = impl->settings.voiceVolume;
     bool proximity = impl->settings.proximity;
-    float maxDist = impl->settings.maxAudibleDistance;
-    float minDist = impl->settings.minAudibleDistance;
+    float proxMult = std::clamp(impl->settings.proximityRadiusMultiplier, 0.1f, 2.0f);
+    float maxDist = impl->settings.maxAudibleDistance * proxMult;
+    float minDist = impl->settings.minAudibleDistance * proxMult;
 
     std::lock_guard<std::mutex> lock(impl->peersMutex);
     for (auto& [id, peer] : impl->peers) {
@@ -298,6 +299,26 @@ void VoiceManager::Impl::playbackCallback(ma_device* pDevice, void* pOutput, con
             out[f * 2 + 1] += s * rightGain;
         }
         peer.sampleBuffer.erase(peer.sampleBuffer.begin(), peer.sampleBuffer.begin() + framesToRead);
+    }
+
+    if (impl->settings.intercomReverb) {
+        // Hollow intercom reverb: early reflections with metallic comb decay
+        static float delayRingL[1024] = {0};
+        static float delayRingR[1024] = {0};
+        static size_t ringIdx = 0;
+        for (ma_uint32 f = 0; f < frameCount; ++f) {
+            float inL = out[f * 2 + 0];
+            float inR = out[f * 2 + 1];
+            size_t tap1 = (ringIdx + 1024 - 320) % 1024;
+            size_t tap2 = (ringIdx + 1024 - 580) % 1024;
+            float reverbL = delayRingL[tap1] * 0.35f + delayRingL[tap2] * 0.22f;
+            float reverbR = delayRingR[tap1] * 0.35f + delayRingR[tap2] * 0.22f;
+            delayRingL[ringIdx] = inL + reverbL * 0.25f;
+            delayRingR[ringIdx] = inR + reverbR * 0.25f;
+            ringIdx = (ringIdx + 1) % 1024;
+            out[f * 2 + 0] = inL * 0.85f + reverbL;
+            out[f * 2 + 1] = inR * 0.85f + reverbR;
+        }
     }
 
     for (ma_uint32 i = 0; i < frameCount * 2; ++i) {

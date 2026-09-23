@@ -1,11 +1,16 @@
 #include "camera_controller.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace minesweeper::render {
 
 CameraController::CameraController() {
     reset();
+}
+
+void CameraController::shake(float intensity) {
+    shakeTrauma = std::min(1.0f, shakeTrauma + intensity);
 }
 
 void CameraController::reset(Vector2 targetPos, float zoom) {
@@ -84,6 +89,15 @@ void CameraController::centerOn(Vector2 worldPos, float customScreenW, float cus
 }
 
 void CameraController::followShip(Vector2 shipWorldPos, float dt, float customScreenW, float customScreenH) {
+    if (dt > 0.0f && shakeTrauma > 0.0f) {
+        float effectiveDt = (dt > 0.1f) ? 0.1f : dt;
+        shakeTrauma = std::max(0.0f, shakeTrauma - effectiveDt * 2.0f);
+        float shakeAmount = shakeTrauma * shakeTrauma * 20.0f;
+        float angle = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) * 6.2831853f;
+        camera.target.x += std::cos(angle) * shakeAmount;
+        camera.target.y += std::sin(angle) * shakeAmount;
+    }
+
     if (!enableEdgeFollow) return;
     if (dt <= 0.0f) return;
     if (dt > 0.1f) dt = 0.1f;

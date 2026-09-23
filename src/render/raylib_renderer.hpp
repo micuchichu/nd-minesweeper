@@ -208,9 +208,21 @@ public:
 
     void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
+
+    std::vector<core::RadarBeaconEntity> radarBeacons;
+    void deployRadarBeacon(Vector2 worldPos, int mineCount, float duration = 12.0f);
+    void updateRadarBeacons(float dt);
+    void drawRadarBeacons();
+
+    bool ionStormActive = false;
+    float ionGlitchTimer = 0.0f;
+    void updateIonStorm(float dt);
+    void drawIonStormOverlay();
+
     void clearParticles() {
         particles.clear();
         bubbleParticles.clear();
+        radarBeacons.clear();
         localShip.exhaust.clear();
         shopShip.exhaust.clear();
         for (auto& s : shopShips) s.exhaust.clear();

@@ -30,6 +30,9 @@ public:
     float edgeMarginRatio = 0.22f;
     float followSpeed = 6.5f;
 
+    float shakeTrauma = 0.0f;
+    void shake(float intensity = 0.5f);
+
     void followShip(Vector2 shipWorldPos, float dt, float customScreenW = 0.0f, float customScreenH = 0.0f);
     void centerOn(Vector2 worldPos, float customScreenW = 0.0f, float customScreenH = 0.0f);
 };

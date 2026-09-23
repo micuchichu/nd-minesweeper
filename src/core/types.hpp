@@ -19,11 +19,19 @@ enum class RevealResult : uint8_t {
     Won = 3
 };
 
+enum class TerrainShape : uint8_t {
+    Rectangle = 0,
+    PerlinIsland = 1,
+    CellularAutomata = 2,
+    VoronoiFaultLine = 3
+};
+
 struct BoardConfig {
     int dim = 2;
     int size = 10;
     int bombs = 10;
     uint64_t seed = 12345;
+    TerrainShape shape = TerrainShape::Rectangle;
 
     size_t totalCells() const {
         size_t total = 1;

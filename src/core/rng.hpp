@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstdint>
 #include <cstddef>
@@ -43,6 +43,11 @@ public:
                 return r % bound;
             }
         }
+    }
+
+    // Generates a uniform float in [0.0f, 1.0f)
+    inline float nextFloat01() {
+        return static_cast<float>(nextU32() >> 8) * (1.0f / 16777216.0f);
     }
 };
 

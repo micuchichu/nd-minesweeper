@@ -295,18 +295,25 @@ void NetworkManager::update() {
                 uint32_t senderId = (role == NetRole::Host) ? peerId : p->playerID;
 
                 RemoteCursor rc;
-                rc.x = p->x;
-                rc.y = p->y;
-                rc.angle = p->angle;
                 rc.mass = p->mass;
                 rc.isMoving = p->isMoving;
                 rc.skin = p->skin;
                 std::memcpy(rc.name, p->name, sizeof(rc.name));
                 rc.name[sizeof(rc.name) - 1] = '\0';
+                rc.targetX = p->x;
+                rc.targetY = p->y;
+                rc.targetAngle = p->angle;
                 auto it = remoteCursors.find(senderId);
                 if (it != remoteCursors.end()) {
+                    rc.x = it->second.x;
+                    rc.y = it->second.y;
+                    rc.angle = it->second.angle;
                     rc.isSpeaking = it->second.isSpeaking;
                     rc.speakingTimer = it->second.speakingTimer;
+                } else {
+                    rc.x = p->x;
+                    rc.y = p->y;
+                    rc.angle = p->angle;
                 }
                 remoteCursors[senderId] = rc;
 
@@ -439,6 +446,44 @@ void NetworkManager::update() {
                 }
                 pimpl->eventQueue.push_back(ne);
             }
+            else if (header->type == PacketType::InteractItem && p2p.data.size() >= sizeof(PacketInteractItem)) {
+                auto* p = reinterpret_cast<PacketInteractItem*>(p2p.data.data());
+                NetEvent ne{};
+                ne.type = NetEventType::ItemInteracted;
+                ne.peerId = (role == NetRole::Host) ? peerId : p->playerID;
+                ne.interactData = *p;
+                pimpl->eventQueue.push_back(ne);
+            }
+            else if (header->type == PacketType::DepositScrap && p2p.data.size() >= sizeof(PacketDepositScrap)) {
+                auto* p = reinterpret_cast<PacketDepositScrap*>(p2p.data.data());
+                NetEvent ne{};
+                ne.type = NetEventType::ScrapDeposited;
+                ne.peerId = (role == NetRole::Host) ? peerId : p->playerID;
+                ne.depositData = *p;
+                pimpl->eventQueue.push_back(ne);
+            }
+            else if (header->type == PacketType::ItemStateSync && p2p.data.size() >= sizeof(PacketItemStateSync)) {
+                auto* p = reinterpret_cast<PacketItemStateSync*>(p2p.data.data());
+                NetEvent ne{};
+                ne.type = NetEventType::ItemStateSynced;
+                ne.itemSyncData = *p;
+                pimpl->eventQueue.push_back(ne);
+            }
+            else if (header->type == PacketType::WalletUpdate && p2p.data.size() >= sizeof(PacketWalletUpdate)) {
+                auto* p = reinterpret_cast<PacketWalletUpdate*>(p2p.data.data());
+                NetEvent ne{};
+                ne.type = NetEventType::WalletUpdated;
+                ne.walletData = *p;
+                pimpl->eventQueue.push_back(ne);
+            }
+            else if (header->type == PacketType::DetonationEvent && p2p.data.size() >= sizeof(PacketDetonationEvent)) {
+                auto* p = reinterpret_cast<PacketDetonationEvent*>(p2p.data.data());
+                NetEvent ne{};
+                ne.type = NetEventType::DetonationOccurred;
+                ne.peerId = p->triggeredByPlayerId;
+                ne.detonationData = *p;
+                pimpl->eventQueue.push_back(ne);
+            }
         }
     }
 
@@ -515,18 +560,25 @@ void NetworkManager::update() {
                         uint32_t senderId = (role == NetRole::Host && event.peer) ? event.peer->incomingPeerID : p->playerID;
 
                         RemoteCursor rc;
-                        rc.x = p->x;
-                        rc.y = p->y;
-                        rc.angle = p->angle;
                         rc.mass = p->mass;
                         rc.isMoving = p->isMoving;
                         rc.skin = p->skin;
                         std::memcpy(rc.name, p->name, sizeof(rc.name));
                         rc.name[sizeof(rc.name) - 1] = '\0';
+                        rc.targetX = p->x;
+                        rc.targetY = p->y;
+                        rc.targetAngle = p->angle;
                         auto it = remoteCursors.find(senderId);
                         if (it != remoteCursors.end()) {
+                            rc.x = it->second.x;
+                            rc.y = it->second.y;
+                            rc.angle = it->second.angle;
                             rc.isSpeaking = it->second.isSpeaking;
                             rc.speakingTimer = it->second.speakingTimer;
+                        } else {
+                            rc.x = p->x;
+                            rc.y = p->y;
+                            rc.angle = p->angle;
                         }
                         remoteCursors[senderId] = rc;
 
@@ -651,6 +703,44 @@ void NetworkManager::update() {
                         }
                         pimpl->eventQueue.push_back(ne);
                     }
+                    else if (header->type == PacketType::InteractItem && event.packet->dataLength >= sizeof(PacketInteractItem)) {
+                        auto* p = reinterpret_cast<PacketInteractItem*>(event.packet->data);
+                        NetEvent ne{};
+                        ne.type = NetEventType::ItemInteracted;
+                        ne.peerId = (role == NetRole::Host && event.peer) ? event.peer->incomingPeerID : p->playerID;
+                        ne.interactData = *p;
+                        pimpl->eventQueue.push_back(ne);
+                    }
+                    else if (header->type == PacketType::DepositScrap && event.packet->dataLength >= sizeof(PacketDepositScrap)) {
+                        auto* p = reinterpret_cast<PacketDepositScrap*>(event.packet->data);
+                        NetEvent ne{};
+                        ne.type = NetEventType::ScrapDeposited;
+                        ne.peerId = (role == NetRole::Host && event.peer) ? event.peer->incomingPeerID : p->playerID;
+                        ne.depositData = *p;
+                        pimpl->eventQueue.push_back(ne);
+                    }
+                    else if (header->type == PacketType::ItemStateSync && event.packet->dataLength >= sizeof(PacketItemStateSync)) {
+                        auto* p = reinterpret_cast<PacketItemStateSync*>(event.packet->data);
+                        NetEvent ne{};
+                        ne.type = NetEventType::ItemStateSynced;
+                        ne.itemSyncData = *p;
+                        pimpl->eventQueue.push_back(ne);
+                    }
+                    else if (header->type == PacketType::WalletUpdate && event.packet->dataLength >= sizeof(PacketWalletUpdate)) {
+                        auto* p = reinterpret_cast<PacketWalletUpdate*>(event.packet->data);
+                        NetEvent ne{};
+                        ne.type = NetEventType::WalletUpdated;
+                        ne.walletData = *p;
+                        pimpl->eventQueue.push_back(ne);
+                    }
+                    else if (header->type == PacketType::DetonationEvent && event.packet->dataLength >= sizeof(PacketDetonationEvent)) {
+                        auto* p = reinterpret_cast<PacketDetonationEvent*>(event.packet->data);
+                        NetEvent ne{};
+                        ne.type = NetEventType::DetonationOccurred;
+                        ne.peerId = p->triggeredByPlayerId;
+                        ne.detonationData = *p;
+                        pimpl->eventQueue.push_back(ne);
+                    }
                 }
                 enet_packet_destroy(event.packet);
                 break;
@@ -661,6 +751,7 @@ void NetworkManager::update() {
     }
 
     for (auto& [id, cursor] : remoteCursors) {
+        cursor.update(0.016f);
         if (cursor.speakingTimer > 0.0f) {
             cursor.speakingTimer -= 0.016f;
             if (cursor.speakingTimer <= 0.0f) {

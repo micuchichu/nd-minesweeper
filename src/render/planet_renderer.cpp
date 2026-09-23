@@ -542,11 +542,17 @@ void PlanetRenderer::drawGlobe(const core::CampaignManager& campaign, int select
         if (sec.isFortress) {
             const auto* cSec = campaign.getSectorByIndex(sec.fortressIdx);
             if (cSec && cSec->isCleared) {
-                baseCol = Color{ 36, 96, 58, 255 };  // Secured green-tinted rock
+                baseCol = Color{ 24, 76, 44, 255 };  // Secured green
             } else if (cSec && cSec->isUnlocked) {
-                baseCol = Color{ 145, 42, 54, 255 }; // Active volcanic red
+                float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 4.5f);
+                baseCol = Color{
+                    static_cast<unsigned char>(160 + 60 * pulse),
+                    static_cast<unsigned char>(110 + 40 * pulse),
+                    10,
+                    255
+                }; // Contested pulsing amber (#FFB000)
             } else {
-                baseCol = Color{ 55, 30, 36, 255 };  // Locked fortress
+                baseCol = Color{ 42, 42, 48, 255 };  // Locked dark charcoal (#2A2A30)
             }
         }
 
@@ -593,8 +599,11 @@ void PlanetRenderer::drawGlobe(const core::CampaignManager& campaign, int select
         } else if (sec.isFortress) {
             const auto* cSec = campaign.getSectorByIndex(sec.fortressIdx);
             if (cSec && cSec->isCleared) edgeCol = ui::Colors::Green400;
-            else if (cSec && cSec->isUnlocked) edgeCol = ui::Colors::Red500;
-            else edgeCol = ui::Colors::Zinc600;
+            else if (cSec && cSec->isUnlocked) {
+                float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(GetTime()) * 5.0f);
+                edgeCol = Fade(Color{ 255, 176, 0, 255 }, 0.70f + 0.30f * pulse);
+            }
+            else edgeCol = Color{ 42, 42, 48, 255 }; // Locked dark charcoal
         }
 
         for (size_t k = 0; k < nCorners; ++k) {
@@ -715,7 +724,7 @@ void PlanetRenderer::drawSectorOverlays(const core::CampaignManager& campaign, i
             Vector2 pBotLeft = { sPos.x - iconSize * 0.7f, sPos.y + iconSize * 0.6f };
             Vector2 pBotRight = { sPos.x + iconSize * 0.7f, sPos.y + iconSize * 0.6f };
 
-            Color iconCol = isSel ? WHITE : (isSecured ? ui::Colors::Green400 : (isHostile ? ui::Colors::Red400 : ui::Colors::Zinc500));
+            Color iconCol = isSel ? WHITE : (isSecured ? ui::Colors::Green400 : (isHostile ? Color{ 255, 176, 0, 255 } : Color{ 42, 42, 48, 255 }));
 
             if (isSecured || isHostile || isSel) {
                 // Outpost house/base icon
@@ -725,8 +734,9 @@ void PlanetRenderer::drawSectorOverlays(const core::CampaignManager& campaign, i
                 DrawLineEx(pBotRight, pBotLeft, 1.8f, iconCol);
                 DrawLineEx(pBotLeft, pLeft, 1.8f, iconCol);
             } else {
-                // Padlock icon for locked fortress
-                DrawRectangle(static_cast<int>(sPos.x - 4), static_cast<int>(sPos.y - 3), 8, 7, ui::Colors::Zinc400);
+                // Padlock icon for locked dark charcoal fortress
+                DrawRectangle(static_cast<int>(sPos.x - 5), static_cast<int>(sPos.y - 3), 10, 8, Color{ 42, 42, 48, 255 });
+                DrawRectangleLines(static_cast<int>(sPos.x - 5), static_cast<int>(sPos.y - 3), 10, 8, ui::Colors::Zinc400);
                 DrawCircleLines(static_cast<int>(sPos.x), static_cast<int>(sPos.y - 4), 3, ui::Colors::Zinc400);
             }
         }

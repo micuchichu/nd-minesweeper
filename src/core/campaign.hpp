@@ -36,6 +36,19 @@ struct MerchantSpawn {
     float angle = 0.0f;
 };
 
+enum class SectorModifier {
+    None = 0,
+    FoundryWastes = 1,
+    IonStorm = 2,
+    JammedComms = 3
+};
+
+struct MoltenTileTimer {
+    size_t cellIndex = 0;
+    float timeLeft = 5.0f;
+    bool active = false;
+};
+
 struct SectorConfig {
     int id = 1;
     std::string name = "Sector 01: Outpost Alpha";
@@ -43,6 +56,8 @@ struct SectorConfig {
     std::string subtitle = "Primary Drop Zone & Logistics Depot";
     std::string description;
     int threatLevel = 1;
+    SectorModifier modifier = SectorModifier::None;
+    std::string modifierName = "None";
 
     // Map
     int gridSize = 8;
@@ -115,6 +130,11 @@ struct CampaignSector {
     std::string subtitle;          // e.g. "Landing Site & Extraction Depot"
     std::string loreBriefing;      // Tactical briefing / lore dossier
     int threatLevel = 1;
+    SectorModifier modifier = SectorModifier::None;
+    float threatIndex = 1.0f;
+    bool centralDataNodeCleared = false;
+    size_t centralDataNodeIdx = 0;
+    std::vector<MoltenTileTimer> moltenTimers;
 
     Vector2 worldOffset{ 0, 0 };   // Top-left of sector walled arena
     Vector2 gridOffset{ 0, 0 };    // Top-left of minefield board inside arena
@@ -212,6 +232,7 @@ public:
 
     bool checkSectorClear(int sectorIdx);
     void updatePlanetClearance();
+    void handleEmergencyExtraction(int sectorIdx, uint64_t& unbankedScrap);
 
     CampaignSector* getSector(int id);
     const CampaignSector* getSector(int id) const;

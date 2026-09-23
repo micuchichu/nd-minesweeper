@@ -121,7 +121,55 @@ void ScrapSystem::spawn(Vector2 cellCenterPos) {
     }
 }
 
-void ScrapSystem::update(float dt, Vector2 hudScrapScreenPos, const Camera2D& camera, Vector2 mouseWorldPos, bool mouseClicked) {
+void ScrapSystem::update(float dt, Vector2 hudScrapScreenPos, const Camera2D& camera, Vector2 mouseWorldPos, bool isMouseDown, bool mouseClicked, Rectangle hopperRect) {
+    hopperDepositTriggered = false;
+
+    // Handle dragged item
+    if (carriedItemIndex >= 0 && carriedItemIndex < static_cast<int>(items.size())) {
+        ScrapItem& carried = items[carriedItemIndex];
+        if (isMouseDown) {
+            carried.currentPos = mouseWorldPos;
+            carried.state = ScrapState::Carried;
+            carried.isCarried = true;
+        } else {
+            carried.isCarried = false;
+            // Check drop on merchant hopper
+            if (hopperRect.width > 0.0f && CheckCollisionPointRec(mouseWorldPos, hopperRect)) {
+                carried.state = ScrapState::FlyingToHUD;
+                carried.flyStartScreen = GetWorldToScreen2D(carried.currentPos, camera);
+                carried.targetScreen = hudScrapScreenPos;
+                carried.flyProgress = 0.0f;
+                hopperDepositTriggered = true;
+                pendingCollected++;
+
+                for (int s = 0; s < 8; ++s) {
+                    float ang = randomFloat(0.0f, 6.283185f);
+                    float spd = randomFloat(60.0f, 150.0f);
+                    sparks.push_back({
+                        mouseWorldPos,
+                        { std::cos(ang) * spd, std::sin(ang) * spd },
+                        ui::Colors::Amber400,
+                        0.45f,
+                        0.45f,
+                        randomFloat(2.5f, 4.5f)
+                    });
+                }
+                floatingTexts.push_back({
+                    { mouseWorldPos.x, mouseWorldPos.y - 14.0f },
+                    "+1 BANKED",
+                    ui::Colors::Amber400,
+                    0.9f,
+                    0.9f
+                });
+            } else {
+                carried.state = ScrapState::Settled;
+                carried.basePos = carried.currentPos;
+                carried.velocity = { 0, 0 };
+            }
+            carriedItemIndex = -1;
+        }
+    }
+
     // Update items
     for (size_t i = 0; i < items.size(); ++i) {
         ScrapItem& it = items[i];
@@ -181,16 +229,23 @@ void ScrapSystem::update(float dt, Vector2 hudScrapScreenPos, const Camera2D& ca
             // Gentle hovering
             it.currentPos.y = it.basePos.y + std::sin(it.stateTimer * 7.0f) * 2.2f;
 
-            // Click-to-collect
-            bool clickedOn = mouseClicked && (Vector2Distance(mouseWorldPos, it.currentPos) < 22.0f);
-
-            // Auto-collect after settling briefly (~0.6s)
-            if (clickedOn || it.stateTimer >= 0.60f) {
+            // Click-to-drag or auto-collect
+            bool clickedOn = mouseClicked && (Vector2Distance(mouseWorldPos, it.currentPos) < 24.0f);
+            if (clickedOn && carriedItemIndex < 0) {
+                carriedItemIndex = static_cast<int>(i);
+                it.state = ScrapState::Carried;
+                it.isCarried = true;
+                it.currentPos = mouseWorldPos;
+            } else if (it.stateTimer >= 8.0f) {
+                // Auto-collect fallback after 8 seconds
                 it.state = ScrapState::FlyingToHUD;
                 it.flyStartScreen = GetWorldToScreen2D(it.currentPos, camera);
                 it.targetScreen = hudScrapScreenPos;
                 it.flyProgress = 0.0f;
             }
+        }
+        else if (it.state == ScrapState::Carried) {
+            it.currentPos = mouseWorldPos;
         }
         else if (it.state == ScrapState::FlyingToHUD) {
             it.flyProgress += dt * 2.2f; // ~0.45s flight
@@ -205,6 +260,9 @@ void ScrapSystem::update(float dt, Vector2 hudScrapScreenPos, const Camera2D& ca
     // Clean up collected items
     for (size_t i = 0; i < items.size();) {
         if (items[i].reachedHUD) {
+            if (carriedItemIndex == static_cast<int>(i)) carriedItemIndex = -1;
+            else if (carriedItemIndex > static_cast<int>(i)) carriedItemIndex--;
+
             items[i] = items.back();
             items.pop_back();
         } else {
@@ -243,8 +301,9 @@ void ScrapSystem::update(float dt, Vector2 hudScrapScreenPos, const Camera2D& ca
 void ScrapSystem::drawWorld(const Camera2D& camera) {
     (void)camera;
 
-    // 1. Draw tile drop shadows & scrap sprites for bouncing / settled items
-    float scrapBaseSize = 20.0f;
+    // Strict clutter control: token must fit within 65% of an individual 40px cell (<= 26px max)
+    const float scrapBaseSize = 20.0f;
+    const float maxAllowedSize = 25.0f;
 
     for (const auto& it : items) {
         if (it.state == ScrapState::FlyingToHUD) continue;
@@ -253,7 +312,7 @@ void ScrapSystem::drawWorld(const Camera2D& camera) {
 
         // Ground shadow
         float shadowAlpha = std::clamp(0.40f - (h * 0.005f), 0.08f, 0.40f);
-        float shadowW = std::max(5.0f, 15.0f - (h * 0.12f));
+        float shadowW = std::min(13.0f, std::max(5.0f, 13.0f - (h * 0.12f)));
         float shadowH = shadowW * 0.45f;
         if (shadowTexture.id != 0) {
             Rectangle shSrc = { 0.0f, 0.0f, static_cast<float>(shadowTexture.width), static_cast<float>(shadowTexture.height) };
@@ -268,35 +327,51 @@ void ScrapSystem::drawWorld(const Camera2D& camera) {
         float scaleX = 1.0f;
         float scaleY = 1.0f;
         if (it.squashTimer > 0.0f) {
-            scaleX = 1.35f;
-            scaleY = 0.70f;
+            scaleX = 1.25f;
+            scaleY = 0.80f;
         } else if (std::abs(it.velocity.y) > 40.0f) {
-            float stretch = std::min(0.30f, std::abs(it.velocity.y) / 750.0f);
+            float stretch = std::min(0.25f, std::abs(it.velocity.y) / 750.0f);
             scaleY = 1.0f + stretch;
             scaleX = 1.0f / std::sqrt(scaleY);
         }
 
-        float drawW = scrapBaseSize * scaleX;
-        float drawH = scrapBaseSize * scaleY;
+        float drawW = std::min(maxAllowedSize, scrapBaseSize * scaleX);
+        float drawH = std::min(maxAllowedSize, scrapBaseSize * scaleY);
 
-        Rectangle src = { 0.0f, 0.0f, static_cast<float>(texture.width), static_cast<float>(texture.height) };
-        Rectangle dst = { it.currentPos.x, it.currentPos.y, drawW, drawH };
-        Vector2 origin = { drawW * 0.5f, drawH * 0.5f };
-
-        // Subtle yellow/amber halo glow when settled
-        if (it.state == ScrapState::Settled) {
+        // Subtle amber halo glow when settled or carried
+        if (it.state == ScrapState::Settled || it.state == ScrapState::Carried) {
             float pulse = 0.5f + 0.5f * std::sin(it.stateTimer * 9.0f);
+            if (it.state == ScrapState::Carried) pulse = 0.85f;
             if (glowTexture.id != 0) {
-                float gSize = (14.0f + pulse * 5.0f) * 2.0f;
+                float gSize = (11.0f + pulse * 4.0f) * 2.0f;
                 Rectangle gSrc = { 0.0f, 0.0f, static_cast<float>(glowTexture.width), static_cast<float>(glowTexture.height) };
                 DrawTexturePro(glowTexture, gSrc, { it.currentPos.x, it.currentPos.y, gSize, gSize }, { gSize * 0.5f, gSize * 0.5f }, 0.0f, Fade(ui::Colors::Amber400, 0.35f * pulse));
             } else {
-                DrawCircle(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 13.0f + pulse * 4.0f, Fade(ui::Colors::Amber400, 0.12f * pulse));
-                DrawCircleLines(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 14.0f + pulse * 5.0f, Fade(ui::Colors::Amber400, 0.25f * pulse));
+                DrawCircle(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 11.0f + pulse * 3.0f, Fade(ui::Colors::Amber400, 0.12f * pulse));
+                DrawCircleLines(static_cast<int>(it.currentPos.x), static_cast<int>(it.currentPos.y), 12.0f + pulse * 3.5f, Fade(ui::Colors::Amber400, 0.25f * pulse));
             }
         }
 
-        DrawTexturePro(texture, src, dst, origin, it.rotation, WHITE);
+        // Draw glowing PCB wafer with exposed hex glyph [$] / 0x
+        if (texture.id != 0) {
+            Rectangle src = { 0.0f, 0.0f, static_cast<float>(texture.width), static_cast<float>(texture.height) };
+            Rectangle dst = { it.currentPos.x, it.currentPos.y, drawW, drawH };
+            Vector2 origin = { drawW * 0.5f, drawH * 0.5f };
+            DrawTexturePro(texture, src, dst, origin, it.rotation, WHITE);
+        } else {
+            // High-detail procedural PCB wafer with dark substrate, gold traces, and 0x glyph
+            Rectangle pcbRect = { it.currentPos.x - drawW * 0.5f, it.currentPos.y - drawH * 0.5f, drawW, drawH };
+            DrawRectangleRounded(pcbRect, 0.2f, 4, Color{ 18, 22, 26, 255 });
+            DrawRectangleRoundedLines(pcbRect, 0.2f, 4, ui::Colors::Amber500);
+
+            // Exposed silicon die
+            Rectangle dieRect = { it.currentPos.x - 5.0f, it.currentPos.y - 5.0f, 10.0f, 10.0f };
+            DrawRectangleRec(dieRect, Color{ 30, 36, 42, 255 });
+            DrawRectangleLinesEx(dieRect, 1.0f, ui::Colors::Amber400);
+
+            // Hex glyph [$] or 0x
+            DrawText("0x", static_cast<int>(it.currentPos.x - 4), static_cast<int>(it.currentPos.y - 4), 8, ui::Colors::Amber300);
+        }
     }
 
     // 2. Draw sparks in world space

@@ -473,6 +473,9 @@ void RaylibRenderer::unloadAssets() {
 }
 
 void RaylibRenderer::update(float dt) {
+    updateRadarBeacons(dt);
+    updateIonStorm(dt);
+
     for (auto& s : shopShips) {
         s.update(dt);
     }
@@ -639,7 +642,9 @@ int64_t RaylibRenderer::getCellIndexAtWorldPos(Vector2 worldPos, const core::Boa
             size_t x = static_cast<size_t>(worldPos.x / cellSize);
             size_t y = static_cast<size_t>(worldPos.y / cellSize);
             if (x < board.coord.size && y < board.coord.size) {
-                return static_cast<int64_t>(board.coord.toIndex2D(x, y));
+                size_t idx = board.coord.toIndex2D(x, y);
+                if (board.hasTerrainMask && board.isVoid(idx)) return -1;
+                return static_cast<int64_t>(idx);
             }
         }
     }
@@ -652,7 +657,9 @@ int64_t RaylibRenderer::getCellIndexAtWorldPos(Vector2 worldPos, const core::Boa
                     size_t x = static_cast<size_t>(worldPos.x / cellSize);
                     size_t y = static_cast<size_t>(localY / cellSize);
                     if (x < board.coord.size && y < board.coord.size) {
-                        return static_cast<int64_t>(board.coord.toIndex3D(x, y, z));
+                        size_t idx = board.coord.toIndex3D(x, y, z);
+                        if (board.hasTerrainMask && board.isVoid(idx)) return -1;
+                        return static_cast<int64_t>(idx);
                     }
                 }
             }
@@ -669,7 +676,9 @@ int64_t RaylibRenderer::getCellIndexAtWorldPos(Vector2 worldPos, const core::Boa
                     size_t x = static_cast<size_t>(localX / cellSize);
                     size_t y = static_cast<size_t>(localY / cellSize);
                     if (x < board.coord.size && y < board.coord.size) {
-                        return static_cast<int64_t>(board.coord.toIndex4D(x, y, z, w));
+                        size_t idx = board.coord.toIndex4D(x, y, z, w);
+                        if (board.hasTerrainMask && board.isVoid(idx)) return -1;
+                        return static_cast<int64_t>(idx);
                     }
                 }
             }
@@ -790,8 +799,18 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                 }
             }
 
+            if (board.hasTerrainMask && board.isVoid(idx)) {
+                // Non-clickable void cell: deep abyss vacuum rendering
+                DrawRectangle(static_cast<int>(posX), static_cast<int>(posY), static_cast<int>(cellSize), static_cast<int>(cellSize), Color{ 6, 6, 8, 255 });
+                continue;
+            }
+
             // Empty revealed cells (0 count) are fully cleared unless neighbor-highlighted
             if (state == core::CellState::Revealed && count == 0 && !isNeighbor) {
+                if (board.hasTerrainMask && board.isPlayable(idx) && board.isEdge(idx)) {
+                    Rectangle cellRect = { posX + cellMargin, posY + cellMargin, cellSize - (cellMargin * 2.0f), cellSize - (cellMargin * 2.0f) };
+                    DrawRectangleLinesEx(cellRect, 1.5f, Color{ 255, 176, 0, 180 });
+                }
                 continue;
             }
 
@@ -800,6 +819,14 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                 cellSize - (cellMargin * 2.0f),
                 cellSize - (cellMargin * 2.0f)
             };
+
+            if (board.hasTerrainMask && board.isPlayable(idx) && board.isEdge(idx)) {
+                // Hazard-striped bulkhead on playable edge borders (#FFB000 / #2A2A30)
+                DrawRectangleLinesEx(cellRect, 1.8f, Color{ 255, 176, 0, 230 });
+                for (float hx = cellRect.x; hx < cellRect.x + cellRect.width; hx += 7.0f) {
+                    DrawLineEx({ hx, cellRect.y }, { std::min(cellRect.x + cellRect.width, hx + 4.0f), cellRect.y + 4.0f }, 1.2f, Color{ 42, 42, 48, 255 });
+                }
+            }
 
             if (highDetail) {
                 if (board.isGameOver && isBomb) {
@@ -858,7 +885,7 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                             int frame = (numFrames > 1) ? (static_cast<int>(time) % numFrames) : 0;
                             Rectangle flagSrc = { frame * frameW, 0.0f, frameW, frameH };
 
-                            float flagScale = 1.05f;
+                            float flagScale = 0.65f;
                             float flagW = cellRect.width * flagScale;
                             float flagH = cellRect.height * flagScale;
                             float baseX = cellRect.x + 4.0f * cellRect.width / 16.0f;
@@ -1603,6 +1630,93 @@ void RaylibRenderer::drawRadarSweep(Vector2 shipPos, const core::Board& board, f
     }
 }
 
+void RaylibRenderer::deployRadarBeacon(Vector2 worldPos, int mineCount, float duration) {
+    core::RadarBeaconEntity beacon;
+    beacon.worldPos = worldPos;
+    beacon.mineCount = mineCount;
+    beacon.timer = duration;
+    beacon.maxDuration = duration;
+    beacon.pulsePhase = 0.0f;
+    radarBeacons.push_back(beacon);
+}
+
+void RaylibRenderer::updateRadarBeacons(float dt) {
+    for (size_t i = 0; i < radarBeacons.size();) {
+        radarBeacons[i].timer -= dt;
+        radarBeacons[i].pulsePhase += dt * 3.5f;
+        if (radarBeacons[i].timer <= 0.0f) {
+            radarBeacons[i] = radarBeacons.back();
+            radarBeacons.pop_back();
+        } else {
+            ++i;
+        }
+    }
+}
+
+void RaylibRenderer::drawRadarBeacons() {
+    for (const auto& b : radarBeacons) {
+        float lifeFrac = std::clamp(b.timer / b.maxDuration, 0.0f, 1.0f);
+        float pulse = 0.5f + 0.5f * std::sin(b.pulsePhase * 3.0f);
+
+        // 5x5 sub-grid coverage area (5 tiles * cellSize)
+        float subGridSize = cellSize * 5.0f;
+        Rectangle subGridRect = {
+            b.worldPos.x - subGridSize * 0.5f,
+            b.worldPos.y - subGridSize * 0.5f,
+            subGridSize,
+            subGridSize
+        };
+
+        // 1. Semi-transparent sonar scan field
+        DrawRectangleRec(subGridRect, Fade(ui::Colors::Amber500, 0.04f * lifeFrac));
+        DrawRectangleLinesEx(subGridRect, 1.5f, Fade(ui::Colors::Amber400, (0.45f + 0.35f * pulse) * lifeFrac));
+
+        // Corner brackets on 5x5 grid
+        float bracketLen = 16.0f;
+        DrawLineEx({ subGridRect.x, subGridRect.y }, { subGridRect.x + bracketLen, subGridRect.y }, 2.0f, ui::Colors::Amber400);
+        DrawLineEx({ subGridRect.x, subGridRect.y }, { subGridRect.x, subGridRect.y + bracketLen }, 2.0f, ui::Colors::Amber400);
+        DrawLineEx({ subGridRect.x + subGridSize, subGridRect.y + subGridSize }, { subGridRect.x + subGridSize - bracketLen, subGridRect.y + subGridSize }, 2.0f, ui::Colors::Amber400);
+        DrawLineEx({ subGridRect.x + subGridSize, subGridRect.y + subGridSize }, { subGridRect.x + subGridSize, subGridRect.y + subGridSize - bracketLen }, 2.0f, ui::Colors::Amber400);
+
+        // 2. Concentric sonar ping circles
+        float pingRadius = std::fmod(b.pulsePhase * 25.0f, subGridSize * 0.5f);
+        DrawCircleLines(static_cast<int>(b.worldPos.x), static_cast<int>(b.worldPos.y), pingRadius, Fade(ui::Colors::Amber400, (1.0f - pingRadius / (subGridSize * 0.5f)) * 0.6f * lifeFrac));
+
+        // 3. Central physical beacon probe
+        DrawCircle(static_cast<int>(b.worldPos.x), static_cast<int>(b.worldPos.y), 7.0f, Color{ 20, 24, 28, 255 });
+        DrawCircleLines(static_cast<int>(b.worldPos.x), static_cast<int>(b.worldPos.y), 7.0f, ui::Colors::Amber400);
+        DrawCircle(static_cast<int>(b.worldPos.x), static_cast<int>(b.worldPos.y), 3.0f, (pulse > 0.5f) ? ui::Colors::Red500 : ui::Colors::Amber300);
+
+        // 4. Sonar read-out badge: [SONAR: X MINES]
+        std::string badgeText = TextFormat("SONAR: %d MINE%s", b.mineCount, (b.mineCount == 1 ? "" : "S"));
+        int bw = MeasureText(badgeText.c_str(), 10);
+        Rectangle badgeRect = { b.worldPos.x - bw * 0.5f - 6.0f, b.worldPos.y - 24.0f, static_cast<float>(bw + 12), 16.0f };
+        DrawRectangleRec(badgeRect, Color{ 10, 10, 14, 230 });
+        DrawRectangleLinesEx(badgeRect, 1.0f, ui::Colors::Amber400);
+        DrawText(badgeText.c_str(), static_cast<int>(badgeRect.x + 6), static_cast<int>(badgeRect.y + 3), 10, ui::Colors::Amber300);
+    }
+}
+
+void RaylibRenderer::updateIonStorm(float dt) {
+    if (ionStormActive) {
+        ionGlitchTimer += dt;
+    } else {
+        ionGlitchTimer = 0.0f;
+    }
+}
+
+void RaylibRenderer::drawIonStormOverlay() {
+    if (!ionStormActive) return;
+    float time = ionGlitchTimer;
+    float glitchPhase = std::fmod(time * 0.8f, 1.0f);
+    float scanlineY = glitchPhase * static_cast<float>(GetScreenHeight());
+    float glitchH = 32.0f;
+
+    DrawRectangle(0, static_cast<int>(scanlineY), GetScreenWidth(), static_cast<int>(glitchH), Fade(Color{ 0, 240, 255, 255 }, 0.06f));
+    DrawLine(0, static_cast<int>(scanlineY), GetScreenWidth(), static_cast<int>(scanlineY), Fade(Color{ 0, 255, 200, 255 }, 0.35f));
+    DrawLine(0, static_cast<int>(scanlineY + glitchH), GetScreenWidth(), static_cast<int>(scanlineY + glitchH), Fade(Color{ 255, 50, 100, 255 }, 0.25f));
+}
+
 void RaylibRenderer::updateHeldItemPhysics(Vector2 shipPos, Vector2 shipVel, float dt) {
     bool hasTarget = (heldSlot && heldSlot->occupied && heldSlot->item.id != core::ItemId::None);
 
@@ -2048,6 +2162,9 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
             s.draw(s.name.c_str(), ui::Colors::Amber400);
         }
     }
+    if (shopShips.empty() && shopShip.isInitialized) {
+        shopShip.draw(shopShip.name.c_str(), ui::Colors::Amber400);
+    }
     if (hasRouletteShip && rouletteShip.isInitialized) {
         rouletteShip.draw();
     }
@@ -2058,13 +2175,17 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
         if (id != 0) {
             curCol = ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f);
         }
+        if (ionStormActive) {
+            curCol = Color{ static_cast<unsigned char>(255 - curCol.r), static_cast<unsigned char>(255 - curCol.g), static_cast<unsigned char>(255 - curCol.b), curCol.a };
+        }
         const char* tag = !rShip.name.empty() ? rShip.name.c_str() : (id == 0 ? "HOST" : TextFormat("P%u", id));
         rShip.draw(tag, curCol, rShip.isSpeaking);
     }
 
     // 4. Draw local player ship
     if (localShip.isInitialized) {
-        localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
+        Color localCol = ionStormActive ? ui::Colors::Amber500 : ui::Colors::Green500;
+        localShip.draw(nullptr, localCol, isLocalSpeaking);
 
         // 4b. Draw held item following local player
         drawHeldItem(localShip.position, localShip.angle, heldSlot, isUsingItem);
@@ -2192,7 +2313,13 @@ void RaylibRenderer::render(const core::Board& board, int64_t hoveredIndex, cons
     // Draw Bubble Particles in World Space
     updateAndDrawBubbles(frameDt);
 
+    // Draw Deployable Radar Beacons in World Space
+    drawRadarBeacons();
+
     EndMode2D();
+
+    // Draw Ion Storm Scanlines in Screen Space
+    drawIonStormOverlay();
 
     // Draw off-screen neighbor previews on the screen edges (in screen space)
     drawNeighborPreviews(board, hoveredIndex);
@@ -2702,6 +2829,22 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
         // Flying flags for this sector
         drawFlyingFlags(sec.board);
 
+        // Draw Molten Tile Timers for Foundry Wastes
+        if (sec.modifier == core::SectorModifier::FoundryWastes) {
+            for (const auto& mt : sec.moltenTimers) {
+                if (mt.active && mt.timeLeft > 0.0f) {
+                    Vector2 cellPos = sec.getCellWorldPosition(mt.cellIndex, 40.0f);
+                    float pulse = 0.5f + 0.5f * std::sin(curTime * 10.0f);
+                    Rectangle cellRec = { cellPos.x - 20.0f, cellPos.y - 20.0f, 40.0f, 40.0f };
+                    DrawRectangleRec(cellRec, Fade(ui::Colors::Amber500, 0.35f + 0.15f * pulse));
+                    DrawRectangleLinesEx(cellRec, 1.5f, ui::Colors::Red500);
+                    const char* tStr = TextFormat("%.1fs", mt.timeLeft);
+                    int tw = MeasureText(tStr, 10);
+                    DrawText(tStr, static_cast<int>(cellPos.x - tw * 0.5f), static_cast<int>(cellPos.y - 5.0f), 10, ui::Colors::Amber200);
+                }
+            }
+        }
+
         // Sector clearance celebration fanfare overlay
         if (sec.clearAnimTimer > 0.0f) {
             float alpha = std::min(1.0f, sec.clearAnimTimer / 2.0f);
@@ -2742,6 +2885,9 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
         for (const auto& s : shopShips) {
             if (s.isInitialized) s.draw(s.name.c_str(), ui::Colors::Amber400);
         }
+        if (shopShips.empty() && shopShip.isInitialized) {
+            shopShip.draw(shopShip.name.c_str(), ui::Colors::Amber400);
+        }
     }
     if (allowRoulette && hasRouletteShip && rouletteShip.isInitialized) {
         rouletteShip.draw();
@@ -2749,12 +2895,16 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
 
     for (const auto& [id, rShip] : remoteShips) {
         Color curCol = (id != 0) ? ColorFromHSV(std::fmod(id * 137.5f, 360.0f), 0.8f, 1.0f) : ui::Colors::Red500;
+        if (ionStormActive) {
+            curCol = Color{ static_cast<unsigned char>(255 - curCol.r), static_cast<unsigned char>(255 - curCol.g), static_cast<unsigned char>(255 - curCol.b), curCol.a };
+        }
         const char* tag = !rShip.name.empty() ? rShip.name.c_str() : (id == 0 ? "HOST" : TextFormat("P%u", id));
         rShip.draw(tag, curCol, rShip.isSpeaking);
     }
 
     if (localShip.isInitialized) {
-        localShip.draw(nullptr, ui::Colors::Green500, isLocalSpeaking);
+        Color localCol = ionStormActive ? ui::Colors::Amber500 : ui::Colors::Green500;
+        localShip.draw(nullptr, localCol, isLocalSpeaking);
         drawHeldItem(localShip.position, localShip.angle, heldSlot, isUsingItem);
     }
 
@@ -2814,8 +2964,14 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
     // Bubbles
     updateAndDrawBubbles(frameDt);
 
+    // Draw Deployable Radar Beacons in World Space
+    drawRadarBeacons();
+
     cellSize = oldCellSize;
     EndMode2D();
+
+    // Draw Ion Storm Scanlines in Screen Space
+    drawIonStormOverlay();
 }
 
 void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hoveredIndex) {

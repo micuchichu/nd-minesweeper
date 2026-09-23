@@ -18,7 +18,22 @@ enum class ItemId : uint8_t {
     None = 0,
     Banana = 1,
     Radar = 2,
-    Bubbles = 3
+    Bubbles = 3,
+    BlastShield = 4,
+    GroundPenetratingWand = 5,
+    RadarBeacon = 6
+};
+
+struct RadarBeaconEntity {
+    int64_t cellIndex = -1;
+    Vector2 worldPos = { 0.0f, 0.0f };
+    int mineCount5x5 = 0;
+    int mineCount = 0;
+    float timer = 0.0f;
+    float maxLife = 12.0f;
+    float maxDuration = 12.0f;
+    float pingTimer = 0.0f;
+    float pulsePhase = 0.0f;
 };
 
 struct Item {
@@ -113,6 +128,20 @@ struct PlayerInventory {
             if (s.occupied && s.item.id == id) ++count;
         }
         return count;
+    }
+
+    bool hasItem(ItemId id) const {
+        return getItemCount(id) > 0;
+    }
+
+    bool consumeItem(ItemId id) {
+        for (int i = 0; i < CAPACITY; ++i) {
+            if (slots[i].occupied && slots[i].item.id == id) {
+                clearSlot(i);
+                return true;
+            }
+        }
+        return false;
     }
 
     void reset() {

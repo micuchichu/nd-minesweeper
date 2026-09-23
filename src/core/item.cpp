@@ -62,6 +62,9 @@ void ItemCatalog::init() {
             if (item.strId == "banana") item.id = ItemId::Banana;
             else if (item.strId == "radar") item.id = ItemId::Radar;
             else if (item.strId == "bubbles") item.id = ItemId::Bubbles;
+            else if (item.strId == "blast_shield" || item.strId == "blastshield") item.id = ItemId::BlastShield;
+            else if (item.strId == "ground_penetrating_wand" || item.strId == "wand") item.id = ItemId::GroundPenetratingWand;
+            else if (item.strId == "radar_beacon" || item.strId == "beacon") item.id = ItemId::RadarBeacon;
 
             item.name = root.contains("name") ? root["name"].asString(stem) : stem;
             item.description = root.contains("description") ? root["description"].asString("") : "";
@@ -81,6 +84,56 @@ void ItemCatalog::init() {
             }
             items.push_back(item);
         }
+    }
+
+    // Standard consumable items
+    bool hasBlastShield = false;
+    bool hasWand = false;
+    bool hasBeacon = false;
+    for (const auto& it : items) {
+        if (it.id == ItemId::BlastShield) hasBlastShield = true;
+        if (it.id == ItemId::GroundPenetratingWand) hasWand = true;
+        if (it.id == ItemId::RadarBeacon) hasBeacon = true;
+    }
+
+    if (!hasBlastShield) {
+        Item shield;
+        shield.id = ItemId::BlastShield;
+        shield.strId = "blast_shield";
+        shield.name = "BLAST SHIELD";
+        shield.description = "Passive • Absorbs 1 mine blast, applies knockback";
+        shield.tier = ItemTier::Tier2;
+        shield.cost = 50;
+        shield.defaultDurability = 1.0f;
+        shield.maxDurability = 1.0f;
+        shield.icon = am.loadTexture("assets/items/bubbles.png");
+        items.push_back(shield);
+    }
+    if (!hasWand) {
+        Item wand;
+        wand.id = ItemId::GroundPenetratingWand;
+        wand.strId = "ground_penetrating_wand";
+        wand.name = "PENETRATING WAND";
+        wand.description = "Active • Safely reveals target tile or auto-flags if mine";
+        wand.tier = ItemTier::Tier2;
+        wand.cost = 30;
+        wand.defaultDurability = 1.0f;
+        wand.maxDurability = 1.0f;
+        wand.icon = am.loadTexture("assets/items/radar.png");
+        items.push_back(wand);
+    }
+    if (!hasBeacon) {
+        Item beacon;
+        beacon.id = ItemId::RadarBeacon;
+        beacon.strId = "radar_beacon";
+        beacon.name = "RADAR BEACON";
+        beacon.description = "Deployable • Emits sonar ping showing 5x5 sub-grid mine count";
+        beacon.tier = ItemTier::Tier3;
+        beacon.cost = 60;
+        beacon.defaultDurability = 1.0f;
+        beacon.maxDurability = 1.0f;
+        beacon.icon = am.loadTexture("assets/items/radar.png");
+        items.push_back(beacon);
     }
 
     // Fallback: If no JSONs found (e.g. headless unit tests without assets), supply standard items
@@ -131,6 +184,9 @@ void ItemCatalog::shutdown() {
 }
 
 const Item* ItemCatalog::getItem(ItemId id) const {
+    if (!isInitialized) {
+        const_cast<ItemCatalog*>(this)->init();
+    }
     for (const auto& it : items) {
         if (it.id == id) return &it;
     }
@@ -138,6 +194,9 @@ const Item* ItemCatalog::getItem(ItemId id) const {
 }
 
 const Item* ItemCatalog::getItem(const std::string& strId) const {
+    if (!isInitialized) {
+        const_cast<ItemCatalog*>(this)->init();
+    }
     for (const auto& it : items) {
         if (it.strId == strId) return &it;
     }
@@ -148,32 +207,59 @@ ShopInventory ItemCatalog::createInventoryForShop(int shopTier, int capacity) co
     ShopInventory inv;
     inv.capacity = capacity;
 
-    std::vector<const Item*> eligibleItems;
+    std::vector<const Item*> t1, t2, t3;
     for (const auto& it : items) {
-        if (shopTier <= 1) {
-            if (it.tier <= ItemTier::Tier2) eligibleItems.push_back(&it);
-        } else {
-            eligibleItems.push_back(&it);
+        if (it.tier == ItemTier::Tier1) t1.push_back(&it);
+        else if (it.tier == ItemTier::Tier2) t2.push_back(&it);
+        else if (it.tier == ItemTier::Tier3) t3.push_back(&it);
+    }
+
+    std::vector<const Item*> selected;
+    if (shopTier <= 1) {
+        if (!t1.empty()) selected.push_back(t1.front());
+        if (!t2.empty()) selected.push_back(t2.front());
+        for (const auto* it : t1) {
+            if (std::find(selected.begin(), selected.end(), it) == selected.end()) selected.push_back(it);
+        }
+        for (const auto* it : t2) {
+            if (std::find(selected.begin(), selected.end(), it) == selected.end()) selected.push_back(it);
+        }
+    } else {
+        if (!t1.empty()) selected.push_back(t1.front());
+        if (!t2.empty()) selected.push_back(t2.front());
+        if (!t3.empty()) selected.push_back(t3.front());
+        for (const auto* it : t2) {
+            if (std::find(selected.begin(), selected.end(), it) == selected.end()) {
+                selected.push_back(it);
+                if (static_cast<int>(selected.size()) >= capacity) break;
+            }
+        }
+        for (const auto* it : t3) {
+            if (std::find(selected.begin(), selected.end(), it) == selected.end()) {
+                selected.push_back(it);
+                if (static_cast<int>(selected.size()) >= capacity) break;
+            }
+        }
+        for (const auto* it : t1) {
+            if (std::find(selected.begin(), selected.end(), it) == selected.end()) {
+                selected.push_back(it);
+                if (static_cast<int>(selected.size()) >= capacity) break;
+            }
         }
     }
 
-    std::sort(eligibleItems.begin(), eligibleItems.end(), [](const Item* a, const Item* b) {
-        if (a->tier != b->tier) return static_cast<int>(a->tier) < static_cast<int>(b->tier);
-        return a->cost < b->cost;
-    });
-
-    if (eligibleItems.empty()) {
+    if (selected.empty()) {
         const Item* banana = getItem(ItemId::Banana);
         const Item* radar = getItem(ItemId::Radar);
         const Item* bubbles = getItem(ItemId::Bubbles);
-        if (banana) eligibleItems.push_back(banana);
-        if (radar) eligibleItems.push_back(radar);
-        if (shopTier > 1 && bubbles) eligibleItems.push_back(bubbles);
+        if (banana) selected.push_back(banana);
+        if (radar) selected.push_back(radar);
+        if (shopTier > 1 && bubbles) selected.push_back(bubbles);
     }
 
-    if (!eligibleItems.empty()) {
-        for (int i = 0; i < capacity; ++i) {
-            const Item* item = eligibleItems[static_cast<size_t>(i) % eligibleItems.size()];
+    for (int i = 0; i < capacity; ++i) {
+        if (!selected.empty()) {
+            const Item* item = selected[static_cast<size_t>(i) % selected.size()];
             inv.slots.push_back({ *item, false, 1 });
         }
     }

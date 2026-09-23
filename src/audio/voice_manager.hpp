@@ -17,6 +17,8 @@ struct VoiceSettings {
     float maxAudibleDistance = 1200.0f;
     float minAudibleDistance = 150.0f;
     float vadThreshold = 0.035f; // RMS threshold for voice activity detection
+    bool intercomReverb = false; // true: hollow intercom reverb effect in safe zone
+    float proximityRadiusMultiplier = 1.0f; // multiplier for proximity radius (e.g. 0.3 for Jammed Comms)
 };
 
 class VoiceManager {
