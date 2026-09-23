@@ -34,7 +34,13 @@ void PlanetRenderer::init() {
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    generateGeodesicHexGrid();
+    // Initialize with default planet config if not yet set
+    auto defaultPlanets = core::CampaignManager::getDefaultPlanetConfigs();
+    if (!defaultPlanets.empty()) {
+        currentPlanetConfig = defaultPlanets[0];
+    }
+
+    generateGeodesicHexGrid(&currentPlanetConfig);
     generateStars(1920, 1080);
 
     // Initial focus on Campaign Sector 01 (Outpost Alpha)
@@ -46,7 +52,10 @@ void PlanetRenderer::init() {
     initialized = true;
 }
 
-void PlanetRenderer::generateGeodesicHexGrid() {
+void PlanetRenderer::generateGeodesicHexGrid(const core::PlanetConfig* cfg) {
+    if (cfg) {
+        currentPlanetConfig = *cfg;
+    }
     sectors.clear();
 
     // 1. Construct Base Icosahedron (12 vertices, 20 faces)
@@ -112,14 +121,21 @@ void PlanetRenderer::generateGeodesicHexGrid() {
         faceCentroids[f] = Vector3Normalize(sum);
     }
 
-    // Palette of visible low-poly volcanic basalt and obsidian tones
-    Color rockPalette[5] = {
-        Color{ 78, 36, 44, 255 },  // Volcanic basalt crust
-        Color{ 58, 26, 34, 255 },  // Deep charcoal obsidian
-        Color{ 96, 44, 54, 255 },  // Warm basalt ridge
-        Color{ 68, 30, 38, 255 },  // Crater rim rock
-        Color{ 112, 50, 60, 255 }  // Elevated volcanic plateau
-    };
+    // Palette of surface tones from data-driven planet configuration
+    std::vector<Color> tones = currentPlanetConfig.visual.surfaceTones;
+    if (tones.empty()) {
+        tones = {
+            Color{ 78, 36, 44, 255 },  // Volcanic basalt crust
+            Color{ 58, 26, 34, 255 },  // Deep charcoal obsidian
+            Color{ 96, 44, 54, 255 },  // Warm basalt ridge
+            Color{ 68, 30, 38, 255 },  // Crater rim rock
+            Color{ 112, 50, 60, 255 }  // Elevated volcanic plateau
+        };
+    }
+
+    bool hasRifts = currentPlanetConfig.visual.hasMagmaRifts;
+    float riftChance = currentPlanetConfig.visual.magmaRiftChance;
+    Color riftCol = currentPlanetConfig.visual.magmaRiftColor;
 
     uint32_t rng = 883311;
     auto nextRnd = [&rng]() -> uint32_t {
@@ -167,19 +183,19 @@ void PlanetRenderer::generateGeodesicHexGrid() {
             sec.corners.push_back(item.second);
         }
 
-        // Deterministic basalt coloring
+        // Deterministic terrain coloring
         uint32_t rVal = nextRnd();
-        sec.baseColor = rockPalette[rVal % 5];
-        sec.isMagmaRift = ((rVal % 11) == 0);
+        sec.baseColor = tones[rVal % tones.size()];
+        sec.isMagmaRift = hasRifts && ((rVal % 100) < static_cast<uint32_t>(std::clamp(riftChance * 100.0f, 0.0f, 100.0f)));
         if (sec.isMagmaRift) {
-            sec.baseColor = Color{ 160, 40, 52, 255 }; // Subterranean lava rift seam
+            sec.baseColor = riftCol;
         }
 
         // Territory metadata
         int sectorNum = (static_cast<int>(v) * 7) % 97 + 3;
         sec.codename = "SECTOR-" + std::to_string(sectorNum);
         sec.name = "Territory " + std::to_string(sectorNum);
-        sec.subtitle = "Unclaimed Planetary Buffer";
+        sec.subtitle = currentPlanetConfig.visual.geologicalStatus.empty() ? "Unclaimed Planetary Buffer" : currentPlanetConfig.visual.geologicalStatus;
         sec.threatLevel = (rVal % 3) + 1;
 
         sectors.push_back(sec);
@@ -229,8 +245,17 @@ void PlanetRenderer::generateGeodesicHexGrid() {
             sectors[idx].codename = fCodes[k];
             sectors[idx].subtitle = fSubs[k];
             sectors[idx].threatLevel = k + 1;
-            sectors[idx].baseColor = Color{ 48, 18, 24, 255 };
+            sectors[idx].baseColor = tones[tones.size() / 2];
         }
+    }
+}
+
+void PlanetRenderer::applyPlanetConfig(const core::PlanetConfig& cfg) {
+    currentPlanetConfig = cfg;
+    generateGeodesicHexGrid(&currentPlanetConfig);
+    int startSec = getSectorIdxForFortress(0);
+    if (startSec >= 0) {
+        focusSector(startSec);
     }
 }
 
@@ -494,7 +519,7 @@ void PlanetRenderer::drawGlobe(const core::CampaignManager& campaign, int select
     BeginMode3D(camera);
 
     // Faint equatorial orbital guide ring in space (stationary in world space)
-    DrawCircle3D({ 0, 0, 0 }, PLANET_RADIUS * 1.45f, { 0, 1, 0 }, 0.0f, Fade(ui::Colors::Zinc400, 0.12f));
+    DrawCircle3D({ 0, 0, 0 }, PLANET_RADIUS * 1.45f, { 0, 1, 0 }, 0.0f, Fade(currentPlanetConfig.visual.atmosphereColor, 0.18f));
 
     // Directional light vector in world space (upper right forward)
     Vector3 lightDir = Vector3Normalize({ 0.35f, 0.70f, 0.60f });
@@ -560,7 +585,7 @@ void PlanetRenderer::drawGlobe(const core::CampaignManager& campaign, int select
         bool isSel = (static_cast<int>(i) == selectedSectorIdx);
         bool isHov = (static_cast<int>(i) == hoveredSectorIdx);
 
-        Color edgeCol = Fade(Color{ 180, 75, 95, 255 }, 0.60f);
+        Color edgeCol = Fade(currentPlanetConfig.visual.wireframeColor, 0.60f);
         if (isSel) {
             edgeCol = Color{ 254, 202, 202, 255 }; // Glowing white-pink
         } else if (isHov) {

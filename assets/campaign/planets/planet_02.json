@@ -1,0 +1,37 @@
+{
+  "id": 2,
+  "name": "Acheron-Prime",
+  "codename": "ACHERON-01",
+  "systemName": "Acheron Foundry Drift",
+  "tagline": "SUB-CLUSTER FOUNDRY",
+  "description": "High-temperature smelting world characterized by massive industrial blast basins, slag runoff trenches, and heavy tectonic vibration. Heavily fortified automated perimeter defense clusters remain active throughout the mantle.",
+  "missionDirective": "Neutralize automated perimeter defenses across foundry facilities.",
+  "threatLevel": 2,
+  "seed": 54321,
+  "isUnlocked": false,
+  "unlocksPlanets": [3],
+  "sectors": [1, 2, 3, 4],
+  "visual": {
+    "iconColor": [251, 146, 60],
+    "atmosphereColor": [251, 146, 60],
+    "wireframeColor": [180, 95, 40],
+    "surfaceTones": [
+      [42, 24, 14],
+      [56, 32, 18],
+      [68, 38, 22],
+      [35, 20, 12],
+      [80, 46, 26]
+    ],
+    "hasMagmaRifts": true,
+    "magmaRiftColor": [255, 120, 20],
+    "magmaRiftChance": 0.12,
+    "geologicalStatus": "Sulfuric Slag & Ferrite Outcrops"
+  },
+  "intelDossier": [
+    "EXPEDITION MANDATE: HEAVY INDUSTRIAL EXPEDITION",
+    "Surface Topology: Smelting Basins & Tectonic Slag Veins",
+    "High Threat Seismic Activity and Proximity Detonators",
+    "Reinforced Heat-Shielding Required for Core Sectors",
+    "Strategic Scrap Refineries Available for Extraction"
+  ]
+}

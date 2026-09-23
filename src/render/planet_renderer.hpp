@@ -2,12 +2,9 @@
 
 #include "raylib.h"
 #include "raymath.h"
+#include "../core/campaign.hpp"
 #include <vector>
 #include <string>
-
-namespace minesweeper::core {
-    class CampaignManager;
-}
 
 namespace minesweeper::render {
 
@@ -89,8 +86,11 @@ public:
     // Sync fortress names and metadata from data-driven campaign sectors
     void syncCampaignSectors(const core::CampaignManager& campaign);
 
+    core::PlanetConfig currentPlanetConfig;
+    void applyPlanetConfig(const core::PlanetConfig& cfg);
+
 private:
-    void generateGeodesicHexGrid();
+    void generateGeodesicHexGrid(const core::PlanetConfig* cfg = nullptr);
     void generateStars(int screenW, int screenH);
 };
 

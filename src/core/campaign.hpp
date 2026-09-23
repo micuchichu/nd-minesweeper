@@ -73,6 +73,40 @@ struct SectorConfig {
     std::vector<MerchantSpawn> merchantSpawns;
 };
 
+struct PlanetVisualConfig {
+    Color iconColor{ 239, 68, 68, 255 };
+    Color atmosphereColor{ 244, 63, 94, 255 };
+    Color wireframeColor{ 180, 75, 95, 255 };
+    std::vector<Color> surfaceTones = {
+        Color{ 28, 14, 20, 255 },
+        Color{ 38, 18, 24, 255 },
+        Color{ 48, 22, 30, 255 },
+        Color{ 24, 12, 16, 255 },
+        Color{ 58, 28, 36, 255 }
+    };
+    bool hasMagmaRifts = true;
+    Color magmaRiftColor{ 160, 40, 52, 255 };
+    float magmaRiftChance = 0.09f;
+    std::string geologicalStatus = "Volcanic Basalt & Obsidian Crust";
+};
+
+struct PlanetConfig {
+    int id = 1;
+    std::string name = "Tartarus-IV";
+    std::string codename = "TARTARUS-04";
+    std::string systemName = "Tartarus Sub-Cluster 09";
+    std::string tagline = "QUARANTINE MINING ARRAY";
+    std::string description;
+    std::string missionDirective = "Clear the planet. Sector by sector.";
+    int threatLevel = 1;
+    uint64_t seed = 12345;
+    bool isUnlocked = true;
+    std::vector<int> unlocksPlanets;
+    std::vector<int> sectors = { 1, 2, 3, 4 };
+    PlanetVisualConfig visual;
+    std::vector<std::string> intelDossier;
+};
+
 struct CampaignSector {
     int id = 1;                     // Sector 1 to 4
     std::string name;              // e.g. "Sector 01: Outpost Alpha"
@@ -141,6 +175,10 @@ public:
     float totalCampaignTime = 0.0f;
     uint64_t totalScrapEarned = 0;
 
+    // Data-driven planets
+    std::vector<PlanetConfig> planets;
+    int activePlanetIndex = 0;
+
     // Staging / Transit depot where merchant and roulette ships anchor
     Rectangle stagingDepotBounds{ 0, 0, 0, 0 };
     Vector2 stagingDepotPos{ 0, 0 };
@@ -150,6 +188,18 @@ public:
 
     void init(uint64_t seed);
     void update(float dt);
+
+    static std::vector<PlanetConfig> loadPlanetConfigs(const std::string& directoryPath = "assets/campaign/planets");
+    static bool parsePlanetJson(const std::string& jsonContent, PlanetConfig& outConfig);
+    static std::string exportPlanetConfigToJson(const PlanetConfig& cfg);
+    static bool savePlanetConfigToJson(const PlanetConfig& cfg, const std::string& filePath = "");
+    static std::vector<PlanetConfig> getDefaultPlanetConfigs();
+
+    bool selectPlanet(int planetIdx);
+    const PlanetConfig* getActivePlanetConfig() const;
+    PlanetConfig* getActivePlanetConfig();
+    const PlanetConfig* getPlanetById(int planetId) const;
+    PlanetConfig* getPlanetById(int planetId);
 
     static std::vector<SectorConfig> loadSectorConfigs(const std::string& directoryPath = "assets/campaign/sectors");
     static bool parseSectorJson(const std::string& jsonContent, SectorConfig& outConfig);

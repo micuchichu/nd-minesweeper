@@ -196,41 +196,33 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         DrawRectangleRec(topLeftBox, Fade(Colors::Zinc950, 0.90f));
         DrawRectangleLinesEx(topLeftBox, 1.5f, Colors::Zinc700);
 
-        struct PlanetEntry {
-            const char* name;
-            const char* tag;
-            Color iconCol;
-            bool isUnlocked;
-        };
-        PlanetEntry planets[3] = {
-            { "Tartarus-IV", "QUARANTINE MINING ARRAY", Color{ 239, 68, 68, 255 }, true },
-            { "Acheron-Prime", "SUB-CLUSTER FOUNDRY", Color{ 251, 146, 60, 255 }, false },
-            { "Caelum-VII", "CRYO-VAULT ARSENAL", Color{ 56, 189, 248, 255 }, false }
-        };
+        static std::vector<core::PlanetConfig> fallbackPlanets = core::CampaignManager::getDefaultPlanetConfigs();
+        const auto& planetList = (campaignManager && !campaignManager->planets.empty()) ? campaignManager->planets : fallbackPlanets;
+        int numPlanets = static_cast<int>(planetList.size());
 
         float entryH = 48.0f;
-        for (int p = 0; p < 3; ++p) {
+        for (int p = 0; p < numPlanets; ++p) {
             float entryY = topLeftBox.y + 6.0f + static_cast<float>(p) * (entryH + 4.0f);
             Rectangle eRec = { topLeftBox.x + 8.0f, entryY, topLeftBox.width - 16.0f, entryH };
 
             bool isSelectedPlanet = (p == currentPlanetIdx);
 
             if (isSelectedPlanet) {
-                DrawRectangleRec(eRec, Fade(Colors::Red600, 0.15f));
-                DrawRectangleLinesEx(eRec, 2.0f, Color{ 239, 68, 68, 255 }); // Red highlight box
+                DrawRectangleRec(eRec, Fade(planetList[p].visual.iconColor, 0.15f));
+                DrawRectangleLinesEx(eRec, 2.0f, planetList[p].visual.iconColor);
             }
 
             Vector2 iconPos = { eRec.x + 18.0f, eRec.y + eRec.height * 0.5f };
-            DrawCircleV(iconPos, 10.0f, planets[p].iconCol);
+            DrawCircleV(iconPos, 10.0f, planetList[p].visual.iconColor);
             DrawCircleLines(static_cast<int>(iconPos.x), static_cast<int>(iconPos.y), 10, WHITE);
             DrawCircle(static_cast<int>(iconPos.x - 3), static_cast<int>(iconPos.y - 2), 2, Fade(BLACK, 0.45f));
             DrawCircle(static_cast<int>(iconPos.x + 2), static_cast<int>(iconPos.y + 3), 1.5f, Fade(BLACK, 0.45f));
 
-            Color nameCol = planets[p].isUnlocked ? WHITE : Colors::Zinc500;
-            DrawText(planets[p].name, static_cast<int>(eRec.x + 36.0f), static_cast<int>(eRec.y + 8.0f), 15, nameCol);
-            DrawText(planets[p].tag, static_cast<int>(eRec.x + 36.0f), static_cast<int>(eRec.y + 26.0f), 9, Colors::Zinc400);
+            Color nameCol = planetList[p].isUnlocked ? WHITE : Colors::Zinc500;
+            DrawText(planetList[p].name.c_str(), static_cast<int>(eRec.x + 36.0f), static_cast<int>(eRec.y + 8.0f), 15, nameCol);
+            DrawText(planetList[p].tagline.c_str(), static_cast<int>(eRec.x + 36.0f), static_cast<int>(eRec.y + 26.0f), 9, Colors::Zinc400);
 
-            if (!planets[p].isUnlocked) {
+            if (!planetList[p].isUnlocked) {
                 DrawText("[LOCKED]", static_cast<int>(eRec.x + eRec.width - 56.0f), static_cast<int>(eRec.y + 18.0f), 9, Colors::Zinc600);
             } else {
                 bool eHover = CheckCollisionPointRec(uiMouse, eRec);
@@ -238,6 +230,11 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
                     if (!isSelectedPlanet) DrawRectangleLinesEx(eRec, 1.0f, Colors::Zinc500);
                     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                         currentPlanetIdx = p;
+                        if (campaignManager) {
+                            campaignManager->selectPlanet(p);
+                        }
+                        planetRenderer.applyPlanetConfig(planetList[p]);
+                        campaignSelectedSector = planetRenderer.getSectorIdxForFortress(0);
                         audio::SoundManager::playButton();
                     }
                 }
@@ -295,7 +292,11 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
             DrawRectangleRec({ topBarX + 2.0f, topBarY + topBarH - 4.0f, fillW, 2.0f }, Colors::Green400);
         }
 
-        const char* topBarText = TextFormat("TARTARUS-IV // %.1f%% SECURED", clearPct);
+        std::string pName = (campaignManager && campaignManager->getActivePlanetConfig()) ? campaignManager->getActivePlanetConfig()->name : "TARTARUS-IV";
+        std::string pNameUpper = pName;
+        for (auto& c : pNameUpper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+        const char* topBarText = TextFormat("%s // %.1f%% SECURED", pNameUpper.c_str(), clearPct);
         int tbTextW = MeasureText(topBarText, 11);
         DrawText(topBarText, static_cast<int>(topBarX + (topBarW - tbTextW) * 0.5f), static_cast<int>(topBarY + 9.0f), 11, (clearPct >= 100.0f) ? Colors::Green400 : Colors::Zinc200);
 
@@ -350,7 +351,10 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         if (sec) {
             briefingStr = sec->loreBriefing;
         } else {
-            briefingStr = "Unoccupied territorial sector on Tartarus-IV. Geodesic dual facet with basalt crust. Perimeter walls protect adjacent fortress zones.";
+            const auto* activePlanet = campaignManager ? campaignManager->getActivePlanetConfig() : nullptr;
+            std::string curPName = activePlanet ? activePlanet->name : "Tartarus-IV";
+            std::string geoStat = activePlanet ? activePlanet->visual.geologicalStatus : "Volcanic Basalt & Obsidian Crust";
+            briefingStr = "Unoccupied territorial sector on " + curPName + ". Geodesic dual facet with " + geoStat + ". Perimeter walls protect adjacent fortress zones.";
         }
 
         float maxLoreW = rightPanel.width - 40.0f;
@@ -398,7 +402,9 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         } else {
             DrawText("TERRITORIAL SECTOR SPECIFICATIONS", static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 8.0f), 10, Colors::Cyan400);
             DrawText(TextFormat("Topology: %zu-Sided Geodesic Facet", hexSec.corners.size()), static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 24.0f), 12, Colors::Zinc200);
-            DrawText("Geological Status: Volcanic Basalt & Obsidian Crust", static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 42.0f), 12, Colors::Zinc300);
+            const auto* activePlanet = campaignManager ? campaignManager->getActivePlanetConfig() : nullptr;
+            std::string geoStat = activePlanet ? activePlanet->visual.geologicalStatus : "Volcanic Basalt & Obsidian Crust";
+            DrawText(TextFormat("Geological Status: %s", geoStat.c_str()), static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 42.0f), 12, Colors::Zinc300);
             DrawText("Perimeter Barrier: Heavy Encased Forcefield Wall", static_cast<int>(rContentX + 10.0f), static_cast<int>(curY + 62.0f), 12, Colors::Zinc400);
         }
         curY += boxH + 14.0f;
@@ -510,22 +516,38 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         // 6. PLANET INTEL MODAL OVERLAY (if active)
         // -------------------------------------------------------------
         if (showDifficultyModal) {
-            float mWidth = 440.0f;
-            float mHeight = 250.0f;
+            float mWidth = 460.0f;
+            float mHeight = 270.0f;
             float mX = (screenW - mWidth) * 0.5f;
             float mY = (screenH - mHeight) * 0.5f;
 
             DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.65f));
-            Widgets::mindustryPanel({ mX, mY, mWidth, mHeight }, "PLANETARY INTEL // TARTARUS-IV", Colors::Amber500);
+            const auto* activePlanet = campaignManager ? campaignManager->getActivePlanetConfig() : nullptr;
+            std::string pTitle = activePlanet ? ("PLANETARY INTEL // " + activePlanet->name) : "PLANETARY INTEL // TARTARUS-IV";
+            for (auto& c : pTitle) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            Widgets::mindustryPanel({ mX, mY, mWidth, mHeight }, pTitle.c_str(), Colors::Amber500);
 
-            DrawText("EXPEDITION MANDATE: QUARANTINE CLEANSING", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 48.0f), 13, Colors::Amber400);
-            DrawText("• Surface Topology: Dual Geodesic Hexagonal Lattice (42 Sectors)", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 72.0f), 12, Colors::Zinc200);
-            DrawText("• 4 Strategic Fortress Hubs with Subterranean Minefields", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 92.0f), 12, Colors::Zinc200);
-            DrawText("• 38 Territorial Hexes Encased in Heavy Basalt Barrier Walls", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 112.0f), 12, Colors::Zinc200);
-            DrawText("• Full Orbital Support: Casino Supply Ships & Scrap Collection", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 132.0f), 12, Colors::Zinc200);
-            DrawText("• Clear All 4 Primary Fortresses to Secure the Planet", static_cast<int>(mX + 20.0f), static_cast<int>(mY + 152.0f), 12, Colors::Green400);
+            std::string directiveStr = activePlanet ? ("EXPEDITION MANDATE: " + activePlanet->missionDirective) : "EXPEDITION MANDATE: QUARANTINE CLEANSING";
+            DrawText(directiveStr.c_str(), static_cast<int>(mX + 20.0f), static_cast<int>(mY + 44.0f), 12, Colors::Amber400);
 
-            if (Widgets::button("CLOSE INTEL", { mX + (mWidth - 120.0f) * 0.5f, mY + mHeight - 44.0f, 120.0f, 32.0f }, Colors::Zinc800, Colors::Zinc700, false, 13)) {
+            float dossierY = mY + 66.0f;
+            if (activePlanet && !activePlanet->intelDossier.empty()) {
+                for (const auto& line : activePlanet->intelDossier) {
+                    DrawText(TextFormat("• %s", line.c_str()), static_cast<int>(mX + 20.0f), static_cast<int>(dossierY), 11, Colors::Zinc200);
+                    dossierY += 18.0f;
+                }
+            } else {
+                DrawText("• Surface Topology: Dual Geodesic Hexagonal Lattice (42 Sectors)", static_cast<int>(mX + 20.0f), static_cast<int>(dossierY), 11, Colors::Zinc200);
+                dossierY += 18.0f;
+                DrawText("• 4 Strategic Fortress Hubs with Subterranean Minefields", static_cast<int>(mX + 20.0f), static_cast<int>(dossierY), 11, Colors::Zinc200);
+                dossierY += 18.0f;
+                DrawText("• 38 Territorial Hexes Encased in Heavy Basalt Barrier Walls", static_cast<int>(mX + 20.0f), static_cast<int>(dossierY), 11, Colors::Zinc200);
+                dossierY += 18.0f;
+                DrawText("• Clear All 4 Primary Fortresses to Secure the Planet", static_cast<int>(mX + 20.0f), static_cast<int>(dossierY), 11, Colors::Green400);
+                dossierY += 18.0f;
+            }
+
+            if (Widgets::button("CLOSE INTEL", { mX + (mWidth - 120.0f) * 0.5f, mY + mHeight - 40.0f, 120.0f, 30.0f }, Colors::Zinc800, Colors::Zinc700, false, 13)) {
                 showDifficultyModal = false;
             }
         }

@@ -2249,6 +2249,101 @@ static int runCampaignTests() {
         std::cout << "  [PASS] Test 13: In-world editor manipulation, heterogeneous merchant docks, and JSON roundtrip verified." << std::endl;
     }
 
+    // Test 14: Data-Driven Planetary System, Dynamic Biome Palettes, and Progression
+    {
+        // 1. Test loading data-driven planet configs
+        auto loadedPlanets = minesweeper::core::CampaignManager::loadPlanetConfigs("assets/campaign/planets");
+        if (loadedPlanets.size() < 3) {
+            std::cerr << "  [FAIL] Expected at least 3 data-driven planets, got " << loadedPlanets.size() << std::endl;
+            return 80;
+        }
+
+        // Verify Planet 1 (Tartarus-IV)
+        if (loadedPlanets[0].id != 1 || loadedPlanets[0].name != "Tartarus-IV" || !loadedPlanets[0].isUnlocked) {
+            std::cerr << "  [FAIL] Planet 01 (Tartarus-IV) configuration mismatch in loaded assets!" << std::endl;
+            return 81;
+        }
+
+        // Verify Planet 2 (Acheron-Prime)
+        if (loadedPlanets[1].id != 2 || loadedPlanets[1].name != "Acheron-Prime" || loadedPlanets[1].threatLevel != 2) {
+            std::cerr << "  [FAIL] Planet 02 (Acheron-Prime) configuration mismatch in loaded assets!" << std::endl;
+            return 82;
+        }
+
+        // Verify Planet 3 (Caelum-VII)
+        if (loadedPlanets[2].id != 3 || loadedPlanets[2].name != "Caelum-VII" || loadedPlanets[2].threatLevel != 3) {
+            std::cerr << "  [FAIL] Planet 03 (Caelum-VII) configuration mismatch in loaded assets!" << std::endl;
+            return 83;
+        }
+
+        // 2. Test JSON export and roundtrip parsing
+        std::string pJson = minesweeper::core::CampaignManager::exportPlanetConfigToJson(loadedPlanets[1]);
+        minesweeper::core::PlanetConfig roundtripP;
+        if (!minesweeper::core::CampaignManager::parsePlanetJson(pJson, roundtripP)) {
+            std::cerr << "  [FAIL] Failed to parse exported planet JSON string!" << std::endl;
+            return 84;
+        }
+        if (roundtripP.id != 2 || roundtripP.name != "Acheron-Prime" || roundtripP.visual.surfaceTones.size() != loadedPlanets[1].visual.surfaceTones.size()) {
+            std::cerr << "  [FAIL] Planet JSON roundtrip data mismatch!" << std::endl;
+            return 85;
+        }
+
+        // 3. Test CampaignManager planet switching & active configuration
+        minesweeper::core::CampaignManager mgr;
+        mgr.init(12345);
+        if (mgr.activePlanetIndex != 0 || mgr.planetName != "Tartarus-IV") {
+            std::cerr << "  [FAIL] Default active planet mismatch! Name=" << mgr.planetName << std::endl;
+            return 86;
+        }
+
+        bool switched = mgr.selectPlanet(1);
+        if (!switched || mgr.activePlanetIndex != 1 || mgr.planetName != "Acheron-Prime") {
+            std::cerr << "  [FAIL] Failed to switch active planet to Acheron-Prime!" << std::endl;
+            return 87;
+        }
+        const auto* activeP = mgr.getActivePlanetConfig();
+        if (!activeP || activeP->name != "Acheron-Prime") {
+            std::cerr << "  [FAIL] getActivePlanetConfig mismatch after switching!" << std::endl;
+            return 88;
+        }
+
+        // 4. Test PlanetRenderer dynamic biome and palette application
+        minesweeper::render::PlanetRenderer planet;
+        planet.init();
+        planet.applyPlanetConfig(loadedPlanets[1]);
+        if (planet.currentPlanetConfig.name != "Acheron-Prime") {
+            std::cerr << "  [FAIL] PlanetRenderer failed to apply active planet config!" << std::endl;
+            return 89;
+        }
+        if (planet.sectors.size() != 42) {
+            std::cerr << "  [FAIL] PlanetRenderer sectors corrupted after applyPlanetConfig! Count=" << planet.sectors.size() << std::endl;
+            return 90;
+        }
+
+        // 5. Test automatic planet unlocking on 100% planetary clearance
+        mgr.selectPlanet(0); // Switch back to Tartarus-IV
+        mgr.planets[1].isUnlocked = false; // ensure locked initially
+        for (auto& sec : mgr.sectors) {
+            sec.isCleared = true;
+            for (size_t i = 0; i < sec.board.totalCells(); ++i) {
+                if (!sec.board.isBomb(i)) {
+                    sec.board.reveal(i);
+                }
+            }
+        }
+        mgr.updatePlanetClearance();
+        if (!mgr.isPlanetCleared) {
+            std::cerr << "  [FAIL] Expected planet to be 100% cleared!" << std::endl;
+            return 91;
+        }
+        if (!mgr.planets[1].isUnlocked) {
+            std::cerr << "  [FAIL] Clearing planet did not unlock next planet (Acheron-Prime)!" << std::endl;
+            return 92;
+        }
+
+        std::cout << "  [PASS] Test 14: Data-driven planet JSON parsing, multi-planet selection, dynamic biome palettes, and unlock progression verified." << std::endl;
+    }
+
     std::cout << "[TEST-CAMPAIGN] ALL CAMPAIGN TESTS PASSED!" << std::endl;
     return 0;
 }

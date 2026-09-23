@@ -1,0 +1,38 @@
+{
+  "id": 1,
+  "name": "Tartarus-IV",
+  "codename": "TARTARUS-04",
+  "systemName": "Tartarus Sub-Cluster 09",
+  "tagline": "QUARANTINE MINING ARRAY",
+  "description": "Orbital scans indicate ancient automated defense clusters and subterranean sub-munitions have infested the planetary crust. All civilian and industrial activity is suspended under quarantine. As deep-space clearance contractors, your team is deployed to systematically neutralize each fortified sector.",
+  "missionDirective": "Clear the planet. Sector by sector.",
+  "threatLevel": 1,
+  "seed": 12345,
+  "isUnlocked": true,
+  "unlocksPlanets": [2],
+  "sectors": [1, 2, 3, 4],
+  "visual": {
+    "iconColor": [239, 68, 68],
+    "atmosphereColor": [244, 63, 94],
+    "wireframeColor": [180, 75, 95],
+    "surfaceTones": [
+      [28, 14, 20],
+      [38, 18, 24],
+      [48, 22, 30],
+      [24, 12, 16],
+      [58, 28, 36]
+    ],
+    "hasMagmaRifts": true,
+    "magmaRiftColor": [160, 40, 52],
+    "magmaRiftChance": 0.09,
+    "geologicalStatus": "Volcanic Basalt & Obsidian Crust"
+  },
+  "intelDossier": [
+    "EXPEDITION MANDATE: QUARANTINE CLEANSING",
+    "Surface Topology: Dual Geodesic Hexagonal Lattice (42 Sectors)",
+    "4 Strategic Fortress Hubs with Subterranean Minefields",
+    "38 Territorial Hexes Encased in Heavy Basalt Barrier Walls",
+    "Full Orbital Support: Casino Supply Ships & Scrap Collection",
+    "Clear All 4 Primary Fortresses to Secure the Planet"
+  ]
+}

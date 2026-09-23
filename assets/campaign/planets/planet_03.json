@@ -1,0 +1,37 @@
+{
+  "id": 3,
+  "name": "Caelum-VII",
+  "codename": "CAELUM-07",
+  "systemName": "Caelum Glacial Expanse",
+  "tagline": "CRYO-VAULT ARSENAL",
+  "description": "Sub-zero glacial world containing deep cryogenic military research vaults locked beneath kilometer-thick permafrost sheets and quantum-stabilized minefields.",
+  "missionDirective": "Breach cryogenic silos and decrypt primary research vaults.",
+  "threatLevel": 3,
+  "seed": 98765,
+  "isUnlocked": false,
+  "unlocksPlanets": [],
+  "sectors": [1, 2, 3, 4],
+  "visual": {
+    "iconColor": [56, 189, 248],
+    "atmosphereColor": [56, 189, 248],
+    "wireframeColor": [70, 130, 180],
+    "surfaceTones": [
+      [20, 32, 48],
+      [28, 44, 64],
+      [36, 56, 80],
+      [16, 26, 40],
+      [46, 70, 98]
+    ],
+    "hasMagmaRifts": true,
+    "magmaRiftColor": [140, 230, 255],
+    "magmaRiftChance": 0.08,
+    "geologicalStatus": "Glacial Permafrost & Cryo-Crystalline Formations"
+  },
+  "intelDossier": [
+    "EXPEDITION MANDATE: CRYO SILO EXTRACTION",
+    "Surface Topology: Sub-Zero Glacial Ice Lattice",
+    "Quantum-Shielded High Density Ordnance Clusters",
+    "Permafrost Thermal Dampening Active Across All Sectors",
+    "Full Orbital Supply Corridor Ready Upon Deployment"
+  ]
+}

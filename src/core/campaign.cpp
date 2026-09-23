@@ -504,6 +504,340 @@ bool CampaignManager::saveSectorConfigToJson(const SectorConfig& cfg, const std:
     return savedAny;
 }
 
+static Color parseColorJson(const JsonValue& val, Color defaultColor) {
+    if (val.isArray()) {
+        const auto& arr = val.arrVal;
+        if (arr.size() >= 3) {
+            Color c = defaultColor;
+            c.r = static_cast<unsigned char>(std::clamp(arr[0].asInt(c.r), 0, 255));
+            c.g = static_cast<unsigned char>(std::clamp(arr[1].asInt(c.g), 0, 255));
+            c.b = static_cast<unsigned char>(std::clamp(arr[2].asInt(c.b), 0, 255));
+            if (arr.size() >= 4) {
+                c.a = static_cast<unsigned char>(std::clamp(arr[3].asInt(c.a), 0, 255));
+            } else {
+                c.a = 255;
+            }
+            return c;
+        }
+    }
+    return defaultColor;
+}
+
+static std::string colorToJson(Color c) {
+    return "[" + std::to_string(c.r) + ", " + std::to_string(c.g) + ", " + std::to_string(c.b) + "]";
+}
+
+std::vector<PlanetConfig> CampaignManager::getDefaultPlanetConfigs() {
+    std::vector<PlanetConfig> list;
+
+    PlanetConfig p1;
+    p1.id = 1;
+    p1.name = "Tartarus-IV";
+    p1.codename = "TARTARUS-04";
+    p1.systemName = "Tartarus Sub-Cluster 09";
+    p1.tagline = "QUARANTINE MINING ARRAY";
+    p1.description = "Orbital scans indicate ancient automated defense clusters and subterranean sub-munitions have infested the planetary crust. All civilian and industrial activity is suspended under quarantine. As deep-space clearance contractors, your team is deployed to systematically neutralize each fortified sector.";
+    p1.missionDirective = "Clear the planet. Sector by sector.";
+    p1.threatLevel = 1;
+    p1.seed = 12345;
+    p1.isUnlocked = true;
+    p1.unlocksPlanets = { 2 };
+    p1.sectors = { 1, 2, 3, 4 };
+    p1.visual.iconColor = Color{ 239, 68, 68, 255 };
+    p1.visual.atmosphereColor = Color{ 244, 63, 94, 255 };
+    p1.visual.wireframeColor = Color{ 180, 75, 95, 255 };
+    p1.visual.surfaceTones = {
+        Color{ 28, 14, 20, 255 },
+        Color{ 38, 18, 24, 255 },
+        Color{ 48, 22, 30, 255 },
+        Color{ 24, 12, 16, 255 },
+        Color{ 58, 28, 36, 255 }
+    };
+    p1.visual.hasMagmaRifts = true;
+    p1.visual.magmaRiftColor = Color{ 160, 40, 52, 255 };
+    p1.visual.magmaRiftChance = 0.09f;
+    p1.visual.geologicalStatus = "Volcanic Basalt & Obsidian Crust";
+    p1.intelDossier = {
+        "EXPEDITION MANDATE: QUARANTINE CLEANSING",
+        "Surface Topology: Dual Geodesic Hexagonal Lattice (42 Sectors)",
+        "4 Strategic Fortress Hubs with Subterranean Minefields",
+        "38 Territorial Hexes Encased in Heavy Basalt Barrier Walls",
+        "Full Orbital Support: Casino Supply Ships & Scrap Collection",
+        "Clear All 4 Primary Fortresses to Secure the Planet"
+    };
+    list.push_back(p1);
+
+    PlanetConfig p2;
+    p2.id = 2;
+    p2.name = "Acheron-Prime";
+    p2.codename = "ACHERON-01";
+    p2.systemName = "Acheron Foundry Drift";
+    p2.tagline = "SUB-CLUSTER FOUNDRY";
+    p2.description = "High-temperature smelting world characterized by massive industrial blast basins, slag runoff trenches, and heavy tectonic vibration. Heavily fortified automated perimeter defense clusters remain active throughout the mantle.";
+    p2.missionDirective = "Neutralize automated perimeter defenses across foundry facilities.";
+    p2.threatLevel = 2;
+    p2.seed = 54321;
+    p2.isUnlocked = false;
+    p2.unlocksPlanets = { 3 };
+    p2.sectors = { 1, 2, 3, 4 };
+    p2.visual.iconColor = Color{ 251, 146, 60, 255 };
+    p2.visual.atmosphereColor = Color{ 251, 146, 60, 255 };
+    p2.visual.wireframeColor = Color{ 180, 95, 40, 255 };
+    p2.visual.surfaceTones = {
+        Color{ 42, 24, 14, 255 },
+        Color{ 56, 32, 18, 255 },
+        Color{ 68, 38, 22, 255 },
+        Color{ 35, 20, 12, 255 },
+        Color{ 80, 46, 26, 255 }
+    };
+    p2.visual.hasMagmaRifts = true;
+    p2.visual.magmaRiftColor = Color{ 255, 120, 20, 255 };
+    p2.visual.magmaRiftChance = 0.12f;
+    p2.visual.geologicalStatus = "Sulfuric Slag & Ferrite Outcrops";
+    p2.intelDossier = {
+        "EXPEDITION MANDATE: HEAVY INDUSTRIAL EXPEDITION",
+        "Surface Topology: Smelting Basins & Tectonic Slag Veins",
+        "High Threat Seismic Activity and Proximity Detonators",
+        "Reinforced Heat-Shielding Required for Core Sectors",
+        "Strategic Scrap Refineries Available for Extraction"
+    };
+    list.push_back(p2);
+
+    PlanetConfig p3;
+    p3.id = 3;
+    p3.name = "Caelum-VII";
+    p3.codename = "CAELUM-07";
+    p3.systemName = "Caelum Glacial Expanse";
+    p3.tagline = "CRYO-VAULT ARSENAL";
+    p3.description = "Sub-zero glacial world containing deep cryogenic military research vaults locked beneath kilometer-thick permafrost sheets and quantum-stabilized minefields.";
+    p3.missionDirective = "Breach cryogenic silos and decrypt primary research vaults.";
+    p3.threatLevel = 3;
+    p3.seed = 98765;
+    p3.isUnlocked = false;
+    p3.unlocksPlanets = {};
+    p3.sectors = { 1, 2, 3, 4 };
+    p3.visual.iconColor = Color{ 56, 189, 248, 255 };
+    p3.visual.atmosphereColor = Color{ 56, 189, 248, 255 };
+    p3.visual.wireframeColor = Color{ 70, 130, 180, 255 };
+    p3.visual.surfaceTones = {
+        Color{ 20, 32, 48, 255 },
+        Color{ 28, 44, 64, 255 },
+        Color{ 36, 56, 80, 255 },
+        Color{ 16, 26, 40, 255 },
+        Color{ 46, 70, 98, 255 }
+    };
+    p3.visual.hasMagmaRifts = true;
+    p3.visual.magmaRiftColor = Color{ 140, 230, 255, 255 };
+    p3.visual.magmaRiftChance = 0.08f;
+    p3.visual.geologicalStatus = "Glacial Permafrost & Cryo-Crystalline Formations";
+    p3.intelDossier = {
+        "EXPEDITION MANDATE: CRYO SILO EXTRACTION",
+        "Surface Topology: Sub-Zero Glacial Ice Lattice",
+        "Quantum-Shielded High Density Ordnance Clusters",
+        "Permafrost Thermal Dampening Active Across All Sectors",
+        "Full Orbital Supply Corridor Ready Upon Deployment"
+    };
+    list.push_back(p3);
+
+    return list;
+}
+
+bool CampaignManager::parsePlanetJson(const std::string& jsonContent, PlanetConfig& outConfig) {
+    JsonValue root;
+    if (!SimpleJsonParser::parse(jsonContent, root) || !root.isObject()) {
+        return false;
+    }
+
+    if (root.contains("id")) outConfig.id = root["id"].asInt(outConfig.id);
+    if (root.contains("name")) outConfig.name = root["name"].asString(outConfig.name);
+    if (root.contains("codename")) outConfig.codename = root["codename"].asString(outConfig.codename);
+    if (root.contains("systemName")) outConfig.systemName = root["systemName"].asString(outConfig.systemName);
+    if (root.contains("tagline")) outConfig.tagline = root["tagline"].asString(outConfig.tagline);
+    if (root.contains("description")) outConfig.description = root["description"].asString(outConfig.description);
+    if (root.contains("missionDirective")) outConfig.missionDirective = root["missionDirective"].asString(outConfig.missionDirective);
+    if (root.contains("threatLevel")) outConfig.threatLevel = root["threatLevel"].asInt(outConfig.threatLevel);
+    if (root.contains("seed")) outConfig.seed = static_cast<uint64_t>(root["seed"].asInt(static_cast<int>(outConfig.seed)));
+    if (root.contains("isUnlocked")) outConfig.isUnlocked = root["isUnlocked"].asBool(outConfig.isUnlocked);
+
+    if (root.contains("unlocksPlanets") && root["unlocksPlanets"].isArray()) {
+        outConfig.unlocksPlanets.clear();
+        for (const auto& item : root["unlocksPlanets"].arrVal) {
+            outConfig.unlocksPlanets.push_back(item.asInt());
+        }
+    }
+
+    if (root.contains("sectors") && root["sectors"].isArray()) {
+        outConfig.sectors.clear();
+        for (const auto& item : root["sectors"].arrVal) {
+            outConfig.sectors.push_back(item.asInt());
+        }
+    }
+
+    if (root.contains("intelDossier") && root["intelDossier"].isArray()) {
+        outConfig.intelDossier.clear();
+        for (const auto& item : root["intelDossier"].arrVal) {
+            outConfig.intelDossier.push_back(item.asString());
+        }
+    }
+
+    if (root.contains("visual") && root["visual"].isObject()) {
+        const auto& vis = root["visual"];
+        if (vis.contains("iconColor")) outConfig.visual.iconColor = parseColorJson(vis["iconColor"], outConfig.visual.iconColor);
+        if (vis.contains("atmosphereColor")) outConfig.visual.atmosphereColor = parseColorJson(vis["atmosphereColor"], outConfig.visual.atmosphereColor);
+        if (vis.contains("wireframeColor")) outConfig.visual.wireframeColor = parseColorJson(vis["wireframeColor"], outConfig.visual.wireframeColor);
+        if (vis.contains("hasMagmaRifts")) outConfig.visual.hasMagmaRifts = vis["hasMagmaRifts"].asBool(outConfig.visual.hasMagmaRifts);
+        if (vis.contains("magmaRiftColor")) outConfig.visual.magmaRiftColor = parseColorJson(vis["magmaRiftColor"], outConfig.visual.magmaRiftColor);
+        if (vis.contains("magmaRiftChance")) outConfig.visual.magmaRiftChance = vis["magmaRiftChance"].asFloat(outConfig.visual.magmaRiftChance);
+        if (vis.contains("geologicalStatus")) outConfig.visual.geologicalStatus = vis["geologicalStatus"].asString(outConfig.visual.geologicalStatus);
+
+        if (vis.contains("surfaceTones") && vis["surfaceTones"].isArray()) {
+            outConfig.visual.surfaceTones.clear();
+            for (const auto& toneVal : vis["surfaceTones"].arrVal) {
+                outConfig.visual.surfaceTones.push_back(parseColorJson(toneVal, Color{ 30, 20, 25, 255 }));
+            }
+        }
+    }
+
+    return true;
+}
+
+std::string CampaignManager::exportPlanetConfigToJson(const PlanetConfig& cfg) {
+    std::ostringstream ss;
+    ss << "{\n";
+    ss << "  \"id\": " << cfg.id << ",\n";
+    ss << "  \"name\": \"" << escapeJsonString(cfg.name) << "\",\n";
+    ss << "  \"codename\": \"" << escapeJsonString(cfg.codename) << "\",\n";
+    ss << "  \"systemName\": \"" << escapeJsonString(cfg.systemName) << "\",\n";
+    ss << "  \"tagline\": \"" << escapeJsonString(cfg.tagline) << "\",\n";
+    ss << "  \"description\": \"" << escapeJsonString(cfg.description) << "\",\n";
+    ss << "  \"missionDirective\": \"" << escapeJsonString(cfg.missionDirective) << "\",\n";
+    ss << "  \"threatLevel\": " << cfg.threatLevel << ",\n";
+    ss << "  \"seed\": " << cfg.seed << ",\n";
+    ss << "  \"isUnlocked\": " << (cfg.isUnlocked ? "true" : "false") << ",\n";
+    ss << "  \"unlocksPlanets\": [";
+    for (size_t i = 0; i < cfg.unlocksPlanets.size(); ++i) {
+        if (i > 0) ss << ", ";
+        ss << cfg.unlocksPlanets[i];
+    }
+    ss << "],\n";
+    ss << "  \"sectors\": [";
+    for (size_t i = 0; i < cfg.sectors.size(); ++i) {
+        if (i > 0) ss << ", ";
+        ss << cfg.sectors[i];
+    }
+    ss << "],\n";
+    ss << "  \"visual\": {\n";
+    ss << "    \"iconColor\": " << colorToJson(cfg.visual.iconColor) << ",\n";
+    ss << "    \"atmosphereColor\": " << colorToJson(cfg.visual.atmosphereColor) << ",\n";
+    ss << "    \"wireframeColor\": " << colorToJson(cfg.visual.wireframeColor) << ",\n";
+    ss << "    \"surfaceTones\": [\n";
+    for (size_t i = 0; i < cfg.visual.surfaceTones.size(); ++i) {
+        ss << "      " << colorToJson(cfg.visual.surfaceTones[i]);
+        if (i + 1 < cfg.visual.surfaceTones.size()) ss << ",";
+        ss << "\n";
+    }
+    ss << "    ],\n";
+    ss << "    \"hasMagmaRifts\": " << (cfg.visual.hasMagmaRifts ? "true" : "false") << ",\n";
+    ss << "    \"magmaRiftColor\": " << colorToJson(cfg.visual.magmaRiftColor) << ",\n";
+    ss << "    \"magmaRiftChance\": " << cfg.visual.magmaRiftChance << ",\n";
+    ss << "    \"geologicalStatus\": \"" << escapeJsonString(cfg.visual.geologicalStatus) << "\"\n";
+    ss << "  },\n";
+    ss << "  \"intelDossier\": [\n";
+    for (size_t i = 0; i < cfg.intelDossier.size(); ++i) {
+        ss << "    \"" << escapeJsonString(cfg.intelDossier[i]) << "\"";
+        if (i + 1 < cfg.intelDossier.size()) ss << ",";
+        ss << "\n";
+    }
+    ss << "  ]\n";
+    ss << "}\n";
+    return ss.str();
+}
+
+bool CampaignManager::savePlanetConfigToJson(const PlanetConfig& cfg, const std::string& customPath) {
+    std::string jsonStr = exportPlanetConfigToJson(cfg);
+    if (!customPath.empty()) {
+        std::ofstream ofs(customPath);
+        if (ofs.is_open()) {
+            ofs << jsonStr;
+            return true;
+        }
+        return false;
+    }
+
+    char fname[64];
+    std::snprintf(fname, sizeof(fname), "planet_%02d.json", cfg.id);
+
+    const std::vector<std::string> candidateDirs = {
+        "assets/campaign/planets",
+        "../assets/campaign/planets",
+        "../../assets/campaign/planets"
+    };
+
+    bool savedAny = false;
+    for (const auto& dir : candidateDirs) {
+        std::error_code ec;
+        if (std::filesystem::exists(dir, ec)) {
+            std::string fullPath = dir + "/" + fname;
+            std::ofstream ofs(fullPath);
+            if (ofs.is_open()) {
+                ofs << jsonStr;
+                savedAny = true;
+                std::cout << "[CAMPAIGN] Saved planet " << cfg.id << " config to " << fullPath << std::endl;
+            }
+        }
+    }
+    return savedAny;
+}
+
+std::vector<PlanetConfig> CampaignManager::loadPlanetConfigs(const std::string& directoryPath) {
+    namespace fs = std::filesystem;
+    const std::vector<std::string> candidateDirs = {
+        directoryPath,
+        "assets/campaign/planets",
+        "../assets/campaign/planets",
+        "../../assets/campaign/planets"
+    };
+
+    std::vector<PlanetConfig> result;
+
+    for (const auto& dirStr : candidateDirs) {
+        std::error_code ec;
+        fs::path p(dirStr);
+        if (fs::exists(p, ec) && fs::is_directory(p, ec)) {
+            std::vector<fs::path> files;
+            for (const auto& entry : fs::directory_iterator(p, ec)) {
+                if (entry.is_regular_file(ec) && entry.path().extension() == ".json") {
+                    files.push_back(entry.path());
+                }
+            }
+            std::sort(files.begin(), files.end());
+
+            for (const auto& f : files) {
+                std::ifstream ifs(f);
+                if (ifs.is_open()) {
+                    std::stringstream ss;
+                    ss << ifs.rdbuf();
+                    PlanetConfig cfg;
+                    if (parsePlanetJson(ss.str(), cfg)) {
+                        result.push_back(cfg);
+                    }
+                }
+            }
+
+            if (!result.empty()) {
+                std::sort(result.begin(), result.end(), [](const PlanetConfig& a, const PlanetConfig& b) {
+                    return a.id < b.id;
+                });
+                std::cout << "[CAMPAIGN] Loaded " << result.size() << " data-driven planet(s) from " << p.string() << std::endl;
+                return result;
+            }
+        }
+    }
+
+    std::cout << "[CAMPAIGN] No external planet JSONs found. Using default built-in planet definitions." << std::endl;
+    return getDefaultPlanetConfigs();
+}
+
 bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
     if (sectorIdx < 0 || sectorIdx >= static_cast<int>(sectors.size())) {
         return false;
@@ -604,28 +938,48 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
     return true;
 }
 
-void CampaignManager::init(uint64_t seed) {
-    planetSeed = (seed != 0) ? seed : 12345;
+bool CampaignManager::selectPlanet(int planetIdx) {
+    if (planetIdx < 0 || planetIdx >= static_cast<int>(planets.size())) {
+        return false;
+    }
+
+    activePlanetIndex = planetIdx;
+    const auto& p = planets[planetIdx];
+    planetSeed = p.seed;
+    planetName = p.name;
+    systemName = p.systemName;
+    missionDirective = p.missionDirective;
+    loreBackground = p.description;
+
+    auto allSectorConfigs = loadSectorConfigs();
+    if (allSectorConfigs.empty()) {
+        allSectorConfigs = getDefaultSectorConfigs();
+    }
+
+    std::vector<SectorConfig> planetSectors;
+    if (!p.sectors.empty()) {
+        for (int secId : p.sectors) {
+            for (const auto& sc : allSectorConfigs) {
+                if (sc.id == secId) {
+                    planetSectors.push_back(sc);
+                    break;
+                }
+            }
+        }
+    }
+    if (planetSectors.empty()) {
+        planetSectors = allSectorConfigs;
+    }
+
     sectors.clear();
     isPlanetCleared = false;
     planetClearPercentage = 0.0f;
     activeSectorIndex = 0;
 
-    // Planet name generator based on seed
-    const char* planetPrefixes[] = { "Tartarus", "Acheron", "Caelum", "Elysium", "Vanguard", "Oblivion" };
-    const char* planetSuffixes[] = { "IV", "VII", "Prime", "Secundus", "Beta", "X" };
-    int pIdx1 = static_cast<int>((planetSeed ^ 0x9e3779b9) % 6);
-    int pIdx2 = static_cast<int>((planetSeed / 7) % 6);
-    planetName = std::string(planetPrefixes[pIdx1]) + "-" + planetSuffixes[pIdx2];
-
-    auto configs = loadSectorConfigs();
-    if (configs.empty()) {
-        configs = getDefaultSectorConfigs();
-    }
-
-    for (size_t i = 0; i < configs.size(); ++i) {
-        const auto& cfg = configs[i];
+    for (size_t i = 0; i < planetSectors.size(); ++i) {
+        const auto& cfg = planetSectors[i];
         CampaignSector sec;
+        sec.config = cfg;
         sec.id = cfg.id;
         sec.name = cfg.name;
         sec.codename = cfg.codename;
@@ -720,6 +1074,47 @@ void CampaignManager::init(uint64_t seed) {
     }
 
     updatePlanetClearance();
+    return true;
+}
+
+const PlanetConfig* CampaignManager::getActivePlanetConfig() const {
+    if (activePlanetIndex >= 0 && activePlanetIndex < static_cast<int>(planets.size())) {
+        return &planets[activePlanetIndex];
+    }
+    return nullptr;
+}
+
+PlanetConfig* CampaignManager::getActivePlanetConfig() {
+    if (activePlanetIndex >= 0 && activePlanetIndex < static_cast<int>(planets.size())) {
+        return &planets[activePlanetIndex];
+    }
+    return nullptr;
+}
+
+const PlanetConfig* CampaignManager::getPlanetById(int planetId) const {
+    for (const auto& p : planets) {
+        if (p.id == planetId) return &p;
+    }
+    return nullptr;
+}
+
+PlanetConfig* CampaignManager::getPlanetById(int planetId) {
+    for (auto& p : planets) {
+        if (p.id == planetId) return &p;
+    }
+    return nullptr;
+}
+
+void CampaignManager::init(uint64_t seed) {
+    planets = loadPlanetConfigs();
+    if (planets.empty()) {
+        planets = getDefaultPlanetConfigs();
+    }
+    activePlanetIndex = 0;
+    if (seed != 0 && !planets.empty()) {
+        planets[0].seed = seed;
+    }
+    selectPlanet(activePlanetIndex);
 }
 
 void CampaignManager::update(float dt) {
@@ -814,6 +1209,12 @@ void CampaignManager::updatePlanetClearance() {
 
     planetClearPercentage = (totalSafe > 0) ? (static_cast<float>(totalRev) / static_cast<float>(totalSafe)) : 0.0f;
     isPlanetCleared = (clearedSectors == static_cast<int>(sectors.size()));
+    if (isPlanetCleared && activePlanetIndex >= 0 && activePlanetIndex < static_cast<int>(planets.size())) {
+        for (int pId : planets[activePlanetIndex].unlocksPlanets) {
+            auto* pNext = getPlanetById(pId);
+            if (pNext) pNext->isUnlocked = true;
+        }
+    }
 }
 
 CampaignSector* CampaignManager::getSector(int id) {
