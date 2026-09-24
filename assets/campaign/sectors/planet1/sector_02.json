@@ -5,17 +5,18 @@
   "subtitle": "Smelting Basin & Scrap Refineries",
   "description": "Former mineral refinery. Dense magnetic sub-munitions were seeded during the planetary evacuation. Containment walls prevent hazardous slag from overflowing.",
   "threatLevel": 2,
+  "modifier": "None",
   "map": {
     "gridSize": 10,
     "bombCount": 18,
     "dimension": 2,
-    "terrainShape": "CellularAutomata",
-    "wallThickness": 28.0,
-    "westMargin": 180.0,
-    "eastMargin": 180.0,
-    "vertMargin": 120.0,
-    "spawnPos": [80.0, -1.0],
-    "stagingDepotPos": [90.0, -1.0],
+    "terrainShape": "PerlinIsland",
+    "wallThickness": 28,
+    "westMargin": 180,
+    "eastMargin": 180,
+    "vertMargin": 120,
+    "spawnPos": [80, 460],
+    "stagingDepotPos": [80, 460],
     "stagingDepotTitle": "LOGISTICS & REFUELING DOCK // CONTRACTOR HUB",
     "customWalls": []
   },
@@ -24,14 +25,14 @@
     "unlocks": [3],
     "hasExitLauncher": true,
     "launcherTargetSector": 3,
-    "launcherOpeningHeight": 140.0
+    "launcherOpeningHeight": 140
   },
   "ships": {
     "allowShops": true,
     "allowRoulette": true,
     "allowedShipTypes": ["shop1", "shop2", "shop3", "roulette"],
-    "shopDockPos": [85.0, 90.0],
-    "rouletteDockPos": [85.0, -70.0],
+    "shopDockPos": [85, 90],
+    "rouletteDockPos": [85, -70],
     "merchantSpawns": [
       { "type": "shop3", "x": 85.0, "y": 90.0, "angle": 0.0 },
       { "type": "shop1", "x": 85.0, "y": 290.0, "angle": 0.0 },

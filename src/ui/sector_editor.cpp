@@ -462,7 +462,7 @@ void SectorEditor::drawWorldGizmos(const core::CampaignManager& campaignMgr, Vec
     (void)campaignMgr;
     if (!isOpen) return;
 
-    float boardPx = workingConfig.gridSize * 40.0f;
+    float boardPx = workingConfig.gridSize * 30.0f;
     float arenaW = boardPx + workingConfig.westMargin + workingConfig.eastMargin;
     float arenaH = boardPx + 2.0f * workingConfig.vertMargin;
 

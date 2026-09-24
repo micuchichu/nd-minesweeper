@@ -2389,16 +2389,113 @@ void RaylibRenderer::drawCampaignWalls(const core::CampaignManager& campaign) {
     if (!curSec && !campaign.sectors.empty()) curSec = &campaign.sectors[0];
     if (!curSec) return;
 
-    for (const auto& wall : curSec->walls) {
-        DrawRectangleRec(wall.rect, ui::Colors::Zinc900);
-        DrawRectangleLinesEx(wall.rect, 2.0f, ui::Colors::Zinc700);
+    Texture2D riftTex = AssetManager::instance().loadTexture("assets/walls/stone_rift_wall.png");
+    float tileDim = 128.0f;
+    float curTime = static_cast<float>(GetTime());
+    float pulse = 0.5f + 0.5f * std::sin(curTime * 6.0f);
 
-        if (wall.rect.width > 20.0f && wall.rect.height > 20.0f) {
-            Rectangle inner = { wall.rect.x + 4.0f, wall.rect.y + 4.0f, wall.rect.width - 8.0f, wall.rect.height - 8.0f };
-            DrawRectangleLinesEx(inner, 1.0f, Fade(ui::Colors::Zinc800, 0.7f));
+    float arenaW = curSec->arenaBounds.width;
+    float arenaH = curSec->arenaBounds.height;
+
+    auto drawTiledRiftRock = [&](Rectangle r, Color tint) {
+        if (r.width <= 0.0f || r.height <= 0.0f) return;
+        if (riftTex.id != 0) {
+            int minCol = static_cast<int>(std::floor(r.x / tileDim));
+            int maxCol = static_cast<int>(std::floor((r.x + r.width) / tileDim));
+            int minRow = static_cast<int>(std::floor(r.y / tileDim));
+            int maxRow = static_cast<int>(std::floor((r.y + r.height) / tileDim));
+
+            for (int col = minCol; col <= maxCol; ++col) {
+                float tx = static_cast<float>(col) * tileDim;
+                float rx0 = std::max(r.x, tx);
+                float rx1 = std::min(r.x + r.width, tx + tileDim);
+                if (rx1 <= rx0) continue;
+
+                for (int row = minRow; row <= maxRow; ++row) {
+                    float ty = static_cast<float>(row) * tileDim;
+                    float ry0 = std::max(r.y, ty);
+                    float ry1 = std::min(r.y + r.height, ty + tileDim);
+                    if (ry1 <= ry0) continue;
+
+                    Rectangle dest = { rx0, ry0, rx1 - rx0, ry1 - ry0 };
+                    float u0 = (rx0 - tx) / tileDim * static_cast<float>(riftTex.width);
+                    float v0 = (ry0 - ty) / tileDim * static_cast<float>(riftTex.height);
+                    float uW = dest.width / tileDim * static_cast<float>(riftTex.width);
+                    float vH = dest.height / tileDim * static_cast<float>(riftTex.height);
+                    Rectangle src = { u0, v0, uW, vH };
+
+                    DrawTexturePro(riftTex, src, dest, { 0.0f, 0.0f }, 0.0f, tint);
+                }
+            }
+        } else {
+            DrawRectangleRec(r, ui::Colors::Zinc900);
+        }
+    };
+
+    // 1. Towering Exterior Cliff Plateau (rock bedrock framing the canyon beyond perimeter walls)
+    float extDepth = 220.0f;
+    Color plateauTint = Color{ 175, 170, 185, 255 };
+
+    // North plateau
+    Rectangle northPlateau = { -extDepth, -extDepth, arenaW + 2.0f * extDepth, extDepth };
+    drawTiledRiftRock(northPlateau, plateauTint);
+    DrawRectangleGradientV(static_cast<int>(-extDepth), static_cast<int>(-extDepth), static_cast<int>(arenaW + 2.0f * extDepth), static_cast<int>(extDepth), Fade(BLACK, 0.96f), Fade(BLACK, 0.15f));
+
+    // South plateau
+    Rectangle southPlateau = { -extDepth, arenaH, arenaW + 2.0f * extDepth, extDepth };
+    drawTiledRiftRock(southPlateau, plateauTint);
+    DrawRectangleGradientV(static_cast<int>(-extDepth), static_cast<int>(arenaH), static_cast<int>(arenaW + 2.0f * extDepth), static_cast<int>(extDepth), Fade(BLACK, 0.15f), Fade(BLACK, 0.96f));
+
+    // West plateau
+    Rectangle westPlateau = { -extDepth, 0.0f, extDepth, arenaH };
+    drawTiledRiftRock(westPlateau, plateauTint);
+    DrawRectangleGradientH(static_cast<int>(-extDepth), static_cast<int>(0), static_cast<int>(extDepth), static_cast<int>(arenaH), Fade(BLACK, 0.96f), Fade(BLACK, 0.15f));
+
+    // East plateau (above and below launcher opening if launcher present)
+    if (curSec->hasExitLauncher) {
+        float launchTop = curSec->exitLauncher.openingBounds.y;
+        float launchBot = launchTop + curSec->exitLauncher.openingBounds.height;
+        if (launchTop > 0.0f) {
+            Rectangle eastTop = { arenaW, 0.0f, extDepth, launchTop };
+            drawTiledRiftRock(eastTop, plateauTint);
+            DrawRectangleGradientH(static_cast<int>(arenaW), static_cast<int>(0), static_cast<int>(extDepth), static_cast<int>(launchTop), Fade(BLACK, 0.15f), Fade(BLACK, 0.96f));
+        }
+        if (arenaH > launchBot) {
+            Rectangle eastBot = { arenaW, launchBot, extDepth, arenaH - launchBot };
+            drawTiledRiftRock(eastBot, plateauTint);
+            DrawRectangleGradientH(static_cast<int>(arenaW), static_cast<int>(launchBot), static_cast<int>(extDepth), static_cast<int>(arenaH - launchBot), Fade(BLACK, 0.15f), Fade(BLACK, 0.96f));
+        }
+    } else {
+        Rectangle eastPlateau = { arenaW, 0.0f, extDepth, arenaH };
+        drawTiledRiftRock(eastPlateau, plateauTint);
+        DrawRectangleGradientH(static_cast<int>(arenaW), static_cast<int>(0), static_cast<int>(extDepth), static_cast<int>(arenaH), Fade(BLACK, 0.15f), Fade(BLACK, 0.96f));
+    }
+
+    // 2. Solid Sector Walls (collidable rift cliffs and interior barriers)
+    for (const auto& wall : curSec->walls) {
+        // Deep basalt foundation underlay
+        DrawRectangleRec(wall.rect, Color{ 14, 12, 18, 255 });
+
+        // World-space tiled stone rift wall texture
+        drawTiledRiftRock(wall.rect, WHITE);
+
+        // Chiseled rock rim lighting and depth shadows
+        DrawLineEx({ wall.rect.x, wall.rect.y }, { wall.rect.x + wall.rect.width, wall.rect.y }, 1.5f, Fade(Color{ 185, 180, 200, 255 }, 0.45f));
+        DrawLineEx({ wall.rect.x, wall.rect.y }, { wall.rect.x, wall.rect.y + wall.rect.height }, 1.5f, Fade(Color{ 185, 180, 200, 255 }, 0.45f));
+        DrawLineEx({ wall.rect.x, wall.rect.y + wall.rect.height }, { wall.rect.x + wall.rect.width, wall.rect.y + wall.rect.height }, 2.0f, Fade(BLACK, 0.70f));
+        DrawLineEx({ wall.rect.x + wall.rect.width, wall.rect.y }, { wall.rect.x + wall.rect.width, wall.rect.y + wall.rect.height }, 2.0f, Fade(BLACK, 0.70f));
+        DrawRectangleLinesEx(wall.rect, 1.0f, Fade(Color{ 10, 10, 14, 255 }, 0.85f));
+
+        if (wall.rect.width > 24.0f && wall.rect.height > 24.0f) {
+            Rectangle inner = { wall.rect.x + 3.0f, wall.rect.y + 3.0f, wall.rect.width - 6.0f, wall.rect.height - 6.0f };
+            DrawRectangleLinesEx(inner, 1.0f, Fade(Color{ 50, 44, 58, 255 }, 0.45f));
         }
 
+        // Hazard containment fields & warning stripes
         if (wall.isHazard) {
+            DrawRectangleRec(wall.rect, Fade(ui::Colors::Amber500, 0.18f + 0.08f * pulse));
+            DrawRectangleLinesEx(wall.rect, 2.0f, Fade(ui::Colors::Amber400, 0.70f + 0.25f * pulse));
+
             float stripeW = 16.0f;
             bool horizontal = (wall.rect.width > wall.rect.height);
             float len = horizontal ? wall.rect.width : wall.rect.height;
@@ -2406,11 +2503,11 @@ void RaylibRenderer::drawCampaignWalls(const core::CampaignManager& campaign) {
 
             for (int i = 0; i < count; i += 2) {
                 if (horizontal) {
-                    Rectangle sRec = { wall.rect.x + i * stripeW, wall.rect.y + 2.0f, stripeW, wall.rect.height - 4.0f };
-                    DrawRectangleRec(sRec, Fade(ui::Colors::Amber500, 0.40f));
+                    Rectangle sRec = { wall.rect.x + static_cast<float>(i) * stripeW, wall.rect.y + 2.0f, stripeW, wall.rect.height - 4.0f };
+                    DrawRectangleRec(sRec, Fade(ui::Colors::Amber400, 0.35f + 0.15f * pulse));
                 } else {
-                    Rectangle sRec = { wall.rect.x + 2.0f, wall.rect.y + i * stripeW, wall.rect.width - 4.0f, stripeW };
-                    DrawRectangleRec(sRec, Fade(ui::Colors::Amber500, 0.40f));
+                    Rectangle sRec = { wall.rect.x + 2.0f, wall.rect.y + static_cast<float>(i) * stripeW, wall.rect.width - 4.0f, stripeW };
+                    DrawRectangleRec(sRec, Fade(ui::Colors::Amber400, 0.35f + 0.15f * pulse));
                 }
             }
         }
@@ -2810,9 +2907,110 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
         int sIdx = campaign.activeSectorIndex;
         const auto& sec = *curSec;
 
-        // Arena floor backplate
-        DrawRectangleRounded(sec.arenaBounds, 0.03f, 4, Fade(ui::Colors::Zinc950, 0.90f));
-        DrawRectangleLinesEx(sec.arenaBounds, 1.5f, Fade(ui::Colors::Zinc800, 0.80f));
+        // 3a. Deep Volcanic Sunken Rift Canyon Floor Basin
+        DrawRectangleRec(sec.arenaBounds, Color{ 13, 11, 16, 255 });
+
+        // Bedrock stratification grid
+        float floorGridStep = 60.0f;
+        int gridCols = static_cast<int>(sec.arenaBounds.width / floorGridStep);
+        int gridRows = static_cast<int>(sec.arenaBounds.height / floorGridStep);
+        for (int c = 1; c <= gridCols; ++c) {
+            float gx = sec.arenaBounds.x + static_cast<float>(c) * floorGridStep;
+            DrawLineEx({ gx, sec.arenaBounds.y }, { gx, sec.arenaBounds.y + sec.arenaBounds.height }, 1.0f, Fade(Color{ 38, 32, 46, 255 }, 0.18f));
+        }
+        for (int r = 1; r <= gridRows; ++r) {
+            float gy = sec.arenaBounds.y + static_cast<float>(r) * floorGridStep;
+            DrawLineEx({ sec.arenaBounds.x, gy }, { sec.arenaBounds.x + sec.arenaBounds.width, gy }, 1.0f, Fade(Color{ 38, 32, 46, 255 }, 0.18f));
+        }
+
+        // 3b. Tectonic Magma Fissures traversing the rift basin floor
+        const auto* pCfg = campaign.getActivePlanetConfig();
+        if (pCfg && pCfg->visual.hasMagmaRifts) {
+            Color riftCol = pCfg->visual.magmaRiftColor;
+            float mPulse = 0.5f + 0.5f * std::sin(curTime * 3.5f);
+
+            // Draw deterministic crack polylines across floor margins
+            uint32_t crackRng = static_cast<uint32_t>(sec.id * 1013904223u + 883311u);
+            auto nextFloat = [&crackRng](float minV, float maxV) -> float {
+                crackRng = crackRng * 1664525u + 1013904223u;
+                float norm = static_cast<float>(crackRng & 0x00FFFFFF) / static_cast<float>(0x00FFFFFF);
+                return minV + norm * (maxV - minV);
+            };
+
+            // 4 main fissure lines in different margins
+            for (int f = 0; f < 4; ++f) {
+                Vector2 pt;
+                float segLen = 22.0f;
+                float angle = 0.0f;
+                int segCount = 8;
+                if (f == 0) { // West margin
+                    pt = { sec.arenaBounds.x + nextFloat(35.0f, 65.0f), sec.arenaBounds.y + nextFloat(70.0f, 150.0f) };
+                    angle = 0.85f;
+                } else if (f == 1) { // East margin
+                    pt = { sec.arenaBounds.x + sec.arenaBounds.width - nextFloat(60.0f, 100.0f), sec.arenaBounds.y + nextFloat(90.0f, 200.0f) };
+                    angle = 1.9f;
+                } else if (f == 2) { // South margin
+                    pt = { sec.arenaBounds.x + nextFloat(120.0f, 240.0f), sec.arenaBounds.y + sec.arenaBounds.height - nextFloat(45.0f, 75.0f) };
+                    angle = 0.15f;
+                } else { // North-central fissure
+                    pt = { sec.arenaBounds.x + nextFloat(200.0f, 340.0f), sec.arenaBounds.y + nextFloat(35.0f, 65.0f) };
+                    angle = 0.65f;
+                }
+
+                for (int s = 0; s < segCount; ++s) {
+                    angle += nextFloat(-0.55f, 0.55f);
+                    Vector2 nextPt = { pt.x + std::cos(angle) * segLen, pt.y + std::sin(angle) * segLen };
+                    // Outer molten crust heat glow
+                    DrawLineEx(pt, nextPt, 5.0f, Fade(riftCol, 0.32f + 0.12f * mPulse));
+                    // Radiating heat glow
+                    DrawLineEx(pt, nextPt, 2.8f, Fade(Color{ 255, 85, 35, 255 }, 0.55f + 0.18f * mPulse));
+                    // Hot core fissure line
+                    DrawLineEx(pt, nextPt, 1.4f, Fade(Color{ 255, 215, 120, 255 }, 0.80f + 0.20f * mPulse));
+
+                    // Small tributary branching fissure
+                    if (s == 3 || s == 6) {
+                        float branchAngle = angle + (nextFloat(0.0f, 1.0f) > 0.5f ? 0.9f : -0.9f);
+                        Vector2 bPt = { pt.x + std::cos(branchAngle) * 14.0f, pt.y + std::sin(branchAngle) * 14.0f };
+                        DrawLineEx(pt, bPt, 3.0f, Fade(riftCol, 0.25f + 0.10f * mPulse));
+                        DrawLineEx(pt, bPt, 1.0f, Fade(Color{ 255, 170, 70, 255 }, 0.60f + 0.20f * mPulse));
+                    }
+
+                    pt = nextPt;
+                }
+            }
+        }
+
+        // 3c. Towering Cliff Drop Shadows falling from perimeter walls into sunken rift canyon floor
+        float shadowDepth = 48.0f;
+        // North cliff shadow
+        DrawRectangleGradientV(static_cast<int>(sec.arenaBounds.x), static_cast<int>(sec.arenaBounds.y), static_cast<int>(sec.arenaBounds.width), static_cast<int>(shadowDepth), Fade(BLACK, 0.92f), Fade(BLACK, 0.0f));
+        // South cliff shadow
+        DrawRectangleGradientV(static_cast<int>(sec.arenaBounds.x), static_cast<int>(sec.arenaBounds.y + sec.arenaBounds.height - shadowDepth), static_cast<int>(sec.arenaBounds.width), static_cast<int>(shadowDepth), Fade(BLACK, 0.0f), Fade(BLACK, 0.92f));
+        // West cliff shadow
+        DrawRectangleGradientH(static_cast<int>(sec.arenaBounds.x), static_cast<int>(sec.arenaBounds.y), static_cast<int>(shadowDepth), static_cast<int>(sec.arenaBounds.height), Fade(BLACK, 0.92f), Fade(BLACK, 0.0f));
+        // East cliff shadow
+        DrawRectangleGradientH(static_cast<int>(sec.arenaBounds.x + sec.arenaBounds.width - shadowDepth), static_cast<int>(sec.arenaBounds.y), static_cast<int>(shadowDepth), static_cast<int>(sec.arenaBounds.height), Fade(BLACK, 0.0f), Fade(BLACK, 0.92f));
+
+        // Deep canyon corner shadows
+        int sDep = static_cast<int>(shadowDepth);
+        DrawRectangle(static_cast<int>(sec.arenaBounds.x), static_cast<int>(sec.arenaBounds.y), sDep, sDep, Fade(BLACK, 0.50f));
+        DrawRectangle(static_cast<int>(sec.arenaBounds.x + sec.arenaBounds.width - shadowDepth), static_cast<int>(sec.arenaBounds.y), sDep, sDep, Fade(BLACK, 0.50f));
+        DrawRectangle(static_cast<int>(sec.arenaBounds.x), static_cast<int>(sec.arenaBounds.y + sec.arenaBounds.height - shadowDepth), sDep, sDep, Fade(BLACK, 0.50f));
+        DrawRectangle(static_cast<int>(sec.arenaBounds.x + sec.arenaBounds.width - shadowDepth), static_cast<int>(sec.arenaBounds.y + sec.arenaBounds.height - shadowDepth), sDep, sDep, Fade(BLACK, 0.50f));
+
+        // Interior custom wall drop shadows
+        for (const auto& cw : sec.config.customWalls) {
+            DrawRectangleRec({ cw.rect.x + 8.0f, cw.rect.y + 10.0f, cw.rect.width, cw.rect.height }, Fade(BLACK, 0.55f));
+        }
+
+        // Cliff drop-off shadow line along canyon rim
+        DrawLineEx({ sec.arenaBounds.x, sec.arenaBounds.y }, { sec.arenaBounds.x + sec.arenaBounds.width, sec.arenaBounds.y }, 2.0f, Fade(BLACK, 0.90f));
+        DrawLineEx({ sec.arenaBounds.x, sec.arenaBounds.y + sec.arenaBounds.height }, { sec.arenaBounds.x + sec.arenaBounds.width, sec.arenaBounds.y + sec.arenaBounds.height }, 2.0f, Fade(BLACK, 0.90f));
+        DrawLineEx({ sec.arenaBounds.x, sec.arenaBounds.y }, { sec.arenaBounds.x, sec.arenaBounds.y + sec.arenaBounds.height }, 2.0f, Fade(BLACK, 0.90f));
+        DrawLineEx({ sec.arenaBounds.x + sec.arenaBounds.width, sec.arenaBounds.y }, { sec.arenaBounds.x + sec.arenaBounds.width, sec.arenaBounds.y + sec.arenaBounds.height }, 2.0f, Fade(BLACK, 0.90f));
+
+        // Floor perimeter boundary line
+        DrawRectangleLinesEx(sec.arenaBounds, 1.5f, Fade(ui::Colors::Zinc800, 0.60f));
 
         // Sector stencils / Header inside top buffer of arena
         float labelY = sec.arenaBounds.y + 14.0f;

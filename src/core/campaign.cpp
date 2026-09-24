@@ -994,13 +994,13 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
     sec.walls.clear();
 
     // 1. North Wall (Top)
-    sec.walls.push_back({ { -wallThick, -wallThick, arenaW + 2.0f * wallThick, wallThick }, true, false });
+    sec.walls.push_back({ { -wallThick, -wallThick, arenaW + 2.0f * wallThick, wallThick }, false, false });
 
     // 2. South Wall (Bottom)
-    sec.walls.push_back({ { -wallThick, arenaH, arenaW + 2.0f * wallThick, wallThick }, true, false });
+    sec.walls.push_back({ { -wallThick, arenaH, arenaW + 2.0f * wallThick, wallThick }, false, false });
 
     // 3. West Wall (Left)
-    sec.walls.push_back({ { -wallThick, 0.0f, wallThick, arenaH }, true, false });
+    sec.walls.push_back({ { -wallThick, 0.0f, wallThick, arenaH }, false, false });
 
     // 4. East Wall (Right) & Orbital Launcher
     if (sec.hasExitLauncher) {
@@ -1008,8 +1008,8 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
         float topLen = launcherY;
         float botLen = arenaH - (launcherY + launcherOpeningH);
 
-        sec.walls.push_back({ { arenaW, 0.0f, wallThick, topLen }, true, false });
-        sec.walls.push_back({ { arenaW, launcherY + launcherOpeningH, wallThick, botLen }, true, false });
+        sec.walls.push_back({ { arenaW, 0.0f, wallThick, topLen }, false, false });
+        sec.walls.push_back({ { arenaW, launcherY + launcherOpeningH, wallThick, botLen }, false, false });
 
         sec.exitLauncher.openingBounds = { arenaW - 30.0f, launcherY, wallThick + 50.0f, launcherOpeningH };
         sec.exitLauncher.barrierBounds = { arenaW, launcherY, wallThick, launcherOpeningH };
@@ -1018,7 +1018,7 @@ bool CampaignManager::rebuildSector(int sectorIdx, const SectorConfig& cfg) {
         sec.exitLauncher.beaconPosB = { arenaW + wallThick * 0.5f, launcherY + launcherOpeningH + 12.0f };
         sec.exitLauncher.launchVector = { 1.0f, 0.0f };
     } else {
-        sec.walls.push_back({ { arenaW, 0.0f, wallThick, arenaH }, true, false });
+        sec.walls.push_back({ { arenaW, 0.0f, wallThick, arenaH }, false, false });
     }
 
     for (const auto& cw : cfg.customWalls) {
@@ -1136,13 +1136,13 @@ bool CampaignManager::selectPlanet(int planetIdx) {
         float launcherOpeningH = (cfg.launcherOpeningHeight > 0.0f) ? cfg.launcherOpeningHeight : 140.0f;
 
         // 1. North Wall (Top)
-        sec.walls.push_back({ { -wallThick, -wallThick, arenaW + 2.0f * wallThick, wallThick }, true, false });
+        sec.walls.push_back({ { -wallThick, -wallThick, arenaW + 2.0f * wallThick, wallThick }, false, false });
 
         // 2. South Wall (Bottom)
-        sec.walls.push_back({ { -wallThick, arenaH, arenaW + 2.0f * wallThick, wallThick }, true, false });
+        sec.walls.push_back({ { -wallThick, arenaH, arenaW + 2.0f * wallThick, wallThick }, false, false });
 
         // 3. West Wall (Left) - solid entrance perimeter
-        sec.walls.push_back({ { -wallThick, 0.0f, wallThick, arenaH }, true, false });
+        sec.walls.push_back({ { -wallThick, 0.0f, wallThick, arenaH }, false, false });
 
         // 4. East Wall (Right) & Orbital Launcher Facility
         if (sec.hasExitLauncher) {
@@ -1150,8 +1150,8 @@ bool CampaignManager::selectPlanet(int planetIdx) {
             float topLen = launcherY;
             float botLen = arenaH - (launcherY + launcherOpeningH);
 
-            sec.walls.push_back({ { arenaW, 0.0f, wallThick, topLen }, true, false });
-            sec.walls.push_back({ { arenaW, launcherY + launcherOpeningH, wallThick, botLen }, true, false });
+            sec.walls.push_back({ { arenaW, 0.0f, wallThick, topLen }, false, false });
+            sec.walls.push_back({ { arenaW, launcherY + launcherOpeningH, wallThick, botLen }, false, false });
 
             // Orbital Launcher structures (mass driver accelerator cradle)
             sec.exitLauncher.openingBounds = { arenaW - 30.0f, launcherY, wallThick + 50.0f, launcherOpeningH };
@@ -1163,7 +1163,7 @@ bool CampaignManager::selectPlanet(int planetIdx) {
             sec.exitLauncher.launchVector = { 1.0f, 0.0f };
         } else {
             // Final Sector: solid east wall enclosing the core chamber
-            sec.walls.push_back({ { arenaW, 0.0f, wallThick, arenaH }, true, false });
+            sec.walls.push_back({ { arenaW, 0.0f, wallThick, arenaH }, false, false });
         }
 
         // Custom extra walls from config
