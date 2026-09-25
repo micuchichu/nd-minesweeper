@@ -116,7 +116,7 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
         }
         curBtnY += mBtnH + btnGap;
 
-        if (Widgets::mindustryButton("SECTOR EDITOR", "DESIGN & EXPORT SECTOR MAPS", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Purple500, false, 18)) {
+        if (Widgets::mindustryButton("MAP EDITOR", "DESIGN & EXPORT SECTOR MAPS", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Purple500, false, 18)) {
             actions.openSectorEditor = true;
             statusMessage.clear();
         }

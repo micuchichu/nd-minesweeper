@@ -85,7 +85,30 @@ void SectorEditor::loadSector(core::CampaignManager& campaignMgr, int sectorIdx)
         selectedDockIndex = 0;
         selectionType = EditorSelectionType::None;
         selectedIndex = -1;
+        useBombPercentage = false;
+        bombPercentage = std::clamp(getCalculatedPercentage(), 5, 50);
     }
+}
+
+int SectorEditor::getPlayableCellsEstimate() const {
+    if (workingConfig.terrainShape == core::TerrainShape::Rectangle) {
+        return workingConfig.gridSize * workingConfig.gridSize;
+    }
+    core::Board tempBoard;
+    tempBoard.init(2, workingConfig.gridSize, 1, 12345, workingConfig.terrainShape);
+    return static_cast<int>(tempBoard.totalPlayableCells());
+}
+
+void SectorEditor::updateBombCountFromPercentage() {
+    int totalPlayable = getPlayableCellsEstimate();
+    int maxBombs = std::max(1, totalPlayable - 5);
+    workingConfig.bombCount = std::clamp(static_cast<int>(std::round(totalPlayable * (bombPercentage / 100.0f))), 1, maxBombs);
+}
+
+int SectorEditor::getCalculatedPercentage() const {
+    int totalPlayable = getPlayableCellsEstimate();
+    if (totalPlayable <= 0) return 0;
+    return static_cast<int>(std::round(workingConfig.bombCount * 100.0f / totalPlayable));
 }
 
 void SectorEditor::syncBuffersFromConfig() {
@@ -736,12 +759,38 @@ void SectorEditor::drawAndProcess(core::CampaignManager& campaignMgr, int screen
         DrawText("MINEFIELD ARENA & GEOMETRY", static_cast<int>(curX), static_cast<int>(curY), 13, Colors::Amber500);
         curY += 22.0f;
 
+        int prevGrid = workingConfig.gridSize;
         Widgets::spinner("Grid Size (NxN):", { curX, curY }, workingConfig.gridSize, 6, 24, false, 185);
-        curY += 32.0f;
+        if (workingConfig.gridSize != prevGrid && useBombPercentage) {
+            updateBombCountFromPercentage();
+        }
+        curY += 30.0f;
 
-        int maxBombs = (workingConfig.gridSize * workingConfig.gridSize) - 5;
-        Widgets::spinner("Bomb Count:", { curX, curY }, workingConfig.bombCount, 1, maxBombs, false, 185);
-        curY += 32.0f;
+        Widgets::checkbox("Use Constant Bomb %:", { curX, curY }, useBombPercentage);
+        curY += 28.0f;
+
+        int totalPlayable = getPlayableCellsEstimate();
+        int maxBombs = std::max(1, totalPlayable - 5);
+
+        if (useBombPercentage) {
+            int prevPct = bombPercentage;
+            Widgets::spinner("Bomb Ratio (%):", { curX, curY }, bombPercentage, 5, 50, false, 185);
+            if (bombPercentage != prevPct) {
+                updateBombCountFromPercentage();
+            }
+            curY += 24.0f;
+            DrawText(TextFormat("= %d bombs (out of %d playable tiles)", workingConfig.bombCount, totalPlayable), static_cast<int>(curX + 6.0f), static_cast<int>(curY), 11, Colors::Zinc400);
+            curY += 18.0f;
+        } else {
+            int prevBombs = workingConfig.bombCount;
+            Widgets::spinner("Bomb Count:", { curX, curY }, workingConfig.bombCount, 1, maxBombs, false, 185);
+            if (workingConfig.bombCount != prevBombs) {
+                bombPercentage = std::clamp(getCalculatedPercentage(), 5, 50);
+            }
+            curY += 24.0f;
+            DrawText(TextFormat("= ~%d%% density (%d of %d playable tiles)", getCalculatedPercentage(), workingConfig.bombCount, totalPlayable), static_cast<int>(curX + 6.0f), static_cast<int>(curY), 11, Colors::Zinc400);
+            curY += 18.0f;
+        }
 
         int shapeIdx = 0;
         if (workingConfig.terrainShape == core::TerrainShape::CellularAutomata) shapeIdx = 1;
@@ -755,6 +804,9 @@ void SectorEditor::drawAndProcess(core::CampaignManager& campaignMgr, int screen
             else if (shapeIdx == 1) { workingConfig.terrainShape = core::TerrainShape::CellularAutomata; workingConfig.terrainShapeName = "CellularAutomata"; }
             else if (shapeIdx == 2) { workingConfig.terrainShape = core::TerrainShape::VoronoiFaultLine; workingConfig.terrainShapeName = "VoronoiFaultLine"; }
             else { workingConfig.terrainShape = core::TerrainShape::Rectangle; workingConfig.terrainShapeName = "Rectangle"; }
+            if (useBombPercentage) {
+                updateBombCountFromPercentage();
+            }
         }
         curY += 32.0f;
 

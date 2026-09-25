@@ -1728,9 +1728,13 @@ void App::update(float dt) {
                                         menu.scrapCount = scrapCount;
                                         hud.triggerScrapPulse();
                                         soundMgr.playUncoverSound();
+                                        renderer.triggerSectorClearAnimation(sI, campaignMgr.sectors[sI].board, campaignMgr.sectors[sI].gridOffset);
                                     }
                                     saveCampaignProgress();
                                 } else {
+                                    if (board.isVictory) {
+                                        renderer.triggerSectorClearAnimation(-1, board, { 0.0f, 0.0f });
+                                    }
                                     saveCurrentSlot();
                                 }
 
@@ -1878,9 +1882,13 @@ void App::update(float dt) {
                                         menu.scrapCount = scrapCount;
                                         hud.triggerScrapPulse();
                                         soundMgr.playUncoverSound();
+                                        renderer.triggerSectorClearAnimation(sI, campaignMgr.sectors[sI].board, campaignMgr.sectors[sI].gridOffset);
                                     }
                                     saveCampaignProgress();
                                 } else {
+                                    if (board.isVictory) {
+                                        renderer.triggerSectorClearAnimation(-1, board, { 0.0f, 0.0f });
+                                    }
                                     saveCurrentSlot();
                                 }
 
@@ -2080,9 +2088,13 @@ void App::update(float dt) {
                                             menu.scrapCount = scrapCount;
                                             hud.triggerScrapPulse();
                                             soundMgr.playUncoverSound();
+                                            renderer.triggerSectorClearAnimation(sI, campaignMgr.sectors[sI].board, campaignMgr.sectors[sI].gridOffset);
                                         }
                                         saveCampaignProgress();
                                     } else {
+                                        if (board.isVictory) {
+                                            renderer.triggerSectorClearAnimation(-1, board, { 0.0f, 0.0f });
+                                        }
                                         saveCurrentSlot();
                                     }
                                 }
@@ -2120,6 +2132,10 @@ void App::update(float dt) {
                         }
                     }
                     campaignMgr.checkSectorClear(campaignMgr.activeSectorIndex);
+                    int curAct = campaignMgr.activeSectorIndex;
+                    if (curAct >= 0 && curAct < static_cast<int>(campaignMgr.sectors.size())) {
+                        renderer.triggerSectorClearAnimation(curAct, campaignMgr.sectors[curAct].board, campaignMgr.sectors[curAct].gridOffset);
+                    }
                     saveCampaignProgress();
                 }
             } else {
@@ -2127,6 +2143,9 @@ void App::update(float dt) {
                     if (!board.isBomb(i)) {
                         board.reveal(i);
                     }
+                }
+                if (board.isVictory) {
+                    renderer.triggerSectorClearAnimation(-1, board, { 0.0f, 0.0f });
                 }
             }
         }
@@ -2754,6 +2773,8 @@ void App::draw() {
             float arenaMidY = campaignMgr.sectors[0].arenaBounds.y + campaignMgr.sectors[0].arenaBounds.height * 0.5f;
             renderer.camera.reset({ 0.0f, 0.0f }, 0.90f);
             renderer.camera.centerOn({ arenaMidX, arenaMidY });
+        } else if (campFrame == 16) {
+            campaignMgr.sectors[0].board.setFlag(27, 0, 0);
         } else if (campFrame == 22) {
             renderer.saveScreenshot("screenshot_sector_world_locked.png");
             std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_world_locked.png" << std::endl;
@@ -2764,18 +2785,22 @@ void App::draw() {
                 }
             }
             campaignMgr.checkSectorClear(0);
+            renderer.triggerSectorClearAnimation(0, campaignMgr.sectors[0].board, campaignMgr.sectors[0].gridOffset);
             campaignMgr.sectors[0].exitLauncher.openAnim = 1.0f;
-        } else if (campFrame == 30) {
+        } else if (campFrame == 28) {
+            renderer.saveScreenshot("screenshot_sector_clear_animation.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_clear_animation.png" << std::endl;
+        } else if (campFrame == 40) {
             renderer.saveScreenshot("screenshot_sector_world_unlocked.png");
             renderer.saveScreenshot("screenshot_sector_cleared_defused_bombs.png");
             std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_world_unlocked.png & screenshot_sector_cleared_defused_bombs.png" << std::endl;
-        } else if (campFrame == 32) {
+        } else if (campFrame == 42) {
             triggerSectorWarp(1);
             float s2MidX = campaignMgr.sectors[1].arenaBounds.x + campaignMgr.sectors[1].arenaBounds.width * 0.5f;
             float s2MidY = campaignMgr.sectors[1].arenaBounds.y + campaignMgr.sectors[1].arenaBounds.height * 0.5f;
             renderer.camera.reset({ 0.0f, 0.0f }, 0.82f);
             renderer.camera.centerOn({ s2MidX, s2MidY });
-        } else if (campFrame == 38) {
+        } else if (campFrame == 48) {
             renderer.saveScreenshot("screenshot_sector_02_world.png");
             std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_02_world.png" << std::endl;
             shouldQuit = true;

@@ -55,6 +55,11 @@ public:
     int selectedIndex = -1; // Index in customWalls, merchantSpawns, etc.
     DragMode dragMode = DragMode::None;
     float gridSnap = 20.0f; // 0 (OFF), 10, 20, 40
+    bool useBombPercentage = false;
+    int bombPercentage = 15;
+    int getPlayableCellsEstimate() const;
+    void updateBombCountFromPercentage();
+    int getCalculatedPercentage() const;
 
     SectorEditor();
 

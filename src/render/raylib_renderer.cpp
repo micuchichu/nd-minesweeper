@@ -3,6 +3,7 @@
 #include "procedural_textures.hpp"
 #include "../core/item.hpp"
 #include "../core/campaign.hpp"
+#include "../audio/sound_manager.hpp"
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -548,6 +549,8 @@ void RaylibRenderer::update(float dt) {
         hasRadarActive = false;
     }
 
+    updateSectorClearAnimation(dt);
+
     if (IsWindowResized()) {
         int w = GetScreenWidth();
         int h = GetScreenHeight();
@@ -556,6 +559,95 @@ void RaylibRenderer::update(float dt) {
             offscreenTarget = LoadRenderTexture(w, h);
         }
     }
+}
+
+void RaylibRenderer::triggerSectorClearAnimation(int sectorIdx, const core::Board& board, Vector2 gridOrigin, float cSize) {
+    sectorClearAnim.active = true;
+    sectorClearAnim.sectorIdx = sectorIdx;
+    sectorClearAnim.timer = 0.0f;
+    sectorClearAnim.steps.clear();
+
+    struct BombSortItem {
+        size_t index = 0;
+        float distFromCenter = 0.0f;
+        Vector2 worldPos{ 0.0f, 0.0f };
+    };
+    std::vector<BombSortItem> items;
+
+    float boardSize = static_cast<float>(board.config.size);
+    Vector2 centerCell = { (boardSize - 1.0f) * 0.5f, (boardSize - 1.0f) * 0.5f };
+
+    for (size_t i = 0; i < board.totalCells(); ++i) {
+        if (board.isBomb(i)) {
+            size_t cx = i % board.config.size;
+            size_t cy = i / board.config.size;
+            float dx = static_cast<float>(cx) - centerCell.x;
+            float dy = static_cast<float>(cy) - centerCell.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
+
+            Vector2 wPos = {
+                gridOrigin.x + (static_cast<float>(cx) + 0.5f) * cSize,
+                gridOrigin.y + (static_cast<float>(cy) + 0.5f) * cSize
+            };
+            items.push_back({ i, dist, wPos });
+        }
+    }
+
+    std::sort(items.begin(), items.end(), [](const BombSortItem& a, const BombSortItem& b) {
+        if (std::abs(a.distFromCenter - b.distFromCenter) > 0.001f) {
+            return a.distFromCenter < b.distFromCenter;
+        }
+        return a.index < b.index;
+    });
+
+    float interval = std::clamp(1.2f / std::max<size_t>(1, items.size()), 0.06f, 0.16f);
+    for (size_t k = 0; k < items.size(); ++k) {
+        BombClearStep s;
+        s.cellIndex = items[k].index;
+        s.worldPos = items[k].worldPos;
+        s.triggerTime = static_cast<float>(k) * interval;
+        s.triggered = false;
+        s.highlightProgress = 0.0f;
+        sectorClearAnim.steps.push_back(s);
+    }
+
+    sectorClearAnim.totalDuration = static_cast<float>(items.size()) * interval + 0.6f;
+}
+
+void RaylibRenderer::updateSectorClearAnimation(float dt) {
+    if (!sectorClearAnim.active) return;
+
+    sectorClearAnim.timer += dt;
+    for (auto& s : sectorClearAnim.steps) {
+        if (!s.triggered && sectorClearAnim.timer >= s.triggerTime) {
+            s.triggered = true;
+            s.highlightProgress = 1.0f;
+
+            particles.emitDebris(s.worldPos, 14, ui::Colors::Cyan400);
+            particles.emitDebris(s.worldPos, 8, ui::Colors::Amber400);
+            particles.emitDebris(s.worldPos, 6, WHITE);
+            emitBubbles(s.worldPos, 5);
+            audio::SoundManager::playIncrement();
+        }
+
+        if (s.triggered && s.highlightProgress > 0.0f) {
+            s.highlightProgress = std::max(0.0f, s.highlightProgress - dt * 2.2f);
+        }
+    }
+
+    if (sectorClearAnim.timer >= sectorClearAnim.totalDuration) {
+        sectorClearAnim.active = false;
+    }
+}
+
+const RaylibRenderer::BombClearStep* RaylibRenderer::getActiveClearStep(int sectorIdx, size_t cellIdx) const {
+    if (!sectorClearAnim.active || sectorClearAnim.sectorIdx != sectorIdx) {
+        return nullptr;
+    }
+    for (const auto& s : sectorClearAnim.steps) {
+        if (s.cellIndex == cellIdx) return &s;
+    }
+    return nullptr;
 }
 
 void RaylibRenderer::applyBubbleBlurSource(Vector2 bubbleSourcePos, float maxRadius) {
@@ -732,7 +824,7 @@ Vector2 RaylibRenderer::getCellWorldPosition(size_t index, const core::Board& bo
     }
 }
 
-void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset, bool isSectorCleared) {
+void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset, bool isSectorCleared, int sectorIdx) {
     float boardWidth = board.config.size * cellSize;
     bool cleared = board.isVictory || isSectorCleared;
 
@@ -840,13 +932,47 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + 2), 22, ui::Colors::Red700);
                 }
                 else if (cleared && isBomb) {
-                    // Defused / neutralized bomb in cleared sector
-                    DrawRectangleRounded(cellRect, 0.2f, 4, Color{ 36, 38, 46, 255 });
-                    DrawRectangleLinesEx(cellRect, 1.2f, Fade(ui::Colors::Zinc500, 0.70f));
-                    DrawCircle(static_cast<int>(cellRect.x + cellRect.width * 0.5f), static_cast<int>(cellRect.y + cellRect.height * 0.5f), cellSize * 0.20f, Color{ 48, 52, 62, 255 });
-                    int fontSize = std::clamp(static_cast<int>(cellSize * 0.65f), 12, 28);
-                    int tw = MeasureText("*", fontSize);
-                    DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + (cellRect.height - fontSize) * 0.5f - 1.0f), fontSize, ui::Colors::Zinc400);
+                    const BombClearStep* cStep = getActiveClearStep(sectorIdx, idx);
+                    if (cStep && !cStep->triggered) {
+                        // Animation active, not reached yet -> draw normal covered hidden cell
+                        if (cellHiddenRT.id != 0) {
+                            Rectangle src = { 0.0f, 0.0f, static_cast<float>(cellHiddenRT.texture.width), -static_cast<float>(cellHiddenRT.texture.height) };
+                            DrawTexturePro(cellHiddenRT.texture, src, cellRect, {0, 0}, 0.0f, WHITE);
+                        } else {
+                            DrawRectangleRounded(cellRect, 0.2f, 4, ui::Colors::CellHidden);
+                        }
+                    }
+                    else if (cStep && cStep->highlightProgress > 0.0f) {
+                        // Sequential bomb highlight burst animation!
+                        float hp = cStep->highlightProgress; // 1.0 -> 0.0
+                        Color flashBg = ColorAlphaBlend(Color{ 36, 38, 46, 255 }, Fade(ui::Colors::Cyan400, 0.55f * hp), WHITE);
+                        DrawRectangleRounded(cellRect, 0.2f, 4, flashBg);
+
+                        // Expanding energy ring
+                        float ringRadius = cellSize * (0.25f + 0.70f * (1.0f - hp));
+                        DrawCircleLines(static_cast<int>(cellRect.x + cellRect.width * 0.5f), static_cast<int>(cellRect.y + cellRect.height * 0.5f), ringRadius, Fade(ui::Colors::Cyan300, hp));
+
+                        // Bright glowing border
+                        DrawRectangleLinesEx(cellRect, 1.2f + 1.8f * hp, Fade(ui::Colors::Cyan400, 0.6f + 0.4f * hp));
+
+                        // Glowing inner circle
+                        DrawCircle(static_cast<int>(cellRect.x + cellRect.width * 0.5f), static_cast<int>(cellRect.y + cellRect.height * 0.5f), cellSize * (0.20f + 0.12f * hp), Fade(ui::Colors::Cyan300, 0.6f + 0.4f * hp));
+
+                        // Asterisk
+                        int fontSize = std::clamp(static_cast<int>(cellSize * (0.65f + 0.20f * hp)), 12, 32);
+                        int tw = MeasureText("*", fontSize);
+                        Color starCol = (hp > 0.4f) ? WHITE : ui::Colors::Zinc300;
+                        DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + (cellRect.height - fontSize) * 0.5f - 1.0f), fontSize, starCol);
+                    }
+                    else {
+                        // Defused / neutralized bomb in cleared sector
+                        DrawRectangleRounded(cellRect, 0.2f, 4, Color{ 36, 38, 46, 255 });
+                        DrawRectangleLinesEx(cellRect, 1.2f, Fade(ui::Colors::Zinc500, 0.70f));
+                        DrawCircle(static_cast<int>(cellRect.x + cellRect.width * 0.5f), static_cast<int>(cellRect.y + cellRect.height * 0.5f), cellSize * 0.20f, Color{ 48, 52, 62, 255 });
+                        int fontSize = std::clamp(static_cast<int>(cellSize * 0.65f), 12, 28);
+                        int tw = MeasureText("*", fontSize);
+                        DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + (cellRect.height - fontSize) * 0.5f - 1.0f), fontSize, ui::Colors::Zinc400);
+                    }
                 }
                 else if (state == core::CellState::Revealed) {
                     if (board.hasTerrainMask) {
@@ -902,7 +1028,7 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                             int frame = (numFrames > 1) ? (static_cast<int>(time) % numFrames) : 0;
                             Rectangle flagSrc = { frame * frameW, 0.0f, frameW, frameH };
 
-                            float flagScale = 0.65f;
+                            float flagScale = 1.05f;
                             float flagW = cellRect.width * flagScale;
                             float flagH = cellRect.height * flagScale;
                             float baseX = cellRect.x + 4.0f * cellRect.width / 16.0f;
@@ -1009,7 +1135,12 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
             else {
                 // LOD Mode for distant zoom
                 Color lodCol = ui::Colors::CellHidden;
-                if (cleared && isBomb) lodCol = Color{ 48, 52, 60, 255 };
+                if (cleared && isBomb) {
+                    const BombClearStep* cStep = getActiveClearStep(sectorIdx, idx);
+                    if (cStep && !cStep->triggered) lodCol = ui::Colors::CellHidden;
+                    else if (cStep && cStep->highlightProgress > 0.0f) lodCol = ui::Colors::Cyan300;
+                    else lodCol = Color{ 48, 52, 60, 255 };
+                }
                 else if (board.isGameOver && isBomb) lodCol = ui::Colors::Red500;
                 else if (state == core::CellState::Revealed) {
                     if (count > 0) lodCol = ui::getNeighborColor(count);
@@ -3037,7 +3168,7 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
         // Minefield grid
         int64_t cellHover = (hoveredSectorIdx == sIdx) ? static_cast<int64_t>(hoveredLocalIdx) : -1;
         size_t gOffset = campaign.toGlobalCellIndex(sIdx, 0);
-        drawSlice(sec.board, 0, 0, sec.gridOffset.x, sec.gridOffset.y, cellHover, gOffset, sec.isCleared);
+        drawSlice(sec.board, 0, 0, sec.gridOffset.x, sec.gridOffset.y, cellHover, gOffset, sec.isCleared, sIdx);
 
         // Flying flags for this sector
         drawFlyingFlags(sec.board);

@@ -219,6 +219,27 @@ public:
     void updateIonStorm(float dt);
     void drawIonStormOverlay();
 
+    struct BombClearStep {
+        size_t cellIndex = 0;
+        Vector2 worldPos = { 0.0f, 0.0f };
+        float triggerTime = 0.0f;
+        bool triggered = false;
+        float highlightProgress = 0.0f; // 1.0 down to 0.0
+    };
+
+    struct SectorClearAnim {
+        bool active = false;
+        int sectorIdx = -1;
+        float timer = 0.0f;
+        float totalDuration = 0.0f;
+        std::vector<BombClearStep> steps;
+    };
+
+    SectorClearAnim sectorClearAnim;
+    void triggerSectorClearAnimation(int sectorIdx, const core::Board& board, Vector2 gridOrigin, float cellSize = 30.0f);
+    void updateSectorClearAnimation(float dt);
+    const BombClearStep* getActiveClearStep(int sectorIdx, size_t cellIdx) const;
+
     void clearParticles() {
         particles.clear();
         bubbleParticles.clear();
@@ -230,6 +251,8 @@ public:
         lasers.clear();
         clearOutOfReach();
         clearFlagDrops();
+        sectorClearAnim.active = false;
+        sectorClearAnim.steps.clear();
         heldItemInit = false;
         heldState = HeldItemState::Hidden;
         heldAnimProgress = 0.0f;
@@ -255,7 +278,7 @@ private:
     void initShaders();
     void initCellTextures();
     void unloadAssets();
-    void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset = 0, bool isSectorCleared = false);
+    void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset = 0, bool isSectorCleared = false, int sectorIdx = -1);
     void drawCampaignWalls(const core::CampaignManager& campaign);
     void drawCampaignLaunchers(const core::CampaignManager& campaign);
     void drawCampaignGateways(const core::CampaignManager& campaign) { drawCampaignLaunchers(campaign); }

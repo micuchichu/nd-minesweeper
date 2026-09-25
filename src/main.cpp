@@ -2706,6 +2706,61 @@ static int runCampaignTests() {
         std::cout << "  [PASS] Test 16: Defused bombs on cleared sectors, PerlinIsland, and editor export verified." << std::endl;
     }
 
+    // Test 17: Bomb percentage modifier and sector clear animation
+    {
+        std::cout << "[TEST-CAMPAIGN] Test 17: Verifying bomb percentage modifier & clear animation sequence..." << std::endl;
+
+        // 1. SectorEditor percentage calculations
+        minesweeper::ui::SectorEditor editor;
+        minesweeper::core::CampaignManager mgr;
+        editor.open(mgr, 0);
+
+        if (editor.useBombPercentage) {
+            std::cerr << "  [FAIL] Test 17: useBombPercentage should default to false!" << std::endl;
+            return 220;
+        }
+
+        int estPlayable = editor.getPlayableCellsEstimate();
+        if (estPlayable <= 0 || estPlayable > 64) {
+            std::cerr << "  [FAIL] Test 17: Unexpected playable cells estimate for 8x8 PerlinIsland: " << estPlayable << std::endl;
+            return 221;
+        }
+
+        editor.useBombPercentage = true;
+        editor.bombPercentage = 15;
+        editor.updateBombCountFromPercentage();
+        if (editor.getWorkingConfig().bombCount < 5 || editor.getWorkingConfig().bombCount > 7) {
+            std::cerr << "  [FAIL] Test 17: 15% bomb count calculation mismatch: got " << editor.getWorkingConfig().bombCount << std::endl;
+            return 222;
+        }
+
+        // 2. Sector clear animation steps
+        minesweeper::render::RaylibRenderer renderer;
+        minesweeper::core::Board testBoard;
+        testBoard.init(2, 8, 6, 12345, minesweeper::core::TerrainShape::PerlinIsland);
+
+        renderer.triggerSectorClearAnimation(0, testBoard, { 100.0f, 100.0f }, 30.0f);
+        if (!renderer.sectorClearAnim.active || renderer.sectorClearAnim.steps.size() != 6) {
+            std::cerr << "  [FAIL] Test 17: Clear animation initialization mismatch!" << std::endl;
+            return 223;
+        }
+
+        // Progress timer past first step
+        renderer.updateSectorClearAnimation(0.20f);
+        if (!renderer.sectorClearAnim.steps[0].triggered || renderer.sectorClearAnim.steps[0].highlightProgress <= 0.0f) {
+            std::cerr << "  [FAIL] Test 17: Clear animation step 0 should be triggered with highlightProgress > 0!" << std::endl;
+            return 225;
+        }
+
+        const auto* stepPtr = renderer.getActiveClearStep(0, renderer.sectorClearAnim.steps[0].cellIndex);
+        if (!stepPtr || !stepPtr->triggered) {
+            std::cerr << "  [FAIL] Test 17: getActiveClearStep lookup failed!" << std::endl;
+            return 226;
+        }
+
+        std::cout << "  [PASS] Test 17: Bomb percentage modifier and sector clear animation sequence verified." << std::endl;
+    }
+
     std::cout << "[TEST-CAMPAIGN] ALL CAMPAIGN TESTS PASSED!" << std::endl;
     return 0;
 }
