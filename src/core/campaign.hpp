@@ -211,7 +211,7 @@ public:
     CampaignManager();
     ~CampaignManager() = default;
 
-    void init(uint64_t seed);
+    void init(uint64_t seed = 12345);
     void update(float dt);
 
     static std::vector<PlanetConfig> loadPlanetConfigs(const std::string& directoryPath = "assets/campaign/planets");

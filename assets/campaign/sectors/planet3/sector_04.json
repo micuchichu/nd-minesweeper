@@ -7,9 +7,9 @@
   "threatLevel": 3,
   "map": {
     "gridSize": 12,
-    "bombCount": 24,
+    "bombCount": 13,
     "dimension": 2,
-    "terrainShape": "CellularAutomata",
+    "terrainShape": "PerlinIsland",
     "wallThickness": 28,
     "westMargin": 220,
     "eastMargin": 220,

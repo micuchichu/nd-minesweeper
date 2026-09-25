@@ -563,7 +563,7 @@ bool SaveManager::loadCampaign(CampaignManager& campaign, float& timePlayed, uin
             sec->isCleared = (isCleared != 0);
             sec->clearAnimTimer = clearTimer;
             sec->board.isGameOver = (isGameOver != 0);
-            sec->board.isVictory = (isVictory != 0);
+            sec->board.isVictory = (isVictory != 0) || sec->isCleared;
 
             if (wordCount == sec->board.state.data.size()) {
                 sec->board.state.data = words;

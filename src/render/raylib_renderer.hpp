@@ -255,7 +255,7 @@ private:
     void initShaders();
     void initCellTextures();
     void unloadAssets();
-    void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset = 0);
+    void drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset = 0, bool isSectorCleared = false);
     void drawCampaignWalls(const core::CampaignManager& campaign);
     void drawCampaignLaunchers(const core::CampaignManager& campaign);
     void drawCampaignGateways(const core::CampaignManager& campaign) { drawCampaignLaunchers(campaign); }

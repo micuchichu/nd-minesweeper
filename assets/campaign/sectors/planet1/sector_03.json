@@ -7,9 +7,9 @@
   "threatLevel": 3,
   "map": {
     "gridSize": 12,
-    "bombCount": 28,
+    "bombCount": 13,
     "dimension": 2,
-    "terrainShape": "VoronoiFaultLine",
+    "terrainShape": "PerlinIsland",
     "wallThickness": 28.0,
     "westMargin": 180.0,
     "eastMargin": 180.0,

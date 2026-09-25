@@ -117,7 +117,7 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s1.description = "Initial landing zone. Subterranean sensors detect standard automated mine clusters. Secure this perimeter to power up the orbital launcher to reach the next sector.";
     s1.threatLevel = 1;
     s1.gridSize = 8;
-    s1.bombCount = 10;
+    s1.bombCount = 6;
     s1.isUnlocked = true;
     s1.unlocks = { 2 };
     s1.hasExitLauncher = true;
@@ -136,9 +136,9 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s2.description = "Former mineral refinery. Dense magnetic sub-munitions were seeded during the planetary evacuation. Containment walls prevent hazardous slag from overflowing.";
     s2.threatLevel = 2;
     s2.gridSize = 10;
-    s2.bombCount = 18;
-    s2.terrainShape = TerrainShape::CellularAutomata;
-    s2.terrainShapeName = "CellularAutomata";
+    s2.bombCount = 9;
+    s2.terrainShape = TerrainShape::PerlinIsland;
+    s2.terrainShapeName = "PerlinIsland";
     s2.isUnlocked = false;
     s2.unlocks = { 3 };
     s2.hasExitLauncher = true;
@@ -161,9 +161,9 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s3.description = "Volatile cooling fluid sump. Mine clusters here have corroded into proximity detonators. Orbital launcher gantry clamps remain locked until full chemical stability is secured.";
     s3.threatLevel = 3;
     s3.gridSize = 12;
-    s3.bombCount = 28;
-    s3.terrainShape = TerrainShape::VoronoiFaultLine;
-    s3.terrainShapeName = "VoronoiFaultLine";
+    s3.bombCount = 13;
+    s3.terrainShape = TerrainShape::PerlinIsland;
+    s3.terrainShapeName = "PerlinIsland";
     s3.isUnlocked = false;
     s3.unlocks = { 4 };
     s3.hasExitLauncher = true;
@@ -186,7 +186,7 @@ std::vector<SectorConfig> CampaignManager::getDefaultSectorConfigs() {
     s4.description = "Deepest subterranean facility. Quantum-stabilized high-explosive ordnance encases the primary core generators. Final objective: full planetary clearance.";
     s4.threatLevel = 4;
     s4.gridSize = 14;
-    s4.bombCount = 42;
+    s4.bombCount = 18;
     s4.terrainShape = TerrainShape::PerlinIsland;
     s4.terrainShapeName = "PerlinIsland";
     s4.isUnlocked = false;
@@ -302,16 +302,8 @@ bool CampaignManager::parseSectorJson(const std::string& jsonContent, SectorConf
         }
 
         if (!hasTerrainShape) {
-            if (outConfig.id % 3 == 1) {
-                outConfig.terrainShape = TerrainShape::PerlinIsland;
-                outConfig.terrainShapeName = "PerlinIsland";
-            } else if (outConfig.id % 3 == 2) {
-                outConfig.terrainShape = TerrainShape::CellularAutomata;
-                outConfig.terrainShapeName = "CellularAutomata";
-            } else {
-                outConfig.terrainShape = TerrainShape::VoronoiFaultLine;
-                outConfig.terrainShapeName = "VoronoiFaultLine";
-            }
+            outConfig.terrainShape = TerrainShape::PerlinIsland;
+            outConfig.terrainShapeName = "PerlinIsland";
         }
     }
 
@@ -548,6 +540,11 @@ std::string CampaignManager::exportSectorConfigToJson(const SectorConfig& cfg) {
 bool CampaignManager::saveSectorConfigToJson(const SectorConfig& cfg, const std::string& customPath) {
     std::string jsonStr = exportSectorConfigToJson(cfg);
     if (!customPath.empty() && customPath.size() > 5 && customPath.substr(customPath.size() - 5) == ".json") {
+        std::filesystem::path p(customPath);
+        if (p.has_parent_path()) {
+            std::error_code dirEc;
+            std::filesystem::create_directories(p.parent_path(), dirEc);
+        }
         std::ofstream ofs(customPath);
         if (ofs.is_open()) {
             ofs << jsonStr;
@@ -559,33 +556,39 @@ bool CampaignManager::saveSectorConfigToJson(const SectorConfig& cfg, const std:
     char fname[64];
     std::snprintf(fname, sizeof(fname), "sector_%02d.json", cfg.id);
 
-    std::string baseDir = customPath.empty() ? "assets/campaign/sectors/planet1" : customPath;
+    std::string baseDir = customPath.empty() ? "assets/campaign/sectors/custom" : customPath;
+    std::error_code dirEc;
+    std::filesystem::create_directories(baseDir, dirEc);
+
+    std::string directPath = baseDir + "/" + fname;
+    std::ofstream ofs(directPath);
+    if (ofs.is_open()) {
+        ofs << jsonStr;
+        std::cout << "[CAMPAIGN] Saved sector " << cfg.id << " config to " << directPath << std::endl;
+        return true;
+    }
+
     const std::vector<std::string> candidateDirs = {
-        baseDir,
         "assets/" + baseDir,
         "../assets/" + baseDir,
         "../../assets/" + baseDir,
         "../" + baseDir,
-        "../../" + baseDir,
-        "assets/campaign/sectors/planet1",
-        "../assets/campaign/sectors/planet1",
-        "../../assets/campaign/sectors/planet1"
+        "../../" + baseDir
     };
 
-    bool savedAny = false;
     for (const auto& dir : candidateDirs) {
         std::error_code ec;
         if (std::filesystem::exists(dir, ec) && std::filesystem::is_directory(dir, ec)) {
             std::string fullPath = dir + "/" + fname;
-            std::ofstream ofs(fullPath);
-            if (ofs.is_open()) {
-                ofs << jsonStr;
-                savedAny = true;
+            std::ofstream cOfs(fullPath);
+            if (cOfs.is_open()) {
+                cOfs << jsonStr;
                 std::cout << "[CAMPAIGN] Saved sector " << cfg.id << " config to " << fullPath << std::endl;
+                return true;
             }
         }
     }
-    return savedAny;
+    return false;
 }
 
 static Color parseColorJson(const JsonValue& val, Color defaultColor) {
@@ -1280,6 +1283,7 @@ bool CampaignManager::checkSectorClear(int sectorIdx) {
     if (sec.isCleared) return true;
     if (sec.board.revealedCount >= sec.board.safeCells() && !sec.board.isGameOver) {
         sec.isCleared = true;
+        sec.board.isVictory = true;
         if (sec.hasExitLauncher) {
             sec.exitLauncher.isLocked = false;
         }

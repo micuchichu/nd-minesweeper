@@ -5,9 +5,7 @@
 #include <string>
 #include <vector>
 
-#if defined(_DEBUG) || !defined(NDEBUG)
 #define CAMPAIGN_EDITOR_ENABLED 1
-#endif
 
 namespace minesweeper::ui {
 
@@ -102,6 +100,8 @@ private:
     bool subtitleActive = false;
     bool descActive = false;
     bool depotTitleActive = false;
+    char exportFolderBuf[256]{ "assets/campaign/sectors/custom" };
+    bool exportFolderActive = false;
 
     // Toast status feedback
     std::string toastMessage;

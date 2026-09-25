@@ -86,9 +86,9 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
 
     if (currentScreen == MenuScreen::Main) {
         float panelW = 340.0f;
-        float panelH = 340.0f;
+        float panelH = 396.0f;
         float panelX = centerX - panelW * 0.5f;
-        float panelY = centerY - 65.0f;
+        float panelY = centerY - 90.0f;
 
         Widgets::mindustryPanel({ panelX, panelY, panelW, panelH }, "MAIN DIRECTIVE", Colors::Amber500);
 
@@ -112,6 +112,12 @@ MenuActions MainMenu::drawAndProcess(int screenW, int screenH) {
 
         if (Widgets::mindustryButton("CUSTOM GAME", "CUSTOM GRIDS // 2D - 4D FREE-PLAY", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Cyan500, false, 18)) {
             currentScreen = MenuScreen::Play;
+            statusMessage.clear();
+        }
+        curBtnY += mBtnH + btnGap;
+
+        if (Widgets::mindustryButton("SECTOR EDITOR", "DESIGN & EXPORT SECTOR MAPS", { mBtnX, curBtnY, mBtnW, mBtnH }, Colors::Purple500, false, 18)) {
+            actions.openSectorEditor = true;
             statusMessage.clear();
         }
         curBtnY += mBtnH + btnGap;

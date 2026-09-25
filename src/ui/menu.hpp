@@ -56,9 +56,8 @@ struct MenuActions {
     bool guiScaleChanged = false;
     bool controlModeChanged = false;
     bool bgmSkip = false;
-#if defined(_DEBUG) || !defined(NDEBUG)
+    bool openSectorEditor = false;
     bool toggleSectorEditor = false;
-#endif
 };
 
 class MainMenu {

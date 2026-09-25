@@ -16,6 +16,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <filesystem>
 
 static int runCapsuleTests() {
     std::cout << "[TEST-CAPSULE] Starting 2D Capsule Collision Unit Tests..." << std::endl;
@@ -1615,19 +1616,19 @@ static int runCampaignTests() {
         std::cerr << "  [FAIL] Expected 4 sectors, got " << campaign.sectors.size() << std::endl;
         return 1;
     }
-    if (campaign.sectors[0].gridSize != 8 || campaign.sectors[0].bombCount != 10 || !campaign.sectors[0].isUnlocked) {
+    if (campaign.sectors[0].gridSize != 8 || campaign.sectors[0].bombCount != 6 || !campaign.sectors[0].isUnlocked) {
         std::cerr << "  [FAIL] Sector 0 config invalid!" << std::endl;
         return 2;
     }
-    if (campaign.sectors[1].gridSize != 10 || campaign.sectors[1].bombCount != 18 || campaign.sectors[1].isUnlocked) {
+    if (campaign.sectors[1].gridSize != 10 || campaign.sectors[1].bombCount != 9 || campaign.sectors[1].isUnlocked) {
         std::cerr << "  [FAIL] Sector 1 config invalid!" << std::endl;
         return 3;
     }
-    if (campaign.sectors[2].gridSize != 12 || campaign.sectors[2].bombCount != 28 || campaign.sectors[2].isUnlocked) {
+    if (campaign.sectors[2].gridSize != 12 || campaign.sectors[2].bombCount != 13 || campaign.sectors[2].isUnlocked) {
         std::cerr << "  [FAIL] Sector 2 config invalid!" << std::endl;
         return 4;
     }
-    if (campaign.sectors[3].gridSize != 14 || campaign.sectors[3].bombCount != 42 || campaign.sectors[3].isUnlocked) {
+    if (campaign.sectors[3].gridSize != 14 || campaign.sectors[3].bombCount != 18 || campaign.sectors[3].isUnlocked) {
         std::cerr << "  [FAIL] Sector 3 config invalid!" << std::endl;
         return 5;
     }
@@ -2595,6 +2596,116 @@ static int runCampaignTests() {
         std::cout << "  [PASS] Test 15: Multiplayer Co-op Campaign, Scrap Economy, Desolate Terrain, Safe Zone & Merchant Loop verified." << std::endl;
     }
 
+    // Test 16: Defused Bombs on Cleared Sector, Universal Perlin Island, and Main Menu Sector Editor Export
+    {
+        std::cout << "[TEST-CAMPAIGN] Test 16: Verifying defused bombs on cleared sectors, PerlinIsland, and editor export..." << std::endl;
+
+        // 1. Defused bomb state on cleared sector
+        {
+            minesweeper::core::CampaignManager mgr;
+            mgr.init(12345);
+            auto* sec = mgr.getSectorByIndex(0);
+            if (!sec) {
+                std::cerr << "  [FAIL] Test 16: Sector 0 missing!" << std::endl;
+                return 201;
+            }
+            // Artificially uncover all safe cells to trigger victory
+            sec->board.revealedCount = sec->board.safeCells();
+            mgr.checkSectorClear(0);
+            if (!sec->isCleared || !sec->board.isVictory) {
+                std::cerr << "  [FAIL] Test 16: Sector clearance did not set sec.isCleared and sec.board.isVictory!" << std::endl;
+                return 202;
+            }
+        }
+
+        // 2. Universal PerlinIsland and 15% bomb count across all planets
+        {
+            const std::vector<std::string> planetPaths = {
+                "assets/campaign/sectors/planet1",
+                "assets/campaign/sectors/planet2",
+                "assets/campaign/sectors/planet3"
+            };
+            int verifiedSectors = 0;
+            for (const auto& pPath : planetPaths) {
+                auto cfgs = minesweeper::core::CampaignManager::loadSectorConfigs(pPath);
+                for (const auto& cfg : cfgs) {
+                    if (cfg.terrainShape != minesweeper::core::TerrainShape::PerlinIsland || cfg.terrainShapeName != "PerlinIsland") {
+                        std::cerr << "  [FAIL] Test 16: Sector " << cfg.id << " in " << pPath << " is not PerlinIsland! Shape=" << cfg.terrainShapeName << std::endl;
+                        return 203;
+                    }
+                    if (cfg.bombCount > 18 || cfg.bombCount < 6) {
+                        std::cerr << "  [FAIL] Test 16: Sector " << cfg.id << " in " << pPath << " has out-of-range bomb count: " << cfg.bombCount << std::endl;
+                        return 204;
+                    }
+                    ++verifiedSectors;
+                }
+            }
+            if (verifiedSectors != 12) {
+                std::cerr << "  [FAIL] Test 16: Expected 12 verified sectors, got " << verifiedSectors << std::endl;
+                return 205;
+            }
+        }
+
+        // 3. Sector Editor JSON Export to custom folder
+        {
+            minesweeper::core::SectorConfig customCfg;
+            customCfg.id = 99;
+            customCfg.name = "Sector 99: Custom Test Forge";
+            customCfg.codename = "CUSTOM-99";
+            customCfg.gridSize = 10;
+            customCfg.bombCount = 9;
+            customCfg.terrainShape = minesweeper::core::TerrainShape::PerlinIsland;
+            customCfg.terrainShapeName = "PerlinIsland";
+
+            std::string exportDir = "assets/campaign/sectors/custom";
+            bool exported = minesweeper::core::CampaignManager::saveSectorConfigToJson(customCfg, exportDir);
+            if (!exported) {
+                std::cerr << "  [FAIL] Test 16: Failed to export sector config to " << exportDir << std::endl;
+                return 206;
+            }
+
+            // Verify file was written and can be parsed back
+            std::string targetFile = exportDir + "/sector_99.json";
+            std::ifstream ifs(targetFile);
+            if (!ifs.is_open()) {
+                std::cerr << "  [FAIL] Test 16: Exported file " << targetFile << " does not exist!" << std::endl;
+                return 207;
+            }
+            std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            ifs.close();
+
+            minesweeper::core::SectorConfig reloadedCfg;
+            if (!minesweeper::core::CampaignManager::parseSectorJson(content, reloadedCfg)) {
+                std::cerr << "  [FAIL] Test 16: Failed to parse exported JSON back into SectorConfig!" << std::endl;
+                return 208;
+            }
+            if (reloadedCfg.name != customCfg.name || reloadedCfg.bombCount != 9 || reloadedCfg.terrainShape != minesweeper::core::TerrainShape::PerlinIsland) {
+                std::cerr << "  [FAIL] Test 16: Roundtrip mismatch in exported config!" << std::endl;
+                return 209;
+            }
+            // Clean up test file
+            std::error_code ec;
+            std::filesystem::remove(targetFile, ec);
+        }
+
+        // 4. Main Menu openSectorEditor action and GameMode::Editor enum
+        {
+            minesweeper::ui::MenuActions act;
+            if (act.openSectorEditor) {
+                std::cerr << "  [FAIL] Test 16: MenuActions::openSectorEditor default should be false!" << std::endl;
+                return 210;
+            }
+            act.openSectorEditor = true;
+            minesweeper::GameMode mode = minesweeper::GameMode::Editor;
+            if (mode != minesweeper::GameMode::Editor) {
+                std::cerr << "  [FAIL] Test 16: GameMode::Editor mismatch!" << std::endl;
+                return 211;
+            }
+        }
+
+        std::cout << "  [PASS] Test 16: Defused bombs on cleared sectors, PerlinIsland, and editor export verified." << std::endl;
+    }
+
     std::cout << "[TEST-CAMPAIGN] ALL CAMPAIGN TESTS PASSED!" << std::endl;
     return 0;
 }
@@ -2798,11 +2909,9 @@ int main(int argc, char* argv[]) {
         else if (std::string(argv[i]) == "--test-campaign-ui") {
             app.testCampaignMode = true;
         }
-#if defined(_DEBUG) || !defined(NDEBUG)
         else if (std::string(argv[i]) == "--editor" || std::string(argv[i]) == "--sector-editor" || std::string(argv[i]) == "--test-editor") {
             app.testEditorMode = true;
         }
-#endif
         else if (std::string(argv[i]) == "+connect_lobby" && i + 1 < argc) {
             try {
                 app.initialLobbyId = std::stoull(argv[i + 1]);

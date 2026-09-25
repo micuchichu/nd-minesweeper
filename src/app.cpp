@@ -87,11 +87,9 @@ void App::init() {
     renderer.activeFlagSkin = menu.flagSkin;
     renderer.activePlayerSkin = menu.playerSkin;
 
-#if defined(_DEBUG) || !defined(NDEBUG)
     if (testEditorMode) {
-        menu.currentScreen = ui::MenuScreen::Campaign;
+        menu.currentScreen = ui::MenuScreen::Main;
     }
-#endif
 
     loadSaveSlot(activeSaveSlot);
 
@@ -755,10 +753,7 @@ void App::update(float dt) {
     }
 #endif
 
-    bool isEditorOpen = false;
-#if defined(_DEBUG) || !defined(NDEBUG)
-    isEditorOpen = sectorEditor.isOpen;
-#endif
+    bool isEditorOpen = sectorEditor.isOpen;
 
     if (isEditorOpen) {
         renderer.localShip.isInitialized = false;
@@ -768,9 +763,12 @@ void App::update(float dt) {
         renderer.clearOutOfReach();
         currentHoveredCell = -1;
     } else if (wasEditorOpen) {
-        // Editor just closed: re-enable and restore player ship at sector spawn
+        // Editor just closed: re-enable and restore player ship or return to main menu
         if (state == AppState::InGame) {
-            if (currentMode == GameMode::Campaign) {
+            if (currentMode == GameMode::Editor) {
+                state = AppState::Menu;
+                menu.currentScreen = ui::MenuScreen::Main;
+            } else if (currentMode == GameMode::Campaign) {
                 Vector2 spawn = campaignMgr.getSectorSpawnPosition(campaignMgr.activeSectorIndex);
                 renderer.localShip.position = spawn;
                 renderer.localShip.velocity = { 0.0f, 0.0f };
@@ -1074,11 +1072,9 @@ void App::update(float dt) {
     bool mouseHandledByShop = false;
     bool allowShops = (currentMode != GameMode::Campaign || campaignMgr.activeSectorIndex > 0);
 
-#if defined(_DEBUG) || !defined(NDEBUG)
     if (sectorEditor.isOpen && (!isOverUI || sectorEditor.isDragging())) {
         sectorEditor.updateWorldInteraction(campaignMgr, worldMouse, dt);
     }
-#endif
 
     if (state == AppState::InGame && allowShops && !isEditorOpen) {
         for (size_t i = 0; i < renderer.shopShips.size(); ++i) {
@@ -2252,12 +2248,10 @@ bool App::isMouseOverUI(Vector2 mousePos) const {
     float scale = std::clamp(menu.guiScale, 0.75f, 1.50f);
     bool isCampaign = (currentMode == GameMode::Campaign);
 
-#if defined(_DEBUG) || !defined(NDEBUG)
     Vector2 uiMouse = { mousePos.x / scale, mousePos.y / scale };
     if (sectorEditor.isOpen && sectorEditor.isMouseOver(uiMouse)) {
         return true;
     }
-#endif
 
     // 1. Game HUD (top bar, modals, banners; footer only in non-campaign)
     if (hud.isMouseOver(screenW, screenH, scale, mousePos, isCampaign)) {
@@ -2345,11 +2339,24 @@ void App::draw() {
             soundMgr.skip();
         }
 
-#if defined(_DEBUG) || !defined(NDEBUG)
+        if (menuAct.openSectorEditor) {
+            currentMode = GameMode::Editor;
+            state = AppState::InGame;
+            if (campaignMgr.sectors.empty()) {
+                campaignMgr.init(12345);
+            }
+            int sIdx = std::clamp(campaignMgr.activeSectorIndex, 0, static_cast<int>(campaignMgr.sectors.size()) - 1);
+            sectorEditor.open(campaignMgr, sIdx);
+            renderer.localShip.isInitialized = false;
+            renderer.localShip.velocity = { 0.0f, 0.0f };
+            renderer.localShip.isMoving = false;
+            renderer.camera.reset({ 0.0f, 0.0f }, 0.90f);
+            renderer.camera.centerOn({ campaignMgr.sectors[sIdx].arenaBounds.x + campaignMgr.sectors[sIdx].arenaBounds.width * 0.5f,
+                                      campaignMgr.sectors[sIdx].arenaBounds.y + campaignMgr.sectors[sIdx].arenaBounds.height * 0.5f });
+        }
         if (menuAct.toggleSectorEditor) {
             sectorEditor.toggle(campaignMgr);
         }
-#endif
 
         if (menuAct.playCampaignSolo) {
             currentMode = GameMode::Campaign;
@@ -2438,7 +2445,7 @@ void App::draw() {
         }
         else {
             int64_t hovered = currentHoveredCell;
-            if (currentMode == GameMode::Campaign) {
+            if (currentMode == GameMode::Campaign || currentMode == GameMode::Editor) {
                 renderer.renderCampaign(campaignMgr, hovered, net);
             } else {
                 renderer.render(board, hovered, net);
@@ -2497,12 +2504,10 @@ void App::draw() {
                 DrawText(prompt, static_cast<int>(promptX), static_cast<int>(promptY), 11, ringCol);
             }
 
-#if defined(_DEBUG) || !defined(NDEBUG)
             if (sectorEditor.isOpen) {
                 Vector2 worldMouse = renderer.camera.getScreenToWorld(renderer.camera.getCRTMousePosition());
                 sectorEditor.drawWorldGizmos(campaignMgr, worldMouse);
             }
-#endif
 
             EndMode2D();
 
@@ -2510,7 +2515,7 @@ void App::draw() {
             ui::HUDActions hudAct;
             if (currentMode == GameMode::Campaign) {
                 hudAct = hud.drawAndProcessCampaign(uiW, uiH, campaignMgr, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
-            } else {
+            } else if (currentMode == GameMode::Custom) {
                 hudAct = hud.drawAndProcess(uiW, uiH, board, timePlayed, net, voiceMgr.isTransmitting(), voiceMgr.getSettings().enabled, voiceMgr.getSettings().pushToTalk);
             }
             scrapSystem.drawScreen(scale);
@@ -2628,13 +2633,11 @@ void App::draw() {
         }
     }
 
-#if defined(_DEBUG) || !defined(NDEBUG)
     if (sectorEditor.isOpen) {
         BeginMode2D(uiCam);
         sectorEditor.drawAndProcess(campaignMgr, uiW, uiH);
         EndMode2D();
     }
-#endif
 
     // On-Screen FPS Counter Overlay
     if (menu.showFPS) {
@@ -2764,7 +2767,8 @@ void App::draw() {
             campaignMgr.sectors[0].exitLauncher.openAnim = 1.0f;
         } else if (campFrame == 30) {
             renderer.saveScreenshot("screenshot_sector_world_unlocked.png");
-            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_world_unlocked.png" << std::endl;
+            renderer.saveScreenshot("screenshot_sector_cleared_defused_bombs.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_world_unlocked.png & screenshot_sector_cleared_defused_bombs.png" << std::endl;
         } else if (campFrame == 32) {
             triggerSectorWarp(1);
             float s2MidX = campaignMgr.sectors[1].arenaBounds.x + campaignMgr.sectors[1].arenaBounds.width * 0.5f;
@@ -2782,54 +2786,42 @@ void App::draw() {
         static int edFrame = 0;
         ++edFrame;
         if (edFrame == 3) {
+            renderer.saveScreenshot("screenshot_main_menu_editor.png");
             renderer.saveScreenshot("screenshot_campaign_editor_button.png");
-            std::cout << "[TEST-EDITOR] Saved screenshot_campaign_editor_button.png" << std::endl;
-#if defined(_DEBUG) || !defined(NDEBUG)
+            std::cout << "[TEST-EDITOR] Saved screenshot_main_menu_editor.png" << std::endl;
+            currentMode = GameMode::Editor;
+            state = AppState::InGame;
             sectorEditor.open(campaignMgr, 0);
             sectorEditor.currentTab = ui::SectorEditorTab::Meta;
-#endif
         } else if (edFrame == 9) {
             renderer.saveScreenshot("screenshot_editor_meta.png");
             std::cout << "[TEST-EDITOR] Saved screenshot_editor_meta.png" << std::endl;
-#if defined(_DEBUG) || !defined(NDEBUG)
             sectorEditor.currentTab = ui::SectorEditorTab::Map;
-#endif
         } else if (edFrame == 15) {
             renderer.saveScreenshot("screenshot_editor_map.png");
             std::cout << "[TEST-EDITOR] Saved screenshot_editor_map.png" << std::endl;
-#if defined(_DEBUG) || !defined(NDEBUG)
             sectorEditor.currentTab = ui::SectorEditorTab::Progression;
-#endif
         } else if (edFrame == 21) {
             renderer.saveScreenshot("screenshot_editor_progression.png");
             std::cout << "[TEST-EDITOR] Saved screenshot_editor_progression.png" << std::endl;
-#if defined(_DEBUG) || !defined(NDEBUG)
             sectorEditor.currentTab = ui::SectorEditorTab::Ships;
-#endif
         } else if (edFrame == 27) {
             renderer.saveScreenshot("screenshot_editor_ships.png");
             std::cout << "[TEST-EDITOR] Saved screenshot_editor_ships.png" << std::endl;
-#if defined(_DEBUG) || !defined(NDEBUG)
             sectorEditor.currentTab = ui::SectorEditorTab::Walls;
-#endif
         } else if (edFrame == 33) {
             renderer.saveScreenshot("screenshot_editor_walls.png");
             std::cout << "[TEST-EDITOR] Saved screenshot_editor_walls.png" << std::endl;
-            currentMode = GameMode::Campaign;
-            startCampaignGame(false);
-            state = AppState::InGame;
-#if defined(_DEBUG) || !defined(NDEBUG)
+            currentMode = GameMode::Editor;
             campaignMgr.activeSectorIndex = 1;
             sectorEditor.open(campaignMgr, 1);
             sectorEditor.currentTab = ui::SectorEditorTab::Ships;
             sectorEditor.selectionType = ui::EditorSelectionType::MerchantDock;
             sectorEditor.selectedIndex = 0;
             renderer.camera.centerOn({ 150.0f, 200.0f });
-#endif
         } else if (edFrame == 42) {
             renderer.saveScreenshot("screenshot_editor_ships_docks.png");
             std::cout << "[TEST-EDITOR] Saved screenshot_editor_ships_docks.png" << std::endl;
-#if defined(_DEBUG) || !defined(NDEBUG)
             sectorEditor.currentTab = ui::SectorEditorTab::Walls;
             core::SectorWall demoWall;
             demoWall.rect = { 180.0f, 160.0f, 140.0f, 60.0f };
@@ -2840,7 +2832,6 @@ void App::draw() {
             sectorEditor.open(campaignMgr, 1);
             sectorEditor.selectionType = ui::EditorSelectionType::Wall;
             sectorEditor.selectedIndex = static_cast<int>(cfg.customWalls.size()) - 1;
-#endif
         } else if (edFrame == 50) {
             renderer.saveScreenshot("screenshot_editor_walls_gizmos.png");
             std::cout << "[TEST-EDITOR] Saved screenshot_editor_walls_gizmos.png" << std::endl;

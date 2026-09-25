@@ -8,7 +8,7 @@
   "modifier": "None",
   "map": {
     "gridSize": 10,
-    "bombCount": 18,
+    "bombCount": 9,
     "dimension": 2,
     "terrainShape": "PerlinIsland",
     "wallThickness": 28,

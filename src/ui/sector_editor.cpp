@@ -120,24 +120,27 @@ void SectorEditor::applyLive(core::CampaignManager& campaignMgr) {
 void SectorEditor::saveToDisk(core::CampaignManager& campaignMgr) {
     syncConfigFromBuffers();
     campaignMgr.rebuildSector(selectedSectorIndex, workingConfig);
-    const auto* pCfg = campaignMgr.getActivePlanetConfig();
-    std::string targetDir = pCfg ? pCfg->sectorDataPath : "assets/campaign/sectors/planet1";
+    std::string targetDir = (exportFolderBuf[0] != '\0') ? exportFolderBuf : "assets/campaign/sectors/custom";
     if (core::CampaignManager::saveSectorConfigToJson(workingConfig, targetDir)) {
-        toastMessage = TextFormat("SAVED TO DISK (sector_%02d.json)", workingConfig.id);
+        toastMessage = TextFormat("EXPORTED (sector_%02d.json) TO %s", workingConfig.id, targetDir.c_str());
         toastColor = Colors::Green400;
-        toastTimer = 3.0f;
+        toastTimer = 3.5f;
         audio::SoundManager::playFlag();
     } else {
-        toastMessage = "ERROR SAVING TO DISK";
+        toastMessage = "ERROR EXPORTING TO DISK";
         toastColor = Colors::Red400;
         toastTimer = 2.5f;
     }
 }
 
 void SectorEditor::reloadFromDisk(core::CampaignManager& campaignMgr) {
-    const auto* pCfg = campaignMgr.getActivePlanetConfig();
-    std::string targetDir = pCfg ? pCfg->sectorDataPath : "assets/campaign/sectors/planet1";
+    std::string targetDir = (exportFolderBuf[0] != '\0') ? exportFolderBuf : "assets/campaign/sectors/custom";
     auto freshConfigs = core::CampaignManager::loadSectorConfigs(targetDir);
+    if (freshConfigs.empty()) {
+        const auto* pCfg = campaignMgr.getActivePlanetConfig();
+        std::string fallbackDir = pCfg ? pCfg->sectorDataPath : "assets/campaign/sectors/planet1";
+        freshConfigs = core::CampaignManager::loadSectorConfigs(fallbackDir);
+    }
     for (const auto& cfg : freshConfigs) {
         if (cfg.id == workingConfig.id) {
             workingConfig = cfg;
@@ -159,7 +162,7 @@ void SectorEditor::updateWorldInteraction(core::CampaignManager& campaignMgr, Ve
     (void)dt;
     if (!isOpen) return;
 
-    float boardPx = workingConfig.gridSize * 40.0f;
+    float boardPx = workingConfig.gridSize * 30.0f;
     float arenaH = boardPx + 2.0f * workingConfig.vertMargin;
 
     // Keyboard Shortcuts
@@ -740,6 +743,21 @@ void SectorEditor::drawAndProcess(core::CampaignManager& campaignMgr, int screen
         Widgets::spinner("Bomb Count:", { curX, curY }, workingConfig.bombCount, 1, maxBombs, false, 185);
         curY += 32.0f;
 
+        int shapeIdx = 0;
+        if (workingConfig.terrainShape == core::TerrainShape::CellularAutomata) shapeIdx = 1;
+        else if (workingConfig.terrainShape == core::TerrainShape::VoronoiFaultLine) shapeIdx = 2;
+        else if (workingConfig.terrainShape == core::TerrainShape::Rectangle) shapeIdx = 3;
+
+        int prevShape = shapeIdx;
+        Widgets::spinner(TextFormat("Shape [%s]:", workingConfig.terrainShapeName.c_str()), { curX, curY }, shapeIdx, 0, 3, false, 185);
+        if (shapeIdx != prevShape) {
+            if (shapeIdx == 0) { workingConfig.terrainShape = core::TerrainShape::PerlinIsland; workingConfig.terrainShapeName = "PerlinIsland"; }
+            else if (shapeIdx == 1) { workingConfig.terrainShape = core::TerrainShape::CellularAutomata; workingConfig.terrainShapeName = "CellularAutomata"; }
+            else if (shapeIdx == 2) { workingConfig.terrainShape = core::TerrainShape::VoronoiFaultLine; workingConfig.terrainShapeName = "VoronoiFaultLine"; }
+            else { workingConfig.terrainShape = core::TerrainShape::Rectangle; workingConfig.terrainShapeName = "Rectangle"; }
+        }
+        curY += 32.0f;
+
         int wt = static_cast<int>(workingConfig.wallThickness);
         Widgets::spinner("Perimeter Wall Thick:", { curX, curY }, wt, 12, 64, false, 185);
         workingConfig.wallThickness = static_cast<float>(wt);
@@ -956,7 +974,12 @@ void SectorEditor::drawAndProcess(core::CampaignManager& campaignMgr, int screen
     }
 
     // 5. Actions Footer Bar
-    float actY = panelY + panelH - 64.0f;
+    float expY = panelY + panelH - 98.0f;
+    DrawText("Export Folder:", static_cast<int>(curX), static_cast<int>(expY + 5.0f), 11, Colors::Zinc400);
+    Rectangle expRec = { curX + 90.0f, expY, boxW - 90.0f, 24.0f };
+    Widgets::textInput(expRec, exportFolderBuf, sizeof(exportFolderBuf), exportFolderActive, "assets/campaign/sectors/custom", true, 11);
+
+    float actY = panelY + panelH - 66.0f;
     float actBtnW = (boxW - 16.0f) / 3.0f;
 
     // APPLY LIVE (Amber)
@@ -964,8 +987,8 @@ void SectorEditor::drawAndProcess(core::CampaignManager& campaignMgr, int screen
         applyLive(campaignMgr);
     }
 
-    // SAVE TO DISK (Green)
-    if (Widgets::button("SAVE JSON", { curX + actBtnW + 8.0f, actY, actBtnW, 32.0f }, Colors::Zinc800, Colors::Green500, false, 13)) {
+    // EXPORT JSON (Green)
+    if (Widgets::button("EXPORT JSON", { curX + actBtnW + 8.0f, actY, actBtnW, 32.0f }, Colors::Zinc800, Colors::Green500, false, 13)) {
         saveToDisk(campaignMgr);
     }
 

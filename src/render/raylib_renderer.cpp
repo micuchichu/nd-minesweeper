@@ -732,8 +732,9 @@ Vector2 RaylibRenderer::getCellWorldPosition(size_t index, const core::Board& bo
     }
 }
 
-void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset) {
+void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t sliceW, float sliceOriginX, float sliceOriginY, int64_t hoveredIndex, size_t globalOffset, bool isSectorCleared) {
     float boardWidth = board.config.size * cellSize;
+    bool cleared = board.isVictory || isSectorCleared;
 
     // Background base slice
     if (!board.hasTerrainMask) {
@@ -837,6 +838,15 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
                     DrawRectangleRounded(cellRect, 0.2f, 4, ui::Colors::Red500);
                     int tw = MeasureText("*", 22);
                     DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + 2), 22, ui::Colors::Red700);
+                }
+                else if (cleared && isBomb) {
+                    // Defused / neutralized bomb in cleared sector
+                    DrawRectangleRounded(cellRect, 0.2f, 4, Color{ 36, 38, 46, 255 });
+                    DrawRectangleLinesEx(cellRect, 1.2f, Fade(ui::Colors::Zinc500, 0.70f));
+                    DrawCircle(static_cast<int>(cellRect.x + cellRect.width * 0.5f), static_cast<int>(cellRect.y + cellRect.height * 0.5f), cellSize * 0.20f, Color{ 48, 52, 62, 255 });
+                    int fontSize = std::clamp(static_cast<int>(cellSize * 0.65f), 12, 28);
+                    int tw = MeasureText("*", fontSize);
+                    DrawText("*", static_cast<int>(cellRect.x + (cellRect.width - tw) * 0.5f), static_cast<int>(cellRect.y + (cellRect.height - fontSize) * 0.5f - 1.0f), fontSize, ui::Colors::Zinc400);
                 }
                 else if (state == core::CellState::Revealed) {
                     if (board.hasTerrainMask) {
@@ -999,7 +1009,8 @@ void RaylibRenderer::drawSlice(const core::Board& board, size_t sliceZ, size_t s
             else {
                 // LOD Mode for distant zoom
                 Color lodCol = ui::Colors::CellHidden;
-                if (board.isGameOver && isBomb) lodCol = ui::Colors::Red500;
+                if (cleared && isBomb) lodCol = Color{ 48, 52, 60, 255 };
+                else if (board.isGameOver && isBomb) lodCol = ui::Colors::Red500;
                 else if (state == core::CellState::Revealed) {
                     if (count > 0) lodCol = ui::getNeighborColor(count);
                     else if (!isNeighbor) continue;
@@ -3026,7 +3037,7 @@ void RaylibRenderer::renderCampaign(const core::CampaignManager& campaign, int64
         // Minefield grid
         int64_t cellHover = (hoveredSectorIdx == sIdx) ? static_cast<int64_t>(hoveredLocalIdx) : -1;
         size_t gOffset = campaign.toGlobalCellIndex(sIdx, 0);
-        drawSlice(sec.board, 0, 0, sec.gridOffset.x, sec.gridOffset.y, cellHover, gOffset);
+        drawSlice(sec.board, 0, 0, sec.gridOffset.x, sec.gridOffset.y, cellHover, gOffset, sec.isCleared);
 
         // Flying flags for this sector
         drawFlyingFlags(sec.board);
@@ -3476,7 +3487,13 @@ void RaylibRenderer::drawNeighborPreviews(const core::Board& board, int64_t hove
                 }
                 else {
                     DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::CellHidden, alpha));
-                    if (board.isGameOver && cell.isBomb) {
+                    if (board.isVictory && cell.isBomb) {
+                        DrawRectangleRounded(mRect, 0.2f, 2, Fade(Color{ 36, 38, 46, 255 }, alpha));
+                        int fs = 12;
+                        int bw = MeasureText("*", fs);
+                        DrawText("*", static_cast<int>(mRect.x + (mRect.width - bw) * 0.5f), static_cast<int>(mRect.y + 2), fs, Fade(ui::Colors::Zinc400, alpha));
+                    }
+                    else if (board.isGameOver && cell.isBomb) {
                         DrawRectangleRounded(mRect, 0.2f, 2, Fade(ui::Colors::Red500, alpha));
                         int fs = 12;
                         int bw = MeasureText("*", fs);

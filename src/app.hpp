@@ -19,7 +19,8 @@ namespace minesweeper {
 
 enum class GameMode {
     Custom,
-    Campaign
+    Campaign,
+    Editor
 };
 
 enum class AppState {

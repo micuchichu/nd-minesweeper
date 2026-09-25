@@ -7,7 +7,7 @@
   "threatLevel": 3,
   "map": {
     "gridSize": 11,
-    "bombCount": 20,
+    "bombCount": 11,
     "dimension": 2,
     "terrainShape": "PerlinIsland",
     "wallThickness": 28,
