@@ -2789,22 +2789,7 @@ void RaylibRenderer::drawCampaignLaunchers(const core::CampaignManager& campaign
                 DrawLineEx(p3, p2, 2.0f, chevCol);
             }
 
-            // 3. Exhaust plasma jet / magnetic induction trails venting to space
-            float jetLen = 55.0f * (0.8f + 0.2f * pulse);
-            DrawTriangle(
-                { exhaustPos.x, exhaustPos.y - 12.0f * scale },
-                { exhaustPos.x + jetLen, exhaustPos.y },
-                { exhaustPos.x, exhaustPos.y + 12.0f * scale },
-                Fade(ui::Colors::Cyan400, 0.55f + 0.35f * pulse)
-            );
-            DrawTriangle(
-                { exhaustPos.x, exhaustPos.y - 6.0f * scale },
-                { exhaustPos.x + jetLen * 0.65f, exhaustPos.y },
-                { exhaustPos.x, exhaustPos.y + 6.0f * scale },
-                Fade(Color{ 255, 255, 255, 255 }, 0.80f)
-            );
-
-            // 4. Green ready strobes on mounting pylons
+            // 3. Green ready strobes on mounting pylons
             DrawCircleV(rearPylonUpper, 4.0f, ui::Colors::Green400);
             DrawCircleV(rearPylonLower, 4.0f, ui::Colors::Green400);
             DrawCircleV(frontStrutUpper, 3.0f, ui::Colors::Green400);
@@ -2812,14 +2797,14 @@ void RaylibRenderer::drawCampaignLaunchers(const core::CampaignManager& campaign
             DrawCircleLines(static_cast<int>(rearPylonUpper.x), static_cast<int>(rearPylonUpper.y), 7.0f + 2.5f * pulse, Fade(ui::Colors::Green400, 0.75f));
             DrawCircleLines(static_cast<int>(rearPylonLower.x), static_cast<int>(rearPylonLower.y), 7.0f + 2.5f * pulse, Fade(ui::Colors::Green400, 0.75f));
 
-            // 5. Tactical HUD Ready badge (positioned nicely inside the approach runway)
-            const char* readyMsg = "[ ORBITAL LAUNCHER // READY ]";
+            // 4. Tactical HUD Ready badge (clickable interactive indicator)
+            const char* readyMsg = "[ ORBITAL LAUNCHER // READY (CLICK TO LAUNCH) ]";
             int fSize = 10;
             int tW = MeasureText(readyMsg, fSize);
             int textX = static_cast<int>(approachApron.x + (approachApron.width - tW) * 0.5f);
             int textY = static_cast<int>(centerY - 6.0f);
-            DrawRectangle(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Zinc950, 0.92f));
-            DrawRectangleLines(textX - 6, textY - 3, tW + 12, 18, Fade(ui::Colors::Cyan400, 0.75f));
+            DrawRectangle(textX - 8, textY - 4, tW + 16, 20, Fade(ui::Colors::Zinc950, 0.94f));
+            DrawRectangleLines(textX - 8, textY - 4, tW + 16, 20, Fade(ui::Colors::Cyan400, 0.85f + 0.15f * pulse));
             DrawText(readyMsg, textX, textY, fSize, Fade(ui::Colors::Cyan300, 0.85f + 0.15f * pulse));
         }
         return;

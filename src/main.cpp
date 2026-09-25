@@ -2914,6 +2914,50 @@ static int runPlanetTests() {
         std::cout << "  [PASS] Test 5: Spherical Voronoi raycast sector selection verified for all 42 sectors." << std::endl;
     }
 
+    // Test 6: 3D Suborbital Ballistic Parabola Trajectory Evaluation
+    {
+        Vector3 pA = { 1.0f, 0.0f, 0.0f };
+        Vector3 pB = { 0.0f, 1.0f, 0.0f };
+        float apexH = 0.35f;
+
+        Vector3 startP = minesweeper::render::PlanetRenderer::evaluateParabola(pA, pB, 0.0f, apexH);
+        Vector3 midP   = minesweeper::render::PlanetRenderer::evaluateParabola(pA, pB, 0.5f, apexH);
+        Vector3 endP   = minesweeper::render::PlanetRenderer::evaluateParabola(pA, pB, 1.0f, apexH);
+
+        float surfaceR = minesweeper::render::PlanetRenderer::PLANET_RADIUS * 1.018f;
+        float startR = Vector3Length(startP);
+        float midR   = Vector3Length(midP);
+        float endR   = Vector3Length(endP);
+
+        if (std::abs(startR - surfaceR) > 0.005f) {
+            std::cerr << "  [FAIL] Parabola start point radius mismatch: expected " << surfaceR << ", got " << startR << std::endl;
+            return 14;
+        }
+        if (std::abs(endR - surfaceR) > 0.005f) {
+            std::cerr << "  [FAIL] Parabola end point radius mismatch: expected " << surfaceR << ", got " << endR << std::endl;
+            return 15;
+        }
+        if (std::abs(midR - (surfaceR + apexH)) > 0.005f) {
+            std::cerr << "  [FAIL] Parabola apex height mismatch: expected " << (surfaceR + apexH) << ", got " << midR << std::endl;
+            return 16;
+        }
+
+        // Test campaign sectors unlock graph for parabolas
+        minesweeper::core::CampaignManager campaignMgr;
+        campaignMgr.init(12345);
+        if (campaignMgr.sectors.empty()) {
+            std::cerr << "  [FAIL] Campaign sectors empty!" << std::endl;
+            return 17;
+        }
+        const auto* sec0 = campaignMgr.getSectorByIndex(0);
+        if (!sec0 || sec0->unlocksSectors.empty()) {
+            std::cerr << "  [FAIL] Sector 0 should unlock target sectors for orbital transit!" << std::endl;
+            return 18;
+        }
+
+        std::cout << "  [PASS] Test 6: 3D suborbital parabola endpoints, apex altitude, and transit unlocks verified." << std::endl;
+    }
+
     std::cout << "[TEST-PLANET] ALL 3D GEODESIC HEX PLANET TESTS PASSED!" << std::endl;
     return 0;
 }

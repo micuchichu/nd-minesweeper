@@ -217,12 +217,29 @@ void PlanetRenderer::generateGeodesicHexGrid(const core::PlanetConfig* cfg) {
     for (size_t i = 0; i < sectors.size(); ++i) {
         if (static_cast<int>(i) == s1) continue;
         const auto& c = sectors[i].center;
-        if (c.x > bestX && c.z > -0.2f) { bestX = c.x; s2 = static_cast<int>(i); }
+        if (c.y > 0.15f && c.x > 0.10f && c.z > 0.05f) {
+            float score = c.y * 1.5f + c.x + c.z * 0.5f;
+            if (score > bestX) { bestX = score; s2 = static_cast<int>(i); }
+        }
+    }
+    if (s2 < 0) {
+        for (size_t i = 0; i < sectors.size(); ++i) {
+            if (static_cast<int>(i) == s1) continue;
+            const auto& c = sectors[i].center;
+            if (c.x > bestX && c.z > -0.2f) { bestX = c.x; s2 = static_cast<int>(i); }
+        }
     }
     for (size_t i = 0; i < sectors.size(); ++i) {
         if (static_cast<int>(i) == s1 || static_cast<int>(i) == s2) continue;
         const auto& c = sectors[i].center;
-        if (c.y > bestY && c.x > 0.0f) { bestY = c.y; s3 = static_cast<int>(i); }
+        if (c.x > bestY && c.z > -0.2f) { bestY = c.x; s3 = static_cast<int>(i); }
+    }
+    if (s3 < 0) {
+        for (size_t i = 0; i < sectors.size(); ++i) {
+            if (static_cast<int>(i) == s1 || static_cast<int>(i) == s2) continue;
+            const auto& c = sectors[i].center;
+            if (c.y > bestY) { bestY = c.y; s3 = static_cast<int>(i); }
+        }
     }
     for (size_t i = 0; i < sectors.size(); ++i) {
         if (static_cast<int>(i) == s1 || static_cast<int>(i) == s2 || static_cast<int>(i) == s3) continue;
@@ -499,6 +516,20 @@ int PlanetRenderer::handleInput(Rectangle viewport, int& outHoveredSector) {
     return clickedSector;
 }
 
+Vector3 PlanetRenderer::evaluateParabola(Vector3 pA, Vector3 pB, float t, float apexHeight) {
+    float dot = std::clamp(Vector3DotProduct(pA, pB), -1.0f, 1.0f);
+    float omega = std::acos(dot);
+    float sinOmega = std::sin(omega);
+    if (sinOmega < 1e-4f) return Vector3Scale(pA, PLANET_RADIUS * 1.018f);
+
+    float wA = std::sin((1.0f - t) * omega) / sinOmega;
+    float wB = std::sin(t * omega) / sinOmega;
+    Vector3 norm = Vector3Normalize(Vector3Add(Vector3Scale(pA, wA), Vector3Scale(pB, wB)));
+    float h = 4.0f * apexHeight * t * (1.0f - t);
+    float r = PLANET_RADIUS * 1.018f + h;
+    return Vector3Scale(norm, r);
+}
+
 void PlanetRenderer::drawGlobe(const core::CampaignManager& campaign, int selectedSectorIdx, int hoveredSectorIdx) {
     syncCampaignSectors(campaign);
 
@@ -614,46 +645,142 @@ void PlanetRenderer::drawGlobe(const core::CampaignManager& campaign, int select
         }
     }
 
-    // 4. Draw Transit Arcs Connecting the Campaign Fortresses in World Space
-    int numArcs = static_cast<int>(campaign.sectors.size()) - 1;
-    for (int k = 0; k < numArcs; ++k) {
-        int idxA = getSectorIdxForFortress(k);
-        int idxB = getSectorIdxForFortress(k + 1);
-        if (idxA < 0 || idxB < 0) continue;
-
-        const auto* cSecA = campaign.getSectorByIndex(k);
-        const auto* cSecB = campaign.getSectorByIndex(k + 1);
-        bool isCleared = cSecA && cSecA->isCleared;
-        bool isUnlocked = cSecB && cSecB->isUnlocked;
-
-        Color arcCol = isCleared ? ui::Colors::Green400 : (isUnlocked ? ui::Colors::Amber500 : Fade(ui::Colors::Zinc600, 0.35f));
-
-        Vector3 pA = sectors[idxA].center;
-        Vector3 pB = sectors[idxB].center;
-
+    // 4. Draw Orbital Parabolas Connecting the Selected Sector to the Sectors it Unlocks
+    auto drawParabola3D = [&](Vector3 pA, Vector3 pB, Color col, bool isSelectedRoute) {
         float dot = std::clamp(Vector3DotProduct(pA, pB), -1.0f, 1.0f);
         float omega = std::acos(dot);
         float sinOmega = std::sin(omega);
+        if (sinOmega < 1e-4f) return;
 
-        constexpr int ARC_SEGMENTS = 16;
-        Vector3 prevP = Vector3Scale(pA, PLANET_RADIUS * 1.015f);
+        constexpr int ARC_SEG = 32;
+        float apexHeight = PLANET_RADIUS * (isSelectedRoute ? (0.24f + 0.22f * std::sin(omega * 0.5f)) : (0.16f + 0.14f * std::sin(omega * 0.5f)));
 
-        for (int step = 1; step <= ARC_SEGMENTS; ++step) {
-            float frac = static_cast<float>(step) / static_cast<float>(ARC_SEGMENTS);
-            Vector3 slerpNorm;
-            if (sinOmega > 1e-4f) {
-                float wA = std::sin((1.0f - frac) * omega) / sinOmega;
-                float wB = std::sin(frac * omega) / sinOmega;
-                slerpNorm = Vector3Normalize(Vector3Add(Vector3Scale(pA, wA), Vector3Scale(pB, wB)));
-            } else {
-                slerpNorm = pA;
-            }
-            Vector3 curP = Vector3Scale(slerpNorm, PLANET_RADIUS * 1.015f);
+        Vector3 prevP = evaluateParabola(pA, pB, 0.0f, apexHeight);
+        for (int step = 1; step <= ARC_SEG; ++step) {
+            float t = static_cast<float>(step) / static_cast<float>(ARC_SEG);
+            Vector3 curP = evaluateParabola(pA, pB, t, apexHeight);
 
-            if (Vector3DotProduct(prevP, camDir) > 0.0f && Vector3DotProduct(curP, camDir) > 0.0f) {
-                DrawLine3D(prevP, curP, arcCol);
+            Vector3 curNorm = Vector3Normalize(curP);
+            Vector3 prevNorm = Vector3Normalize(prevP);
+            float dotPrev = Vector3DotProduct(prevNorm, camDir);
+            float dotCur = Vector3DotProduct(curNorm, camDir);
+
+            if (dotPrev > -0.22f || dotCur > -0.22f) {
+                if (isSelectedRoute) {
+                    DrawCylinderEx(prevP, curP, 0.007f, 0.007f, 6, col);
+                    DrawCylinderEx(prevP, curP, 0.0035f, 0.0035f, 5, WHITE);
+                } else {
+                    DrawLine3D(prevP, curP, col);
+                }
             }
             prevP = curP;
+        }
+
+        if (isSelectedRoute) {
+            // Animated glowing pulses streaming along the parabola towards destination
+            float curTime = static_cast<float>(GetTime());
+            for (int pIdx = 0; pIdx < 2; ++pIdx) {
+                float pFrac = std::fmod(curTime * 0.75f + pIdx * 0.5f, 1.0f);
+                Vector3 pPos = evaluateParabola(pA, pB, pFrac, apexHeight);
+                if (Vector3DotProduct(Vector3Normalize(pPos), camDir) > -0.20f) {
+                    DrawSphere(pPos, 0.028f, WHITE);
+                    DrawSphere(pPos, 0.046f, Fade(col, 0.60f));
+                }
+            }
+
+            // Directional 3D arrowhead at destination (landing on target sector)
+            Vector3 landPoint = evaluateParabola(pA, pB, 1.0f, apexHeight);
+            Vector3 preLand = evaluateParabola(pA, pB, 0.91f, apexHeight);
+            Vector3 tangent = Vector3Normalize(Vector3Subtract(landPoint, preLand));
+
+            float arrowScale = 0.075f;
+            Vector3 barbBase = Vector3Subtract(landPoint, Vector3Scale(tangent, arrowScale));
+
+            if (Vector3DotProduct(pB, camDir) > -0.12f) {
+                DrawCylinderEx(barbBase, landPoint, 0.038f, 0.0f, 8, col);
+                DrawCylinderEx(barbBase, landPoint, 0.020f, 0.0f, 6, WHITE);
+                DrawSphere(landPoint, 0.024f, WHITE);
+            }
+        }
+    };
+
+    // Determine target fortress indices for the selected sector
+    int selFortressIdx = -1;
+    if (selectedSectorIdx >= 0 && selectedSectorIdx < static_cast<int>(sectors.size())) {
+        if (sectors[selectedSectorIdx].isFortress) {
+            selFortressIdx = sectors[selectedSectorIdx].fortressIdx;
+        }
+    }
+
+    std::vector<int> targetFortressIndices;
+    if (selFortressIdx >= 0) {
+        const auto* cSec = campaign.getSectorByIndex(selFortressIdx);
+        if (cSec) {
+            for (int uId : cSec->unlocksSectors) {
+                int tF = campaign.getSectorIndexById(uId);
+                if (tF >= 0 && tF != selFortressIdx) {
+                    if (std::find(targetFortressIndices.begin(), targetFortressIndices.end(), tF) == targetFortressIndices.end()) {
+                        targetFortressIndices.push_back(tF);
+                    }
+                }
+            }
+            if (cSec->launcherTargetSectorId > 0) {
+                int tF = campaign.getSectorIndexById(cSec->launcherTargetSectorId);
+                if (tF >= 0 && tF != selFortressIdx) {
+                    if (std::find(targetFortressIndices.begin(), targetFortressIndices.end(), tF) == targetFortressIndices.end()) {
+                        targetFortressIndices.push_back(tF);
+                    }
+                }
+            }
+        }
+        if (targetFortressIndices.empty() && selFortressIdx + 1 < static_cast<int>(campaign.sectors.size())) {
+            targetFortressIndices.push_back(selFortressIdx + 1);
+        }
+    }
+
+    // 1. Draw subtle background trajectory parabolas for other campaign paths
+    int numCampaignSectors = static_cast<int>(campaign.sectors.size());
+    for (int k = 0; k < numCampaignSectors; ++k) {
+        if (k == selFortressIdx) continue;
+        int idxA = getSectorIdxForFortress(k);
+        if (idxA < 0) continue;
+
+        const auto* cSecK = campaign.getSectorByIndex(k);
+        if (!cSecK) continue;
+
+        std::vector<int> kTargets;
+        for (int uId : cSecK->unlocksSectors) {
+            int tF = campaign.getSectorIndexById(uId);
+            if (tF >= 0 && tF != k) kTargets.push_back(tF);
+        }
+        if (kTargets.empty() && k + 1 < numCampaignSectors) kTargets.push_back(k + 1);
+
+        for (int tF : kTargets) {
+            int idxB = getSectorIdxForFortress(tF);
+            if (idxB < 0) continue;
+
+            const auto* cSecB = campaign.getSectorByIndex(tF);
+            bool isCleared = cSecK->isCleared;
+            bool isUnlocked = cSecB && cSecB->isUnlocked;
+            Color arcCol = isCleared ? Fade(ui::Colors::Green400, 0.40f) : (isUnlocked ? Fade(ui::Colors::Amber500, 0.40f) : Fade(ui::Colors::Zinc600, 0.20f));
+
+            drawParabola3D(sectors[idxA].center, sectors[idxB].center, arcCol, false);
+        }
+    }
+
+    // 2. Draw prominent, highlighted parabolas pointing from the selected sector to each sector it unlocks
+    if (selFortressIdx >= 0) {
+        for (int tF : targetFortressIndices) {
+            int destHexIdx = getSectorIdxForFortress(tF);
+            if (destHexIdx < 0) continue;
+
+            const auto* destSec = campaign.getSectorByIndex(tF);
+            bool isDestCleared = destSec && destSec->isCleared;
+            bool isDestUnlocked = destSec && destSec->isUnlocked;
+
+            Color arcCol = isDestCleared ? ui::Colors::Green400 : (isDestUnlocked ? ui::Colors::Cyan400 : ui::Colors::Amber500);
+
+            drawParabola3D(sectors[selectedSectorIdx].center, sectors[destHexIdx].center, arcCol, true);
         }
     }
 
@@ -755,6 +882,51 @@ void PlanetRenderer::drawSectorOverlays(const core::CampaignManager& campaign, i
             DrawRectangleRec({ badgeX, badgeY, badgeW, badgeH }, ui::Colors::Zinc950);
             DrawRectangleLinesEx({ badgeX, badgeY, badgeW, badgeH }, 1.0f, badgeCol);
             DrawText(labelText.c_str(), static_cast<int>(badgeX + 7.0f), static_cast<int>(badgeY + 4.0f), 12, badgeCol);
+        }
+    }
+
+    // Draw animated landing beacon rings around sectors unlocked by the selected sector
+    int selFortressIdx = -1;
+    if (selectedSectorIdx >= 0 && selectedSectorIdx < static_cast<int>(sectors.size())) {
+        if (sectors[selectedSectorIdx].isFortress) {
+            selFortressIdx = sectors[selectedSectorIdx].fortressIdx;
+        }
+    }
+    if (selFortressIdx >= 0) {
+        const auto* cSec = campaign.getSectorByIndex(selFortressIdx);
+        if (cSec) {
+            std::vector<int> targetFortressIndices;
+            for (int uId : cSec->unlocksSectors) {
+                int tF = campaign.getSectorIndexById(uId);
+                if (tF >= 0 && tF != selFortressIdx) targetFortressIndices.push_back(tF);
+            }
+            if (cSec->launcherTargetSectorId > 0) {
+                int tF = campaign.getSectorIndexById(cSec->launcherTargetSectorId);
+                if (tF >= 0 && tF != selFortressIdx && std::find(targetFortressIndices.begin(), targetFortressIndices.end(), tF) == targetFortressIndices.end()) {
+                    targetFortressIndices.push_back(tF);
+                }
+            }
+            if (targetFortressIndices.empty() && selFortressIdx + 1 < static_cast<int>(campaign.sectors.size())) {
+                targetFortressIndices.push_back(selFortressIdx + 1);
+            }
+
+            for (int tF : targetFortressIndices) {
+                int destHexIdx = getSectorIdxForFortress(tF);
+                if (destHexIdx < 0) continue;
+                const auto& dSec = sectors[destHexIdx];
+                if (Vector3DotProduct(dSec.center, camDir) < 0.12f) continue;
+
+                Vector3 pWorld = Vector3Scale(dSec.center, PLANET_RADIUS * 1.01f);
+                Vector2 sPos = GetWorldToScreen(pWorld, camera);
+
+                float pulse = 0.5f + 0.5f * std::sin(time * 5.5f);
+                DrawCircleLines(static_cast<int>(sPos.x), static_cast<int>(sPos.y), 15.0f + 5.0f * pulse, Fade(ui::Colors::Cyan400, 0.70f + 0.30f * pulse));
+                DrawCircleLines(static_cast<int>(sPos.x), static_cast<int>(sPos.y), 22.0f + 7.0f * pulse, Fade(ui::Colors::Cyan300, 0.35f * (1.0f - pulse)));
+
+                const char* targetTag = "[ UNLOCKED TARGET ]";
+                int tagW = MeasureText(targetTag, 10);
+                DrawText(targetTag, static_cast<int>(sPos.x - tagW * 0.5f), static_cast<int>(sPos.y - 28.0f), 10, ui::Colors::Cyan400);
+            }
         }
     }
 }

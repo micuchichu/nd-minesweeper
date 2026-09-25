@@ -83,6 +83,9 @@ public:
     // Helper to get sector by fortress index (0 to 3)
     int getSectorIdxForFortress(int fortressIdx) const;
 
+    // Evaluate 3D parabolic suborbital trajectory position between two spherical points
+    static Vector3 evaluateParabola(Vector3 pA, Vector3 pB, float t, float apexHeight = 0.35f);
+
     // Sync fortress names and metadata from data-driven campaign sectors
     void syncCampaignSectors(const core::CampaignManager& campaign);
 

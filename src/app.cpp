@@ -1133,9 +1133,42 @@ void App::update(float dt) {
             }
         }
 
-        // Handle clicks on shops or shop UI
+        // Check orbital launcher click
+        bool clickedLauncher = false;
+        if (currentMode == GameMode::Campaign) {
+            const auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+            if (curSec && curSec->hasExitLauncher) {
+                float centerY = curSec->exitLauncher.openingBounds.y + curSec->exitLauncher.openingBounds.height * 0.5f;
+                float wallX = curSec->exitLauncher.barrierBounds.x;
+                float wallThick = curSec->exitLauncher.barrierBounds.width;
+                float openH = curSec->exitLauncher.openingBounds.height;
+                Rectangle launcherClickArea = {
+                    wallX - 95.0f,
+                    centerY - openH * 0.8f,
+                    wallThick + 160.0f,
+                    openH * 1.6f
+                };
+
+                if (CheckCollisionPointRec(worldMouse, launcherClickArea) && !isOverUI && !isLauncherTransitOpen) {
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        clickedLauncher = true;
+                    }
+                }
+            }
+        }
+
+        // Handle clicks on orbital launcher, shops or shop UI
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (clickedRoulette && isRouletteInRange) {
+            if (clickedLauncher) {
+                const auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+                if (curSec && (curSec->isCleared || !curSec->exitLauncher.isLocked)) {
+                    isLauncherTransitOpen = true;
+                    audio::SoundManager::playButton();
+                } else {
+                    audio::SoundManager::playIncrement();
+                }
+                mouseHandledByShop = true;
+            } else if (clickedRoulette && isRouletteInRange) {
                 isRouletteOpen = true;
                 openedShopIndex = -1;
                 mouseHandledByShop = true;
@@ -1185,8 +1218,11 @@ void App::update(float dt) {
             }
         }
 
-        // Pressing ESC closes open shop or roulette
+        // Pressing ESC closes open modal, shop or roulette
         if (IsKeyPressed(KEY_ESCAPE)) {
+            if (isLauncherTransitOpen) {
+                isLauncherTransitOpen = false;
+            }
             if (isRouletteOpen) {
                 isRouletteOpen = false;
                 if (renderer.hasRouletteShip && renderer.rouletteShip.roulette.spinState == core::RouletteSpinState::Result) {
@@ -1388,11 +1424,11 @@ void App::update(float dt) {
         }
         campaignMgr.update(dt);
 
-        // Check if player entered an unlocked Orbital Launcher to inject into orbit / jump to next sector!
+        // Check if player entered an unlocked Orbital Launcher to inject into orbit / choose next sector!
         if (renderer.localShip.isInitialized && campaignMgr.checkLauncherTransit(campaignMgr.activeSectorIndex, renderer.localShip.position, renderer.localShip.collisionRadius)) {
-            int targetIdx = campaignMgr.getLauncherTargetSectorIndex(campaignMgr.activeSectorIndex);
-            if (targetIdx >= 0) {
-                triggerSectorWarp(targetIdx);
+            if (!isLauncherTransitOpen) {
+                isLauncherTransitOpen = true;
+                audio::SoundManager::playButton();
             }
         }
     }
@@ -2272,6 +2308,10 @@ bool App::isMouseOverUI(Vector2 mousePos) const {
         return true;
     }
 
+    if (isLauncherTransitOpen && isCampaign) {
+        return true;
+    }
+
     // 1. Game HUD (top bar, modals, banners; footer only in non-campaign)
     if (hud.isMouseOver(screenW, screenH, scale, mousePos, isCampaign)) {
         return true;
@@ -2594,6 +2634,11 @@ void App::draw() {
             // Draw HUD 5-Slot Hotbar Inventory Dock
             shopMenu.drawInventoryDock(screenW, screenH, playerInventory, 1.0f);
 
+            // Draw Orbital Transit Destination Selector Modal if active
+            if (isLauncherTransitOpen && currentMode == GameMode::Campaign) {
+                drawLauncherTransitModal(screenW, screenH);
+            }
+
             if (hudAct.returnToMenu) {
                 int leftover = scrapSystem.collectAll();
                 if (leftover > 0) {
@@ -2763,9 +2808,14 @@ void App::draw() {
     if (testCampaignMode) {
         static int campFrame = 0;
         ++campFrame;
-        if (campFrame == 12) {
+        if (campFrame == 8) {
+            int sIdx = menu.planetRenderer.getSectorIdxForFortress(0);
+            menu.campaignSelectedSector = (sIdx >= 0) ? sIdx : 0;
+            menu.planetRenderer.focusSector(menu.campaignSelectedSector);
+        } else if (campFrame == 12) {
             renderer.saveScreenshot("screenshot_campaign_camera_orbit.png");
-            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_campaign_camera_orbit.png" << std::endl;
+            renderer.saveScreenshot("screenshot_campaign_parabolas.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_campaign_camera_orbit.png & screenshot_campaign_parabolas.png" << std::endl;
         } else if (campFrame == 14) {
             startCampaignGame(false);
             campaignMgr.init(12345);
@@ -2780,6 +2830,7 @@ void App::draw() {
             renderer.saveScreenshot("screenshot_sector_world_locked.png");
             std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_world_locked.png" << std::endl;
         } else if (campFrame == 24) {
+            campaignMgr.sectors[0].board.unflag(27);
             for (size_t i = 0; i < campaignMgr.sectors[0].board.totalCells(); ++i) {
                 if (!campaignMgr.sectors[0].board.isBomb(i)) {
                     campaignMgr.sectors[0].board.reveal(i);
@@ -2791,6 +2842,12 @@ void App::draw() {
         } else if (campFrame == 28) {
             renderer.saveScreenshot("screenshot_sector_clear_animation.png");
             std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_clear_animation.png" << std::endl;
+        } else if (campFrame == 36) {
+            isLauncherTransitOpen = true;
+        } else if (campFrame == 38) {
+            renderer.saveScreenshot("screenshot_launcher_transit_selector.png");
+            std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_launcher_transit_selector.png" << std::endl;
+            isLauncherTransitOpen = false;
         } else if (campFrame == 40) {
             renderer.saveScreenshot("screenshot_sector_world_unlocked.png");
             renderer.saveScreenshot("screenshot_sector_cleared_defused_bombs.png");
@@ -2867,6 +2924,133 @@ void App::draw() {
     }
 }
 
+void App::drawLauncherTransitModal(int screenW, int screenH) {
+    // 1. Dark modal backdrop overlay
+    DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.72f));
+
+    float scale = ui::Widgets::guiScale;
+    float panelW = std::clamp(760.0f * scale, 340.0f, static_cast<float>(screenW) - 40.0f);
+    float panelH = std::clamp(540.0f * scale, 380.0f, static_cast<float>(screenH) - 40.0f);
+    float panelX = (static_cast<float>(screenW) - panelW) * 0.5f;
+    float panelY = (static_cast<float>(screenH) - panelH) * 0.5f;
+    Rectangle modalRect = { panelX, panelY, panelW, panelH };
+
+    // 2. Mindustry industrial modal frame
+    ui::Widgets::mindustryPanel(modalRect, "ORBITAL LAUNCH SYSTEM // SELECT TRANSIT DESTINATION", ui::Colors::Cyan400);
+
+    // 3. Current sector status subheader
+    const auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+    std::string currInfo = "ORIGIN SECTOR: ";
+    if (curSec) {
+        currInfo += curSec->name + " [" + curSec->codename + "] // " + (curSec->isCleared ? "SECURED (DEFUSED)" : "IN PROGRESS");
+    }
+    DrawText(currInfo.c_str(), static_cast<int>(panelX + 24.0f), static_cast<int>(panelY + 44.0f), static_cast<int>(13 * scale), ui::Colors::Zinc400);
+
+    // 4. Sector cards list
+    int numSectors = static_cast<int>(campaignMgr.sectors.size());
+    float startY = panelY + 68.0f * scale;
+    float rowH = 68.0f * scale;
+    float rowSpacing = 8.0f * scale;
+    float rowW = panelW - 48.0f;
+
+    for (int i = 0; i < numSectors; ++i) {
+        const auto& sec = campaignMgr.sectors[i];
+        float rowY = startY + i * (rowH + rowSpacing);
+        if (rowY + rowH > panelY + panelH - 64.0f * scale) break;
+
+        Rectangle rowRect = { panelX + 24.0f, rowY, rowW, rowH };
+        bool isCurrent = (i == campaignMgr.activeSectorIndex);
+        bool isUnlocked = sec.isUnlocked;
+        bool isCleared = sec.isCleared;
+
+        // Check if unlocked by current sector's launcher
+        bool isDirectTarget = false;
+        if (curSec) {
+            for (int uId : curSec->unlocksSectors) {
+                if (campaignMgr.getSectorIndexById(uId) == i) isDirectTarget = true;
+            }
+            if (campaignMgr.getSectorIndexById(curSec->launcherTargetSectorId) == i) isDirectTarget = true;
+        }
+
+        // Row background
+        Color rowBg = isCurrent ? Fade(Color{ 8, 48, 64, 255 }, 0.65f) : (isUnlocked ? Fade(ui::Colors::Zinc900, 0.85f) : Fade(ui::Colors::Zinc950, 0.85f));
+        Color rowBorder = isCurrent ? ui::Colors::Cyan500 : (isUnlocked ? (isCleared ? ui::Colors::Green600 : ui::Colors::Zinc700) : ui::Colors::Zinc800);
+        DrawRectangleRec(rowRect, rowBg);
+        DrawRectangleLinesEx(rowRect, isCurrent ? 1.8f : 1.0f, rowBorder);
+
+        // Status accent line on the left
+        Color stripCol = isCurrent ? ui::Colors::Cyan400 : (isCleared ? ui::Colors::Green400 : (isUnlocked ? ui::Colors::Amber400 : ui::Colors::Zinc700));
+        DrawRectangle(static_cast<int>(rowRect.x + 3.0f), static_cast<int>(rowRect.y + 4.0f), static_cast<int>(4 * scale), static_cast<int>(rowRect.height - 8.0f), stripCol);
+
+        // Sector Name & Codename
+        int nameFont = static_cast<int>(16 * scale);
+        Color nameCol = isCurrent ? ui::Colors::Cyan300 : (isUnlocked ? WHITE : ui::Colors::Zinc500);
+        DrawText(sec.name.c_str(), static_cast<int>(rowRect.x + 16.0f), static_cast<int>(rowRect.y + 8.0f * scale), nameFont, nameCol);
+
+        // Subtitle / Threat level
+        std::string subText = "THREAT LEVEL " + std::to_string(sec.threatLevel) + " - " + sec.subtitle;
+        DrawText(subText.c_str(), static_cast<int>(rowRect.x + 16.0f), static_cast<int>(rowRect.y + 32.0f * scale), static_cast<int>(12 * scale), ui::Colors::Zinc400);
+
+        // Badges
+        float badgeX = rowRect.x + 16.0f;
+        float badgeY = rowRect.y + 48.0f * scale;
+        if (isCurrent) {
+            DrawText("[ CURRENT SECTOR ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Cyan400);
+        } else if (isCleared) {
+            DrawText("[ SECURED // CLEAR ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Green400);
+        } else if (isDirectTarget) {
+            DrawText("[ DIRECT LAUNCH TARGET ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Amber400);
+        } else if (isUnlocked) {
+            DrawText("[ READY FOR INSERTION ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Cyan300);
+        } else {
+            DrawText("[ LOCKED // UNEXPLORED ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Zinc600);
+        }
+
+        // Action button on right
+        float btnW = 160.0f * scale;
+        float btnH = 38.0f * scale;
+        Rectangle btnRect = { rowRect.x + rowRect.width - btnW - 12.0f, rowRect.y + (rowH - btnH) * 0.5f, btnW, btnH };
+
+        if (isCurrent) {
+            ui::Widgets::button("STATIONED HERE", btnRect, ui::Colors::Zinc800, ui::Colors::Zinc800, true, static_cast<int>(14 * scale));
+        } else if (isUnlocked) {
+            if (ui::Widgets::button("WARP TO SECTOR", btnRect, Color{ 14, 60, 78, 255 }, ui::Colors::Cyan400, false, static_cast<int>(14 * scale))) {
+                isLauncherTransitOpen = false;
+                triggerSectorWarp(i);
+                audio::SoundManager::playButton();
+                return;
+            }
+        } else {
+            ui::Widgets::button("LOCKED", btnRect, ui::Colors::Zinc800, ui::Colors::Zinc800, true, static_cast<int>(14 * scale));
+        }
+    }
+
+    // 5. Bottom action bar
+    float bBtnW = 240.0f * scale;
+    float bBtnH = 38.0f * scale;
+    float bBtnY = panelY + panelH - bBtnH - 14.0f * scale;
+
+    Rectangle globeBtnRect = { panelX + 24.0f, bBtnY, bBtnW, bBtnH };
+    if (ui::Widgets::button("VIEW 3D PLANET GLOBE >", globeBtnRect, ui::Colors::Zinc800, ui::Colors::Cyan400, false, static_cast<int>(14 * scale))) {
+        isLauncherTransitOpen = false;
+        saveCampaignProgress();
+        menu.currentScreen = ui::MenuScreen::Campaign;
+        int globeSecIdx = menu.planetRenderer.getSectorIdxForFortress(campaignMgr.activeSectorIndex);
+        menu.campaignSelectedSector = (globeSecIdx >= 0) ? globeSecIdx : 0;
+        menu.planetRenderer.focusSector(menu.campaignSelectedSector);
+        state = AppState::Menu;
+        audio::SoundManager::playButton();
+        return;
+    }
+
+    Rectangle closeBtnRect = { panelX + panelW - 180.0f * scale - 24.0f, bBtnY, 180.0f * scale, bBtnH };
+    if (ui::Widgets::button("CLOSE / STAY", closeBtnRect, ui::Colors::Zinc800, ui::Colors::Red500, false, static_cast<int>(14 * scale))) {
+        isLauncherTransitOpen = false;
+        audio::SoundManager::playButton();
+        return;
+    }
+}
+
 void App::run() {
     init();
 
@@ -2895,6 +3079,7 @@ void App::run() {
     if (testCampaignMode) {
         state = AppState::Menu;
         menu.currentScreen = ui::MenuScreen::Campaign;
+        campaignMgr.init(12345);
         int sIdx = menu.planetRenderer.getSectorIdxForFortress(0);
         menu.campaignSelectedSector = (sIdx >= 0) ? sIdx : 0;
         menu.planetRenderer.focusSector(menu.campaignSelectedSector);

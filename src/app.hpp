@@ -107,6 +107,8 @@ private:
     bool loadSaveSlot(int slotIndex);
     void startCampaignGame(bool isHost = false);
     void triggerSectorWarp(int newSectorIdx);
+    bool isLauncherTransitOpen = false;
+    void drawLauncherTransitModal(int screenW, int screenH);
     void saveCampaignProgress();
     bool loadCampaignProgress();
     void saveSettings();
