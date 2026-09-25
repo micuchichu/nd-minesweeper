@@ -323,8 +323,7 @@ void App::triggerSectorWarp(int newSectorIdx) {
     renderer.camera.centerOn(newSpawn);
     renderer.updateShopAnchorCampaign(campaignMgr);
 
-    renderer.emitExplosion(newSpawn, ui::Colors::Cyan400);
-    renderer.emitBubbles(newSpawn, 20);
+    renderer.emitWarpSpawn(newSpawn, ui::Colors::Cyan400);
     soundMgr.playUncoverSound();
 
     pendingUncoverCell = -1;
@@ -1238,15 +1237,16 @@ void App::update(float dt) {
                     scrapCount += r.lastPayout;
                     hud.scrapCount = scrapCount;
                     menu.scrapCount = scrapCount;
-                    // WIN: Gold particles!
-                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 35, ui::Colors::Amber400);
-                    renderer.particles.emitDebris(renderer.rouletteShip.position, 25, Color{ 255, 215, 0, 255 });
-                    renderer.particles.emitDebris(renderer.rouletteShip.getNosePosition(), 15, ui::Colors::Amber300);
+                    // WIN: Gold sparkles, plasma motes, shockwave!
+                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 25, ui::Colors::Amber400);
+                    renderer.particles.emitSparkles(renderer.rouletteShip.position, 20, Color{ 255, 215, 0, 255 }, 40.0f);
+                    renderer.particles.emitPlasmaMotes(renderer.rouletteShip.position, 12, ui::Colors::Amber300);
+                    renderer.particles.emitShockwave(renderer.rouletteShip.position, 85.0f, ui::Colors::Amber400, 0.40f);
                 } else {
-                    // LOSE: Red particles!
-                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 30, ui::Colors::Red500);
-                    renderer.particles.emitDebris(renderer.rouletteShip.position, 20, ui::Colors::Red700);
-                    renderer.particles.emitDebris(renderer.rouletteShip.getNosePosition(), 10, ui::Colors::Red300);
+                    // LOSE: Red explosion, sparks, dark smoke!
+                    renderer.particles.emitExplosion(renderer.rouletteShip.position, 25, ui::Colors::Red500);
+                    renderer.particles.emitSparks(renderer.rouletteShip.position, 16, ui::Colors::Red400);
+                    renderer.particles.emitSmoke(renderer.rouletteShip.position, 8, Color{ 60, 60, 65, 210 });
                 }
                 // Trigger fading popup with number landed on and payout
                 rouletteUI.triggerPopup(r.winningNumber, r.lastWon, r.lastPayout, r.activeBet.amount);
@@ -2555,7 +2555,8 @@ void App::draw() {
                 if (bought) {
                     hud.scrapCount = scrapCount;
                     menu.scrapCount = scrapCount;
-                    renderer.particles.emitDebris(targetShip.position, 8, ui::Colors::Amber400);
+                    renderer.particles.emitSparkles(targetShip.position, 6, ui::Colors::Amber400, 16.0f);
+                    renderer.particles.emitPlasmaMotes(targetShip.position, 4, ui::Colors::Amber300, 20.0f, 70.0f);
                     if (currentMode == GameMode::Campaign) saveCampaignProgress();
                     else saveCurrentSlot();
                 }

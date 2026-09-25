@@ -58,7 +58,7 @@ bool resolveCircleAABB(Ship& ship, const Rectangle& box, render::ParticleSystem*
 
             if (particles && std::abs(vn) > 60.0f) {
                 Vector2 contact = { closestX, closestY };
-                particles->emitDebris(contact, 3, Color{ 251, 191, 36, 255 }); // Amber sparks
+                particles->emitSparks(contact, 4, Color{ 251, 191, 36, 255 }, 120.0f, 400.0f); // Amber friction sparks
             }
         }
         return true;

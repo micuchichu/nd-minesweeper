@@ -206,8 +206,29 @@ public:
     void updateHeldItemPhysics(Vector2 shipPos, Vector2 shipVel, float dt);
     void drawHeldItem(Vector2 shipPos, float shipAngle, const core::InventorySlot* slot, bool isUsing);
 
-    void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 80, col); }
+    void emitExplosion(Vector2 pos, Color col) { particles.emitExplosion(pos, 50, col); }
     void emitDebris(Vector2 pos, Color col) { particles.emitDebris(pos, 8, col); }
+    void emitSparks(Vector2 pos, int count, Color col, float sMin = 150.0f, float sMax = 650.0f) {
+        particles.emitSparks(pos, count, col, sMin, sMax);
+    }
+    void emitPlasmaMotes(Vector2 pos, int count, Color col, float sMin = 25.0f, float sMax = 140.0f) {
+        particles.emitPlasmaMotes(pos, count, col, sMin, sMax);
+    }
+    void emitSparkles(Vector2 pos, int count, Color col, float spread = 24.0f) {
+        particles.emitSparkles(pos, count, col, spread);
+    }
+    void emitSmoke(Vector2 pos, int count, Color col, float sMin = 10.0f, float sMax = 50.0f) {
+        particles.emitSmoke(pos, count, col, sMin, sMax);
+    }
+    void emitShockwave(Vector2 pos, float maxRadius, Color col, float dur = 0.35f) {
+        particles.emitShockwave(pos, maxRadius, col, dur);
+    }
+    void emitWarpSpawn(Vector2 pos, Color themeCol) {
+        particles.emitWarpSpawnFX(pos, themeCol);
+    }
+    void emitSectorClearFX(Vector2 pos) {
+        particles.emitDefusalFX(pos, cellSize);
+    }
 
     std::vector<core::RadarBeaconEntity> radarBeacons;
     void deployRadarBeacon(Vector2 worldPos, int mineCount, float duration = 12.0f);

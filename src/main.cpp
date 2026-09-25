@@ -2758,7 +2758,29 @@ static int runCampaignTests() {
             return 226;
         }
 
-        std::cout << "  [PASS] Test 17: Bomb percentage modifier and sector clear animation sequence verified." << std::endl;
+        // Verify diverse particles from defusal FX without soap bubbles
+        bool hasSparks = false;
+        bool hasPlasmaMotes = false;
+        bool hasSparkles = false;
+        bool hasSmoke = false;
+        bool hasShockwave = false;
+        for (const auto& p : renderer.particles.particles) {
+            if (p.type == minesweeper::render::ParticleType::Spark) hasSparks = true;
+            if (p.type == minesweeper::render::ParticleType::PlasmaMote) hasPlasmaMotes = true;
+            if (p.type == minesweeper::render::ParticleType::Sparkle) hasSparkles = true;
+            if (p.type == minesweeper::render::ParticleType::Smoke) hasSmoke = true;
+            if (p.type == minesweeper::render::ParticleType::Shockwave) hasShockwave = true;
+        }
+        if (!hasSparks || !hasPlasmaMotes || !hasSparkles || !hasSmoke || !hasShockwave) {
+            std::cerr << "  [FAIL] Test 17: Defusal FX should emit Sparks, PlasmaMotes, Sparkles, Smoke, and Shockwaves!" << std::endl;
+            return 227;
+        }
+        if (!renderer.bubbleParticles.empty()) {
+            std::cerr << "  [FAIL] Test 17: Sector clear should NOT emit soap bubbles!" << std::endl;
+            return 228;
+        }
+
+        std::cout << "  [PASS] Test 17: Bomb percentage modifier, sequential clear animation, and diverse particle FX verified." << std::endl;
     }
 
     std::cout << "[TEST-CAMPAIGN] ALL CAMPAIGN TESTS PASSED!" << std::endl;

@@ -623,10 +623,7 @@ void RaylibRenderer::updateSectorClearAnimation(float dt) {
             s.triggered = true;
             s.highlightProgress = 1.0f;
 
-            particles.emitDebris(s.worldPos, 14, ui::Colors::Cyan400);
-            particles.emitDebris(s.worldPos, 8, ui::Colors::Amber400);
-            particles.emitDebris(s.worldPos, 6, WHITE);
-            emitBubbles(s.worldPos, 5);
+            particles.emitDefusalFX(s.worldPos, cellSize);
             audio::SoundManager::playIncrement();
         }
 
@@ -1633,7 +1630,8 @@ void RaylibRenderer::updateShip(Vector2 targetPos, float dt) {
 
 void RaylibRenderer::fireLaser(Vector2 from, Vector2 to, Color color) {
     lasers.push_back({ from, to, 0.18f, 0.18f, color });
-    particles.emitDebris(to, 6, color);
+    particles.emitSparks(to, 8, color, 160.0f, 550.0f);
+    particles.emitPlasmaMotes(to, 3, color, 20.0f, 90.0f);
 }
 
 void RaylibRenderer::emitBubbleBurst(Vector2 pos, int count) {
