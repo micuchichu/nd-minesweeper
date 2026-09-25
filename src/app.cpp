@@ -334,6 +334,33 @@ void App::triggerSectorWarp(int newSectorIdx) {
     saveCampaignProgress();
 }
 
+void App::openLauncherTransit() {
+    isLauncherTransitOpen = true;
+    int targetFortressIdx = campaignMgr.activeSectorIndex;
+    const auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
+    if (curSec && !curSec->unlocksSectors.empty()) {
+        int uIdx = campaignMgr.getSectorIndexById(curSec->unlocksSectors[0]);
+        if (uIdx >= 0 && campaignMgr.sectors[uIdx].isUnlocked) {
+            targetFortressIdx = uIdx;
+        }
+    } else if (curSec && curSec->launcherTargetSectorId >= 0) {
+        int uIdx = campaignMgr.getSectorIndexById(curSec->launcherTargetSectorId);
+        if (uIdx >= 0 && campaignMgr.sectors[uIdx].isUnlocked) {
+            targetFortressIdx = uIdx;
+        }
+    }
+    int curGlobeIdx = menu.planetRenderer.getSectorIdxForFortress(targetFortressIdx);
+    launcherTransitSelectedSector = (curGlobeIdx >= 0) ? curGlobeIdx : 0;
+    launcherTransitHoveredSector = -1;
+    menu.planetRenderer.focusSector(launcherTransitSelectedSector);
+}
+
+void App::closeLauncherTransit() {
+    isLauncherTransitOpen = false;
+    launcherTransitHoveredSector = -1;
+    menu.planetRenderer.isDragging = false;
+}
+
 void App::saveCampaignProgress() {
     if (net.role != net::NetRole::Client) {
         saveMgr.saveCampaign(campaignMgr, timePlayed, scrapCount);
@@ -1162,7 +1189,7 @@ void App::update(float dt) {
             if (clickedLauncher) {
                 const auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
                 if (curSec && (curSec->isCleared || !curSec->exitLauncher.isLocked)) {
-                    isLauncherTransitOpen = true;
+                    openLauncherTransit();
                     audio::SoundManager::playButton();
                 } else {
                     audio::SoundManager::playIncrement();
@@ -1221,7 +1248,7 @@ void App::update(float dt) {
         // Pressing ESC closes open modal, shop or roulette
         if (IsKeyPressed(KEY_ESCAPE)) {
             if (isLauncherTransitOpen) {
-                isLauncherTransitOpen = false;
+                closeLauncherTransit();
             }
             if (isRouletteOpen) {
                 isRouletteOpen = false;
@@ -1427,9 +1454,12 @@ void App::update(float dt) {
         // Check if player entered an unlocked Orbital Launcher to inject into orbit / choose next sector!
         if (renderer.localShip.isInitialized && campaignMgr.checkLauncherTransit(campaignMgr.activeSectorIndex, renderer.localShip.position, renderer.localShip.collisionRadius)) {
             if (!isLauncherTransitOpen) {
-                isLauncherTransitOpen = true;
+                openLauncherTransit();
                 audio::SoundManager::playButton();
             }
+        }
+        if (isLauncherTransitOpen) {
+            updateLauncherTransit(dt, GetScreenWidth(), GetScreenHeight());
         }
     }
 
@@ -2843,11 +2873,11 @@ void App::draw() {
             renderer.saveScreenshot("screenshot_sector_clear_animation.png");
             std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_sector_clear_animation.png" << std::endl;
         } else if (campFrame == 36) {
-            isLauncherTransitOpen = true;
+            openLauncherTransit();
         } else if (campFrame == 38) {
             renderer.saveScreenshot("screenshot_launcher_transit_selector.png");
             std::cout << "[TEST-CAMPAIGN-UI] Saved screenshot_launcher_transit_selector.png" << std::endl;
-            isLauncherTransitOpen = false;
+            closeLauncherTransit();
         } else if (campFrame == 40) {
             renderer.saveScreenshot("screenshot_sector_world_unlocked.png");
             renderer.saveScreenshot("screenshot_sector_cleared_defused_bombs.png");
@@ -2924,131 +2954,400 @@ void App::draw() {
     }
 }
 
-void App::drawLauncherTransitModal(int screenW, int screenH) {
-    // 1. Dark modal backdrop overlay
-    DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.72f));
+void App::updateLauncherTransit(float dt, int screenW, int screenH) {
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        closeLauncherTransit();
+        audio::SoundManager::playButton();
+        return;
+    }
+
+    menu.planetRenderer.update(dt);
 
     float scale = ui::Widgets::guiScale;
-    float panelW = std::clamp(760.0f * scale, 340.0f, static_cast<float>(screenW) - 40.0f);
-    float panelH = std::clamp(540.0f * scale, 380.0f, static_cast<float>(screenH) - 40.0f);
-    float panelX = (static_cast<float>(screenW) - panelW) * 0.5f;
-    float panelY = (static_cast<float>(screenH) - panelH) * 0.5f;
-    Rectangle modalRect = { panelX, panelY, panelW, panelH };
+    float uiW = static_cast<float>(screenW) / scale;
+    float uiH = static_cast<float>(screenH) / scale;
+    Vector2 uiMouse = ui::Widgets::getUIMousePos();
 
-    // 2. Mindustry industrial modal frame
-    ui::Widgets::mindustryPanel(modalRect, "ORBITAL LAUNCH SYSTEM // SELECT TRANSIT DESTINATION", ui::Colors::Cyan400);
+    float leftPanelW = 270.0f;
+    float rightPanelW = 280.0f;
+    float leftPanelX = 20.0f;
+    float rightPanelX = uiW - rightPanelW - 20.0f;
 
-    // 3. Current sector status subheader
+    float centerAreaX = leftPanelX + leftPanelW + 12.0f;
+    float centerAreaRight = rightPanelX - 12.0f;
+    float centerAreaW = std::max(120.0f, centerAreaRight - centerAreaX);
+    float topBannerW = std::clamp(centerAreaW - 16.0f, 160.0f, 380.0f);
+    float topBannerX = centerAreaX + (centerAreaW - topBannerW) * 0.5f;
+
+    Rectangle topBannerRec = { topBannerX, 16.0f, topBannerW, 38.0f };
+    Rectangle leftPanelRec = { leftPanelX, 22.0f, leftPanelW, uiH - 46.0f };
+    Rectangle rightPanelRec = { rightPanelX, 22.0f, rightPanelW, uiH - 46.0f };
+
+    const char* hintText = "[DRAG: ROTATE PLANET]  *  [WHEEL: ZOOM]  *  [CLICK: SELECT]  *  [ESC: RETURN]";
+    float hintBoxW = static_cast<float>(MeasureText(hintText, 11) + 24);
+    float hintBoxH = 24.0f;
+    float hintBoxX = (uiW - hintBoxW) * 0.5f;
+    float hintBoxY = uiH - hintBoxH - 10.0f;
+    Rectangle hintRec = { hintBoxX, hintBoxY, hintBoxW, hintBoxH };
+
+    bool overUI = CheckCollisionPointRec(uiMouse, topBannerRec) ||
+                  CheckCollisionPointRec(uiMouse, leftPanelRec) ||
+                  CheckCollisionPointRec(uiMouse, rightPanelRec) ||
+                  CheckCollisionPointRec(uiMouse, hintRec);
+
+    Rectangle planetArea = { 0.0f, 0.0f, static_cast<float>(screenW), static_cast<float>(screenH) };
+
+    if (!overUI || menu.planetRenderer.isDragging) {
+        int clicked = menu.planetRenderer.handleInput(planetArea, launcherTransitHoveredSector);
+        if (clicked >= 0) {
+            launcherTransitSelectedSector = clicked;
+            audio::SoundManager::playButton();
+        }
+    } else {
+        launcherTransitHoveredSector = -1;
+    }
+}
+
+void App::drawLauncherTransitModal(int screenW, int screenH) {
+    // 1. Dark atmospheric backdrop overlay over the in-game world
+    DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.90f));
+
+    // 2. Synchronize campaign fortress metadata with 3D globe sectors
+    menu.planetRenderer.syncCampaignSectors(campaignMgr);
+
+    // 3. Render 3D low-poly faceted planet globe, starfield, great-circle parabolas, energy pulses, landing beacons
+    menu.planetRenderer.drawGlobe(campaignMgr, launcherTransitSelectedSector, launcherTransitHoveredSector);
+    menu.planetRenderer.drawSectorOverlays(campaignMgr, launcherTransitSelectedSector, launcherTransitHoveredSector);
+
+    // 4. Enter 2D UI Camera matching Widgets::guiScale and Widgets::getUIMousePos()
+    float scale = ui::Widgets::guiScale;
+    float uiW = static_cast<float>(screenW) / scale;
+    float uiH = static_cast<float>(screenH) / scale;
+
+    Camera2D uiCam = { 0 };
+    uiCam.zoom = scale;
+    BeginMode2D(uiCam);
+
+    float leftPanelW = 270.0f;
+    float rightPanelW = 280.0f;
+    float leftPanelX = 20.0f;
+    float rightPanelX = uiW - rightPanelW - 20.0f;
+    float leftPanelH = uiH - 46.0f;
+    float rightPanelH = uiH - 46.0f;
+
+    // -------------------------------------------------------------
+    // TOP HEADER BANNER (Centered between panels)
+    // -------------------------------------------------------------
+    float centerAreaX = leftPanelX + leftPanelW + 12.0f;
+    float centerAreaRight = rightPanelX - 12.0f;
+    float centerAreaW = std::max(120.0f, centerAreaRight - centerAreaX);
+    float topBannerW = std::clamp(centerAreaW - 16.0f, 160.0f, 380.0f);
+    float topBannerH = 38.0f;
+    float topBannerX = centerAreaX + (centerAreaW - topBannerW) * 0.5f;
+    Rectangle topBannerRec = { topBannerX, 16.0f, topBannerW, topBannerH };
+
+    DrawRectangleRec(topBannerRec, Fade(ui::Colors::Zinc950, 0.92f));
+    DrawRectangleLinesEx(topBannerRec, 1.5f, ui::Colors::Cyan500);
+    // Decorative corner notches
+    DrawRectangle(static_cast<int>(topBannerRec.x), static_cast<int>(topBannerRec.y), 4, 4, ui::Colors::Cyan400);
+    DrawRectangle(static_cast<int>(topBannerRec.x + topBannerRec.width - 4.0f), static_cast<int>(topBannerRec.y), 4, 4, ui::Colors::Cyan400);
+    DrawRectangle(static_cast<int>(topBannerRec.x), static_cast<int>(topBannerRec.y + topBannerRec.height - 4.0f), 4, 4, ui::Colors::Cyan400);
+    DrawRectangle(static_cast<int>(topBannerRec.x + topBannerRec.width - 4.0f), static_cast<int>(topBannerRec.y + topBannerRec.height - 4.0f), 4, 4, ui::Colors::Cyan400);
+
+    const char* titleText = (topBannerW >= 260.0f) ? "ORBITAL TRANSIT SYSTEM" : "ORBITAL TRANSIT";
+    int titleW = MeasureText(titleText, 13);
+    DrawText(titleText, static_cast<int>(topBannerX + (topBannerW - static_cast<float>(titleW)) * 0.5f), static_cast<int>(topBannerRec.y + 6.0f), 13, ui::Colors::Cyan300);
+
+    const char* subText = (topBannerW >= 260.0f) ? "SUB-ORBITAL BALLISTIC TRANSIT" : "SELECT DESTINATION";
+    int subW = MeasureText(subText, 10);
+    DrawText(subText, static_cast<int>(topBannerX + (topBannerW - static_cast<float>(subW)) * 0.5f), static_cast<int>(topBannerRec.y + 22.0f), 10, ui::Colors::Zinc400);
+
+    // -------------------------------------------------------------
+    // LEFT PANEL: ORIGIN SECTOR STATUS & TELEMETRY
+    // -------------------------------------------------------------
+    Rectangle leftPanel = { leftPanelX, 22.0f, leftPanelW, leftPanelH };
+    ui::Widgets::mindustryPanel(leftPanel, "ORIGIN LAUNCH PAD", ui::Colors::Cyan400);
+
     const auto* curSec = campaignMgr.getSectorByIndex(campaignMgr.activeSectorIndex);
-    std::string currInfo = "ORIGIN SECTOR: ";
-    if (curSec) {
-        currInfo += curSec->name + " [" + curSec->codename + "] // " + (curSec->isCleared ? "SECURED (DEFUSED)" : "IN PROGRESS");
-    }
-    DrawText(currInfo.c_str(), static_cast<int>(panelX + 24.0f), static_cast<int>(panelY + 44.0f), static_cast<int>(13 * scale), ui::Colors::Zinc400);
+    float lContentX = leftPanel.x + 16.0f;
+    float curLY = leftPanel.y + 40.0f;
 
-    // 4. Sector cards list
-    int numSectors = static_cast<int>(campaignMgr.sectors.size());
-    float startY = panelY + 68.0f * scale;
-    float rowH = 68.0f * scale;
-    float rowSpacing = 8.0f * scale;
-    float rowW = panelW - 48.0f;
+    // Origin Codename
+    const char* originCode = curSec ? curSec->codename.c_str() : "ALPHA-01";
+    DrawText(originCode, static_cast<int>(lContentX), static_cast<int>(curLY), 18, ui::Colors::Cyan400);
+    curLY += 23.0f;
 
-    for (int i = 0; i < numSectors; ++i) {
-        const auto& sec = campaignMgr.sectors[i];
-        float rowY = startY + i * (rowH + rowSpacing);
-        if (rowY + rowH > panelY + panelH - 64.0f * scale) break;
+    // Origin Status Badge (on own line to prevent overlap)
+    const char* originBadge = curSec ? (curSec->isCleared ? "[ SECURED // SAFE ]" : "[ IN PROGRESS ]") : "[ READY ]";
+    Color originBadgeCol = curSec && curSec->isCleared ? ui::Colors::Green400 : ui::Colors::Amber400;
+    DrawText(originBadge, static_cast<int>(lContentX), static_cast<int>(curLY), 11, originBadgeCol);
+    curLY += 18.0f;
 
-        Rectangle rowRect = { panelX + 24.0f, rowY, rowW, rowH };
-        bool isCurrent = (i == campaignMgr.activeSectorIndex);
-        bool isUnlocked = sec.isUnlocked;
-        bool isCleared = sec.isCleared;
+    // Origin Name
+    const char* originName = curSec ? curSec->name.c_str() : "Sector 01: Outpost Alpha";
+    DrawText(originName, static_cast<int>(lContentX), static_cast<int>(curLY), 13, WHITE);
+    curLY += 18.0f;
 
-        // Check if unlocked by current sector's launcher
-        bool isDirectTarget = false;
-        if (curSec) {
-            for (int uId : curSec->unlocksSectors) {
-                if (campaignMgr.getSectorIndexById(uId) == i) isDirectTarget = true;
-            }
-            if (campaignMgr.getSectorIndexById(curSec->launcherTargetSectorId) == i) isDirectTarget = true;
-        }
+    // Origin Threat & Environment
+    std::string originSub = curSec ? ("THREAT LEVEL " + std::to_string(curSec->threatLevel) + " - " + curSec->subtitle) : "Tartarus-IV Basin";
+    DrawText(originSub.c_str(), static_cast<int>(lContentX), static_cast<int>(curLY), 10, ui::Colors::Zinc400);
+    curLY += 16.0f;
 
-        // Row background
-        Color rowBg = isCurrent ? Fade(Color{ 8, 48, 64, 255 }, 0.65f) : (isUnlocked ? Fade(ui::Colors::Zinc900, 0.85f) : Fade(ui::Colors::Zinc950, 0.85f));
-        Color rowBorder = isCurrent ? ui::Colors::Cyan500 : (isUnlocked ? (isCleared ? ui::Colors::Green600 : ui::Colors::Zinc700) : ui::Colors::Zinc800);
-        DrawRectangleRec(rowRect, rowBg);
-        DrawRectangleLinesEx(rowRect, isCurrent ? 1.8f : 1.0f, rowBorder);
+    // Divider
+    DrawLineEx({ lContentX, curLY }, { leftPanel.x + leftPanel.width - 16.0f, curLY }, 1.0f, ui::Colors::Zinc800);
+    curLY += 10.0f;
 
-        // Status accent line on the left
-        Color stripCol = isCurrent ? ui::Colors::Cyan400 : (isCleared ? ui::Colors::Green400 : (isUnlocked ? ui::Colors::Amber400 : ui::Colors::Zinc700));
-        DrawRectangle(static_cast<int>(rowRect.x + 3.0f), static_cast<int>(rowRect.y + 4.0f), static_cast<int>(4 * scale), static_cast<int>(rowRect.height - 8.0f), stripCol);
+    // Orbital Telemetry Box
+    float lBoxW = leftPanel.width - 32.0f;
+    float lBoxH = 82.0f;
+    DrawRectangleRec({ lContentX, curLY, lBoxW, lBoxH }, Fade(ui::Colors::Zinc900, 0.70f));
+    DrawRectangleLinesEx({ lContentX, curLY, lBoxW, lBoxH }, 1.0f, ui::Colors::Zinc800);
 
-        // Sector Name & Codename
-        int nameFont = static_cast<int>(16 * scale);
-        Color nameCol = isCurrent ? ui::Colors::Cyan300 : (isUnlocked ? WHITE : ui::Colors::Zinc500);
-        DrawText(sec.name.c_str(), static_cast<int>(rowRect.x + 16.0f), static_cast<int>(rowRect.y + 8.0f * scale), nameFont, nameCol);
+    DrawText("MASS-ACCELERATOR TELEMETRY", static_cast<int>(lContentX + 8.0f), static_cast<int>(curLY + 7.0f), 10, ui::Colors::Cyan400);
+    DrawText("Superconducting Rail: 100% Charged", static_cast<int>(lContentX + 8.0f), static_cast<int>(curLY + 22.0f), 11, ui::Colors::Green400);
+    DrawText("Sub-Orbital Parabola: Locked", static_cast<int>(lContentX + 8.0f), static_cast<int>(curLY + 38.0f), 11, ui::Colors::Zinc200);
+    DrawText("Kinetic Cradle: Armed & In Position", static_cast<int>(lContentX + 8.0f), static_cast<int>(curLY + 56.0f), 11, ui::Colors::Zinc300);
+    curLY += lBoxH + 12.0f;
 
-        // Subtitle / Threat level
-        std::string subText = "THREAT LEVEL " + std::to_string(sec.threatLevel) + " - " + sec.subtitle;
-        DrawText(subText.c_str(), static_cast<int>(rowRect.x + 16.0f), static_cast<int>(rowRect.y + 32.0f * scale), static_cast<int>(12 * scale), ui::Colors::Zinc400);
+    // Focus Buttons
+    float focusBtnW = lBoxW;
+    float focusBtnH = 28.0f;
+    int originGlobeIdx = menu.planetRenderer.getSectorIdxForFortress(campaignMgr.activeSectorIndex);
 
-        // Badges
-        float badgeX = rowRect.x + 16.0f;
-        float badgeY = rowRect.y + 48.0f * scale;
-        if (isCurrent) {
-            DrawText("[ CURRENT SECTOR ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Cyan400);
-        } else if (isCleared) {
-            DrawText("[ SECURED // CLEAR ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Green400);
-        } else if (isDirectTarget) {
-            DrawText("[ DIRECT LAUNCH TARGET ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Amber400);
-        } else if (isUnlocked) {
-            DrawText("[ READY FOR INSERTION ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Cyan300);
-        } else {
-            DrawText("[ LOCKED // UNEXPLORED ]", static_cast<int>(badgeX), static_cast<int>(badgeY), static_cast<int>(11 * scale), ui::Colors::Zinc600);
-        }
-
-        // Action button on right
-        float btnW = 160.0f * scale;
-        float btnH = 38.0f * scale;
-        Rectangle btnRect = { rowRect.x + rowRect.width - btnW - 12.0f, rowRect.y + (rowH - btnH) * 0.5f, btnW, btnH };
-
-        if (isCurrent) {
-            ui::Widgets::button("STATIONED HERE", btnRect, ui::Colors::Zinc800, ui::Colors::Zinc800, true, static_cast<int>(14 * scale));
-        } else if (isUnlocked) {
-            if (ui::Widgets::button("WARP TO SECTOR", btnRect, Color{ 14, 60, 78, 255 }, ui::Colors::Cyan400, false, static_cast<int>(14 * scale))) {
-                isLauncherTransitOpen = false;
-                triggerSectorWarp(i);
-                audio::SoundManager::playButton();
-                return;
-            }
-        } else {
-            ui::Widgets::button("LOCKED", btnRect, ui::Colors::Zinc800, ui::Colors::Zinc800, true, static_cast<int>(14 * scale));
+    if (ui::Widgets::button("< FOCUS ORIGIN SECTOR", { lContentX, curLY, focusBtnW, focusBtnH }, ui::Colors::Zinc800, ui::Colors::Cyan400, false, 11)) {
+        if (originGlobeIdx >= 0) {
+            launcherTransitSelectedSector = originGlobeIdx;
+            menu.planetRenderer.focusSector(originGlobeIdx);
         }
     }
+    curLY += focusBtnH + 6.0f;
 
-    // 5. Bottom action bar
-    float bBtnW = 240.0f * scale;
-    float bBtnH = 38.0f * scale;
-    float bBtnY = panelY + panelH - bBtnH - 14.0f * scale;
+    // Focus Direct Target Button (if current sector unlocks another sector)
+    int targetFortressIdx = -1;
+    if (curSec && !curSec->unlocksSectors.empty()) {
+        targetFortressIdx = campaignMgr.getSectorIndexById(curSec->unlocksSectors[0]);
+    } else if (curSec && curSec->launcherTargetSectorId >= 0) {
+        targetFortressIdx = campaignMgr.getSectorIndexById(curSec->launcherTargetSectorId);
+    }
+    int targetGlobeIdx = (targetFortressIdx >= 0) ? menu.planetRenderer.getSectorIdxForFortress(targetFortressIdx) : -1;
+    bool hasTarget = (targetGlobeIdx >= 0);
 
-    Rectangle globeBtnRect = { panelX + 24.0f, bBtnY, bBtnW, bBtnH };
-    if (ui::Widgets::button("VIEW 3D PLANET GLOBE >", globeBtnRect, ui::Colors::Zinc800, ui::Colors::Cyan400, false, static_cast<int>(14 * scale))) {
-        isLauncherTransitOpen = false;
-        saveCampaignProgress();
-        menu.currentScreen = ui::MenuScreen::Campaign;
-        int globeSecIdx = menu.planetRenderer.getSectorIdxForFortress(campaignMgr.activeSectorIndex);
-        menu.campaignSelectedSector = (globeSecIdx >= 0) ? globeSecIdx : 0;
-        menu.planetRenderer.focusSector(menu.campaignSelectedSector);
-        state = AppState::Menu;
+    if (ui::Widgets::button("FOCUS DIRECT TARGET >", { lContentX, curLY, focusBtnW, focusBtnH }, ui::Colors::Zinc800, hasTarget ? ui::Colors::Amber400 : ui::Colors::Zinc600, !hasTarget, 11)) {
+        if (hasTarget) {
+            launcherTransitSelectedSector = targetGlobeIdx;
+            menu.planetRenderer.focusSector(targetGlobeIdx);
+        }
+    }
+    curLY += focusBtnH + 12.0f;
+
+    // Return to Sector Button (at bottom of left panel)
+    float retBtnH = 38.0f;
+    float retBtnY = leftPanel.y + leftPanel.height - retBtnH - 12.0f;
+    if (ui::Widgets::mindustryButton("< RETURN TO SECTOR", "CANCEL TRANSIT // RESUME FLIGHT", { lContentX, retBtnY, lBoxW, retBtnH }, ui::Colors::Red500, false, 14)) {
+        closeLauncherTransit();
         audio::SoundManager::playButton();
+        EndMode2D();
         return;
     }
 
-    Rectangle closeBtnRect = { panelX + panelW - 180.0f * scale - 24.0f, bBtnY, 180.0f * scale, bBtnH };
-    if (ui::Widgets::button("CLOSE / STAY", closeBtnRect, ui::Colors::Zinc800, ui::Colors::Red500, false, static_cast<int>(14 * scale))) {
-        isLauncherTransitOpen = false;
-        audio::SoundManager::playButton();
-        return;
+    // -------------------------------------------------------------
+    // RIGHT PANEL: DESTINATION TACTICAL INTEL & WARP ENGAGE
+    // -------------------------------------------------------------
+    Rectangle rightPanel = { rightPanelX, 22.0f, rightPanelW, rightPanelH };
+    ui::Widgets::mindustryPanel(rightPanel, "DESTINATION TACTICAL INTEL", ui::Colors::Amber500);
+
+    if (launcherTransitSelectedSector < 0 || launcherTransitSelectedSector >= static_cast<int>(menu.planetRenderer.sectors.size())) {
+        launcherTransitSelectedSector = 0;
     }
+
+    const auto& hexSec = menu.planetRenderer.sectors[launcherTransitSelectedSector];
+    bool isFortress = hexSec.isFortress;
+    int fortressIdx = hexSec.fortressIdx;
+
+    const core::CampaignSector* sec = (isFortress) ? campaignMgr.getSectorByIndex(fortressIdx) : nullptr;
+    bool isCurrent = (isFortress && fortressIdx == campaignMgr.activeSectorIndex);
+    bool isSecured = sec ? sec->isCleared : false;
+    bool isUnlocked = sec ? sec->isUnlocked : false;
+    bool isLocked = sec ? !sec->isUnlocked : false;
+
+    bool isDirectTarget = false;
+    if (curSec && isFortress) {
+        for (int uId : curSec->unlocksSectors) {
+            if (campaignMgr.getSectorIndexById(uId) == fortressIdx) isDirectTarget = true;
+        }
+        if (campaignMgr.getSectorIndexById(curSec->launcherTargetSectorId) == fortressIdx) isDirectTarget = true;
+    }
+
+    float rContentX = rightPanel.x + 16.0f;
+    float curRY = rightPanel.y + 40.0f;
+
+    // Sector Codename
+    const char* codeStr = hexSec.codename.c_str();
+    Color codeCol = isCurrent ? ui::Colors::Cyan300 : (isFortress ? (isSecured ? ui::Colors::Green400 : (isUnlocked ? ui::Colors::Amber400 : ui::Colors::Zinc400)) : ui::Colors::Zinc400);
+    DrawText(codeStr, static_cast<int>(rContentX), static_cast<int>(curRY), 18, codeCol);
+    curRY += 23.0f;
+
+    // Sector Status Badge (on own line to prevent overlap)
+    const char* badgeStr = isCurrent ? "[ CURRENT STATION ]" :
+                           (isSecured ? "[ SECURED ]" :
+                           (isDirectTarget ? "[ DIRECT TARGET ]" :
+                           (isUnlocked ? "[ READY FOR INSERTION ]" :
+                           (isFortress ? "[ LOCKED ]" : "[ TERRITORIAL HEX ]"))));
+    Color badgeCol = isCurrent ? ui::Colors::Cyan400 :
+                     (isSecured ? ui::Colors::Green400 :
+                     (isDirectTarget ? ui::Colors::Amber400 :
+                     (isUnlocked ? ui::Colors::Cyan400 :
+                     (isFortress ? ui::Colors::Zinc600 : ui::Colors::Zinc500))));
+    DrawText(badgeStr, static_cast<int>(rContentX), static_cast<int>(curRY), 11, badgeCol);
+    curRY += 18.0f;
+
+    // Sector Name
+    const char* sTitle = hexSec.name.c_str();
+    DrawText(sTitle, static_cast<int>(rContentX), static_cast<int>(curRY), 13, WHITE);
+    curRY += 18.0f;
+
+    // Subtitle / Environment type
+    const char* subStr = hexSec.subtitle.c_str();
+    DrawText(subStr, static_cast<int>(rContentX), static_cast<int>(curRY), 10, ui::Colors::Zinc400);
+    curRY += 16.0f;
+
+    // Horizontal divider
+    DrawLineEx({ rContentX, curRY }, { rightPanel.x + rightPanel.width - 16.0f, curRY }, 1.0f, ui::Colors::Zinc800);
+    curRY += 8.0f;
+
+    // Tactical Briefing Lore text (word-wrapped)
+    std::string briefingStr;
+    if (sec) {
+        briefingStr = sec->loreBriefing;
+    } else {
+        const auto* activePlanet = campaignMgr.getActivePlanetConfig();
+        std::string curPName = activePlanet ? activePlanet->name : "Tartarus-IV";
+        std::string geoStat = activePlanet ? activePlanet->visual.geologicalStatus : "Volcanic Basalt & Obsidian Crust";
+        briefingStr = "Unoccupied territorial sector on " + curPName + ". Geodesic dual facet with " + geoStat + ". Perimeter walls protect adjacent fortress zones.";
+    }
+
+    float maxLoreW = rightPanel.width - 32.0f;
+    std::vector<std::string> words;
+    std::string curWord;
+    for (char ch : briefingStr) {
+        if (ch == ' ') {
+            if (!curWord.empty()) { words.push_back(curWord); curWord.clear(); }
+        } else {
+            curWord += ch;
+        }
+    }
+    if (!curWord.empty()) words.push_back(curWord);
+
+    std::string curLine;
+    int lineCount = 0;
+    for (const auto& w : words) {
+        std::string testLine = curLine.empty() ? w : (curLine + " " + w);
+        if (MeasureText(testLine.c_str(), 10) > maxLoreW) {
+            DrawText(curLine.c_str(), static_cast<int>(rContentX), static_cast<int>(curRY), 10, ui::Colors::Zinc300);
+            curRY += 14.0f;
+            curLine = w;
+            lineCount++;
+            if (lineCount >= 3) break;
+        } else {
+            curLine = testLine;
+        }
+    }
+    if (!curLine.empty() && lineCount < 3) {
+        DrawText(curLine.c_str(), static_cast<int>(rContentX), static_cast<int>(curRY), 10, ui::Colors::Zinc300);
+        curRY += 14.0f;
+    }
+    curRY += 6.0f;
+
+    // Specs Grid Box
+    float boxW = rightPanel.width - 32.0f;
+    float boxH = 78.0f;
+    DrawRectangleRec({ rContentX, curRY, boxW, boxH }, Fade(ui::Colors::Zinc900, 0.70f));
+    DrawRectangleLinesEx({ rContentX, curRY, boxW, boxH }, 1.0f, ui::Colors::Zinc800);
+
+    if (sec) {
+        int gSize = sec->gridSize;
+        int bCount = sec->bombCount;
+        DrawText("FORTRESS MINEFIELD SPECIFICATIONS", static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 6.0f), 10, ui::Colors::Amber400);
+        DrawText(TextFormat("Grid Dimension: %dx%d (%d cells)", gSize, gSize, gSize * gSize), static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 22.0f), 11, ui::Colors::Zinc200);
+        DrawText(TextFormat("Threat Density: %d Subterranean Bombs", bCount), static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 38.0f), 11, ui::Colors::Zinc300);
+        DrawText(TextFormat("Clearance Progress: %llu / %llu Safe Cells", sec->board.revealedCount, sec->board.safeCells()), static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 56.0f), 11, (isSecured ? ui::Colors::Green400 : ui::Colors::Amber300));
+    } else {
+        DrawText("TERRITORIAL SECTOR SPECIFICATIONS", static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 6.0f), 10, ui::Colors::Cyan400);
+        DrawText(TextFormat("Topology: %zu-Sided Geodesic Facet", hexSec.corners.size()), static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 22.0f), 11, ui::Colors::Zinc200);
+        const auto* activePlanet = campaignMgr.getActivePlanetConfig();
+        std::string geoStat = activePlanet ? activePlanet->visual.geologicalStatus : "Volcanic Basalt & Obsidian Crust";
+        DrawText(TextFormat("Geological Status: %s", geoStat.c_str()), static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 38.0f), 11, ui::Colors::Zinc300);
+        DrawText("Perimeter Barrier: Heavy Encased Forcefield Wall", static_cast<int>(rContentX + 8.0f), static_cast<int>(curRY + 56.0f), 11, ui::Colors::Zinc400);
+    }
+    curRY += boxH + 10.0f;
+
+    // Quick Fortress Steppers (< PREV / NEXT >)
+    float navW = (boxW - 8.0f) * 0.5f;
+    float navH = 26.0f;
+    int activeFIdx = isFortress ? fortressIdx : -1;
+    int numF = static_cast<int>(campaignMgr.sectors.size());
+    if (ui::Widgets::button("< PREV FORTRESS", { rContentX, curRY, navW, navH }, ui::Colors::Zinc800, ui::Colors::Zinc700, (activeFIdx == 0), 11)) {
+        int prevF = (activeFIdx <= 0) ? (numF - 1) : (activeFIdx - 1);
+        int sIdx = menu.planetRenderer.getSectorIdxForFortress(prevF);
+        if (sIdx >= 0) {
+            launcherTransitSelectedSector = sIdx;
+            menu.planetRenderer.focusSector(launcherTransitSelectedSector);
+        }
+    }
+    if (ui::Widgets::button("NEXT FORTRESS >", { rContentX + navW + 8.0f, curRY, navW, navH }, ui::Colors::Zinc800, ui::Colors::Zinc700, (activeFIdx == numF - 1), 11)) {
+        int nextF = (activeFIdx < 0) ? 0 : (activeFIdx + 1);
+        if (nextF >= numF) nextF = 0;
+        int sIdx = menu.planetRenderer.getSectorIdxForFortress(nextF);
+        if (sIdx >= 0) {
+            launcherTransitSelectedSector = sIdx;
+            menu.planetRenderer.focusSector(launcherTransitSelectedSector);
+        }
+    }
+    curRY += navH + 12.0f;
+
+    // Main Orbital Action Button (WARP TO SECTOR)
+    float actBtnH = 42.0f;
+    float actBtnY = rightPanel.y + rightPanel.height - actBtnH - 12.0f;
+
+    if (isCurrent) {
+        ui::Widgets::mindustryButton("CURRENT SECTOR", "ALREADY STATIONED AT THIS BASE", { rContentX, actBtnY, boxW, actBtnH }, ui::Colors::Zinc800, true, 15);
+    } else if (isFortress && isUnlocked) {
+        if (ui::Widgets::mindustryButton("WARP TO SECTOR", "ENGAGE ORBITAL MASS-ACCELERATOR", { rContentX, actBtnY, boxW, actBtnH }, ui::Colors::Green500, false, 15)) {
+            closeLauncherTransit();
+            triggerSectorWarp(fortressIdx);
+            audio::SoundManager::playButton();
+            EndMode2D();
+            return;
+        }
+    } else if (isFortress && isLocked) {
+        ui::Widgets::mindustryButton("SECTOR LOCKED", "REQUIRES CAMPAIGN CLEARANCE", { rContentX, actBtnY, boxW, actBtnH }, ui::Colors::Zinc800, true, 15);
+    } else {
+        // Territorial hex: provide button to snap focus back to active fortress
+        if (ui::Widgets::mindustryButton("TARGET ACTIVE FORTRESS", "FOCUS CURRENT CAMPAIGN MISSION", { rContentX, actBtnY, boxW, actBtnH }, ui::Colors::Amber500, false, 15)) {
+            int targetF = campaignMgr.activeSectorIndex;
+            int sIdx = menu.planetRenderer.getSectorIdxForFortress(targetF);
+            if (sIdx >= 0) {
+                launcherTransitSelectedSector = sIdx;
+                menu.planetRenderer.focusSector(launcherTransitSelectedSector);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // BOTTOM CENTER CONTROLS HINT
+    // -------------------------------------------------------------
+    const char* hintText = "[DRAG: ROTATE PLANET]  *  [WHEEL: ZOOM]  *  [CLICK: SELECT]  *  [ESC: RETURN]";
+    float hintBoxW = static_cast<float>(MeasureText(hintText, 11) + 24);
+    float hintBoxH = 24.0f;
+    float hintBoxX = (uiW - hintBoxW) * 0.5f;
+    float hintBoxY = uiH - hintBoxH - 10.0f;
+    Rectangle hintRec = { hintBoxX, hintBoxY, hintBoxW, hintBoxH };
+
+    DrawRectangleRec(hintRec, Fade(ui::Colors::Zinc950, 0.88f));
+    DrawRectangleLinesEx(hintRec, 1.0f, ui::Colors::Zinc800);
+    DrawText(hintText, static_cast<int>(hintBoxX + 12.0f), static_cast<int>(hintBoxY + 6.0f), 11, ui::Colors::Zinc400);
+
+    EndMode2D();
 }
 
 void App::run() {

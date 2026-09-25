@@ -108,6 +108,11 @@ private:
     void startCampaignGame(bool isHost = false);
     void triggerSectorWarp(int newSectorIdx);
     bool isLauncherTransitOpen = false;
+    int launcherTransitSelectedSector = 0;
+    int launcherTransitHoveredSector = -1;
+    void openLauncherTransit();
+    void closeLauncherTransit();
+    void updateLauncherTransit(float dt, int screenW, int screenH);
     void drawLauncherTransitModal(int screenW, int screenH);
     void saveCampaignProgress();
     bool loadCampaignProgress();
